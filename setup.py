@@ -1,9 +1,8 @@
-import os
-
+from os import name as sys_name
 from setuptools import setup
 
-dependencies = ['click', 'playsound']
-if os.name != 'nt':
+dependencies = ['click', 'playsound', 'pygame']
+if sys_name != 'nt':
     dependencies.append('getch')
 
 setup(

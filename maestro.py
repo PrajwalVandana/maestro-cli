@@ -1,11 +1,13 @@
-import click
-import multiprocessing
-import os
-
 from playsound import playsound
-from random import shuffle
-from shutil import copy, move
+import os
+import multiprocessing
+import click
 from time import sleep
+from shutil import copy, move
+from random import shuffle
+os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
+from pygame import mixer  # NOQA
+
 if os.name != 'nt':
     from getch import getch as posix_getch
 
@@ -13,6 +15,7 @@ if os.name != 'nt':
 MAESTRO_DIR = os.path.join(os.path.expanduser('~'), "maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
+SCRUB_TIME = 5000
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -230,11 +233,12 @@ def play(tags, shuffle_, reverse, only):
     your playlist.
 
     p  to pause
-    s  to skip to next song
     g  to go back to previous song
-    a  to play song again
+    a  to play song again from beginning
+    s  to skip to next song
     r  to rewind 5s
-    f  to fast forward 5s"""
+    f  to fast forward 5s
+    e  to end the song player"""
     playlist = []
 
     if only is not None:
@@ -262,7 +266,6 @@ def play(tags, shuffle_, reverse, only):
                         songs_dict[int(details[0])] = details[1]
 
                     song_ids = list(songs_dict)
-                    print(song_ids)
                     if shuffle_:
                         shuffle(song_ids)
                     else:  # reverse is True
@@ -308,36 +311,44 @@ def play(tags, shuffle_, reverse, only):
             _play_posix(playlist)
 
 
-def _play_win(playlist):  # NOTE: untested on Windows
-    from msvcrt import win_kbhit, win_getch
+def output(i, playlist):
+    return f"""{click.style(playlist[i], fg="blue", bold=True)} {click.style(f"{i+1}/{len(playlist)}", fg="blue")}
+{click.style("Next up: "+playlist[i+1] if i != len(playlist)-1 else '', fg="black")}"""
 
-    def output(i, playlist):
-        res = ""
-        for j in range(len(playlist)):
-            song_name = playlist[j] + ('\n' if j != len(playlist)-1 else '')
-            if j != i:
-                res += click.style(song_name, fg="black")
-            else:
-                res += click.style(song_name, fg="blue", bold=True)
-        return res
+
+def output_list(i, playlist):
+    res = ""
+    for j in range(len(playlist)):
+        song_name = playlist[j]+('\n' if j != len(playlist)-1 else '')
+        if j != i:
+            res += click.style(song_name, fg="black")
+        else:
+            res += click.style(song_name, fg="blue", bold=True)
+    return res
+
+
+def _play_win(playlist):  # NOTE: untested on Windows
+    from msvcrt import kbhit as win_kbhit, getch as win_getch
+
+    mixer.init()
 
     i = 0
     while i in range(len(playlist)):
         click.clear()
         click.echo(output(i, playlist))
 
-        # NOTE: outlives program unless terminated
-        song_process = multiprocessing.Process(
-            target=playsound, args=(os.path.join(SONGS_DIR, playlist[i]),)
-        )
-        song_process.start()
+        mixer.music.load(os.path.join(SONGS_DIR, playlist[i]))
+        mixer.music.play()
+        music_start_time = mixer.music.get_pos()
+
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
+        paused = False
         while True:
-            if not song_process.is_alive():
+            if not mixer.music.get_busy() and not paused:
                 next_song = 1
                 break
 
-            if win_kbhit():
+            if not win_kbhit():
                 c = win_getch()
                 if c == 's':
                     if i == len(playlist)-1:
@@ -348,7 +359,8 @@ def _play_win(playlist):  # NOTE: untested on Windows
                         click.echo(output(i, playlist))
                     else:
                         next_song = 1
-                        song_process.terminate()
+                        mixer.music.stop()
+                        mixer.music.unload()
                         break
                 elif c == 'g':
                     if i == 0:
@@ -359,15 +371,29 @@ def _play_win(playlist):  # NOTE: untested on Windows
                         click.echo(output(i, playlist))
                     else:
                         next_song = -1
-                        song_process.terminate()
+                        mixer.music.stop()
+                        mixer.music.unload()
                         break
                 elif c == 'a':
-                    song_process.terminate()
+                    mixer.music.stop()
+                    mixer.music.unload()
                     next_song = 0
                     break
                 elif c == 'e':
-                    song_process.terminate()
+                    mixer.music.stop()
+                    mixer.music.unload()
                     return
+                elif c == 'p':
+                    if paused:
+                        paused = False
+                        mixer.music.unpause()
+                    else:
+                        paused = True
+                        mixer.music.pause()
+                elif c == 'r':
+                    music_start_time = scrub(mixer.music, -SCRUB_TIME, music_start_time)
+                elif c == 'f':
+                    music_start_time = scrub(mixer.music, SCRUB_TIME, music_start_time)
 
         if next_song == -1:
             i -= 1
@@ -375,8 +401,6 @@ def _play_win(playlist):  # NOTE: untested on Windows
             if i == len(playlist)-1:
                 return
             i += 1
-
-        next_song = 1  # NOTE: shouldn't actually be necessary but eh
 
 
 def posix_getch_wrapper(q):
@@ -386,36 +410,31 @@ def posix_getch_wrapper(q):
 
 
 def _play_posix(playlist):
-    def output(i, playlist):
-        res = ""
-        for j in range(len(playlist)):
-            song_name = playlist[j]+('\n' if j != len(playlist)-1 else '')
-            if j != i:
-                res += click.style(song_name, fg="black")
-            else:
-                res += click.style(song_name, fg="blue", bold=True)
-        return res
-
     chars_queue = multiprocessing.SimpleQueue()
     getch_process = multiprocessing.Process(
         target=posix_getch_wrapper, args=(chars_queue,))
+
+    mixer.init()
 
     i = 0
     while i in range(len(playlist)):
         click.clear()
         click.echo(output(i, playlist))
 
-        song_process = multiprocessing.Process(
-            target=playsound, args=(os.path.join(SONGS_DIR, playlist[i]),)
-        )
-        song_process.start()
-
         if not getch_process.is_alive():
             getch_process.start()
 
+        mixer.music.load(os.path.join(SONGS_DIR, playlist[i]))
+        mixer.music.play()
+        # NOTE: mixer.music.get_pos()-music_start_time should return where the
+        #       song is right now. Every time we rewind or fast forward, we
+        #       change music_start_time accordingly
+        music_start_time = mixer.music.get_pos()
+
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
+        paused = False
         while True:
-            if not song_process.is_alive():
+            if not mixer.music.get_busy() and not paused:
                 next_song = 1
                 break
 
@@ -430,7 +449,8 @@ def _play_posix(playlist):
                         click.echo(output(i, playlist))
                     else:
                         next_song = 1
-                        song_process.terminate()
+                        mixer.music.stop()
+                        mixer.music.unload()
                         break
                 elif c == 'g':
                     if i == 0:
@@ -441,16 +461,30 @@ def _play_posix(playlist):
                         click.echo(output(i, playlist))
                     else:
                         next_song = -1
-                        song_process.terminate()
+                        mixer.music.stop()
+                        mixer.music.unload()
                         break
                 elif c == 'a':
-                    song_process.terminate()
+                    mixer.music.stop()
+                    mixer.music.unload()
                     next_song = 0
                     break
                 elif c == 'e':
-                    song_process.terminate()
+                    mixer.music.stop()
+                    mixer.music.unload()
                     getch_process.terminate()
                     return
+                elif c == 'p':
+                    if paused:
+                        paused = False
+                        mixer.music.unpause()
+                    else:
+                        paused = True
+                        mixer.music.pause()
+                elif c == 'r':
+                    music_start_time = scrub(mixer.music, -SCRUB_TIME, music_start_time)
+                elif c == 'f':
+                    music_start_time = scrub(mixer.music, SCRUB_TIME, music_start_time)
 
         if next_song == -1:
             i -= 1
@@ -460,7 +494,12 @@ def _play_posix(playlist):
                 return
             i += 1
 
-        next_song = 1
+
+def scrub(music_player, scrub_time, music_start_time):
+    """Returns new value of `music_start_time`."""
+    music_player.set_pos(
+        (music_player.get_pos()-music_start_time+scrub_time)/1000)
+    return music_start_time-scrub_time
 
 
 @cli.command()

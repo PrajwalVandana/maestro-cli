@@ -17,4 +17,11 @@ For the most part, `maestro` is pretty self-explanatory and easy to use—runnin
 
 `maestro play` is very versatile, allowing you to shuffle your playlist, reverse your playlist (most recently added first), play only a single song, or play only songs with certain tags.
 
-Every song is given an ID—so if you want to remove the song `examplesong` (let's say you forgot whether it was a `.wav` or `.mp3`), you would run `maestro search examplesong`, which would show you all songs that contained the phrase `examplesong` along with their ID and tag(s). Let's say the ID was 17, you would then run `maestro remove 17`.
+Every song is given an ID—so if you want to remove the song `examplesong` (let's say you forgot whether it was a `.wav` or `.mp3`), you would run
+```
+maestro search examplesong
+```
+which would show you all songs that contained the phrase `examplesong` along with their ID and tag(s). Let's say the ID was 17, you would then run
+```
+maestro remove 17
+```

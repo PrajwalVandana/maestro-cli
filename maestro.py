@@ -45,7 +45,8 @@ def cli():
 def add(path, tags, move_, recurse):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if `-r` is passed). The name of each
-    song will be the filename, with spaces replaced with '_'."""
+    song will be the filename, with spaces replaced with '_' and the extension
+    removed. Any spaces in tags will be replaced with '_'."""
     ext = os.path.splitext(path)[1]
     if not os.path.isdir(path) and ext not in EXTS:
         click.secho(f"'{ext}' is not supported", fg="red")
@@ -55,7 +56,7 @@ def add(path, tags, move_, recurse):
 
         lines = songs_file.readlines()
         if not lines:
-            song_id = 0
+            song_id = 1
         else:
             song_id = int(lines[-1].split()[0]) + 1
 
@@ -99,6 +100,8 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
         move(path, dest_path)
     else:
         copy(path, dest_path)
+
+    tags = [tag.replace(' ', '_') for tag in tags]
 
     if prepend_newline:
         songs_file.write('\n')
@@ -154,7 +157,8 @@ def remove(song_id):
 @click.argument('song_id', type=click.INT, required=True)
 @click.argument('tags', nargs=-1)
 def add_tags(song_id, tags):
-    """Add tags to a song (passed as ID)."""
+    """Add tags to a song (passed as ID). Any spaces in tags will be replaced
+    with underscores ('_')."""
     if len(tags) > 0:
         songs_file = open(SONGS_INFO_PATH, 'r')
         lines = songs_file.read().splitlines()
@@ -164,6 +168,7 @@ def add_tags(song_id, tags):
             if int(details[0]) == song_id:
                 new_tags = []
                 for tag in tags:
+                    tag = tag.replace(' ', '_')
                     if tag not in details[2:]:
                         new_tags.append(tag)
                 lines[i] = ' '.join(details+new_tags)
@@ -192,7 +197,8 @@ def add_tags(song_id, tags):
 @click.argument('tags', nargs=-1)
 def remove_tags(song_id, tags):
     """Remove tags from a song (passed as ID). Passing tags that the song
-    doesn't have will not cause an error."""
+    doesn't have will not cause an error. Any spaces in tags will be replaced
+    with underscores ('_')."""
     if len(tags) > 0:
         songs_file = open(SONGS_INFO_PATH, 'r')
         lines = songs_file.read().splitlines()
@@ -202,6 +208,7 @@ def remove_tags(song_id, tags):
             if int(details[0]) == song_id:
                 tags_to_keep = []
                 for tag in details[2:]:
+                    tag = tag.replace('_', ' ')
                     if tag not in tags:
                         tags_to_keep.append(tag)
                 lines[i] = ' '.join(details[:2]+tags_to_keep)
@@ -235,7 +242,7 @@ def remove_tags(song_id, tags):
               help="Play only this song.")
 def play(tags, shuffle_, reverse, only):
     """Play your songs. If tags are passed, any song matching any tag will be in
-    your playlist.
+    your playlist. Any spaces in tags will be converted to underscores ('_').
 
     \b
     p  to pause
@@ -287,6 +294,7 @@ def play(tags, shuffle_, reverse, only):
                     for line in songs_file:
                         details = line.split()
                         for tag in details[2:]:
+                            tag = tag.replace(' ', '_')
                             if tag in tags:
                                 playlist.append(details[1])
                                 break
@@ -296,6 +304,7 @@ def play(tags, shuffle_, reverse, only):
                     for line in songs_file:
                         details = line.split()
                         for tag in details[2:]:
+                            tag = tag.replace(' ', '_')
                             if tag in tags:
                                 songs_dict[int(details[0])] = details[1]
                                 break
@@ -399,10 +408,10 @@ def _play_win(playlist):  # NOTE: untested on Windows
                         mixer.music.pause()
                 elif c == 'r':
                     music_start_time = scrub(
-                        mixer.music, -SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
+                        mixer.music, -SCRUB_TIME, music_start_time)
                 elif c == 'f':
                     music_start_time = scrub(
-                        mixer.music, SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
+                        mixer.music, SCRUB_TIME, music_start_time)
 
         if next_song == -1:
             i -= 1
@@ -492,10 +501,10 @@ def _play_posix(playlist):
                         mixer.music.pause()
                 elif c == 'r':
                     music_start_time = scrub(
-                        mixer.music, -SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
+                        mixer.music, -SCRUB_TIME, music_start_time)
                 elif c == 'f':
                     music_start_time = scrub(
-                        mixer.music, SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
+                        mixer.music, SCRUB_TIME, music_start_time)
 
         if next_song == -1:
             i -= 1
@@ -506,23 +515,18 @@ def _play_posix(playlist):
             i += 1
 
 
-def scrub(music_player, scrub_time, music_start_time, ext):
+def scrub(music_player, scrub_time, music_start_time):
     """Returns new value of `music_start_time`."""
-    if ext == '.mp3':
-        music_player.set_pos(
-            (music_player.get_pos()-music_start_time+scrub_time)/1000)
-        return music_start_time-scrub_time
-    else:
-        music_player.play(start=(music_player.get_pos()-music_start_time+scrub_time)/1000)
-        return music_start_time
+    music_player.set_pos(
+        (music_player.get_pos()-music_start_time+scrub_time)/1000)
+    return music_start_time-scrub_time
 
 
 @cli.command()
 @click.argument('song_id', type=click.INT)
 @click.argument('name')
 def rename(song_id, name):
-    """Renames the song with the id SONG_ID to NAME. The extension
-    (e.g. '.wav', '.mp3') is kept."""
+    """Renames the song with the id SONG_ID to NAME."""
     songs_file = open(SONGS_INFO_PATH, 'r')
     lines = songs_file.read().splitlines()
     for i in range(len(lines)):
@@ -597,6 +601,6 @@ def _print_entry(entry):
     """`entry` should be passed as a list (what you get when you call
     `line.split()`)."""
     click.secho(entry[0]+' ', fg="black", nl=False)
-    click.secho(entry[1], fg="blue", nl=(len(entry) == 2))
+    click.secho(os.path.splitext(entry[1])[0], fg="blue", nl=(len(entry) == 2))
     if len(entry) > 2:
         click.echo(' '+' '.join(entry[2:]))

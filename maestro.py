@@ -12,7 +12,7 @@ if os.name != 'nt':
     from getch import getch as posix_getch
 
 
-MAESTRO_DIR = os.path.join(os.path.expanduser('~'), "maestro-files/")
+MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SCRUB_TIME = 5000
@@ -38,7 +38,7 @@ def cli():
 @click.argument('path', type=click.Path(exists=True))
 @click.argument('tags', nargs=-1)
 @click.option('-m', "-move", "move_", is_flag=True,
-              help="Move file from PATH instead of copying.")
+              help="Move file from PATH to maestro's internal song database instead of copying.")
 @click.option('-r', '-recursive', "recurse", is_flag=True,
               help="If PATH is a folder, add songs in subfolders.")
 def add(path, tags, move_, recurse):
@@ -232,13 +232,15 @@ def play(tags, shuffle_, reverse, only):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist.
 
+    \b
     p  to pause
     g  to go back to previous song
     a  to play song again from beginning
     s  to skip to next song
     r  to rewind 5s
     f  to fast forward 5s
-    e  to end the song player"""
+    e  to end the song player
+    """
     playlist = []
 
     if only is not None:
@@ -391,9 +393,11 @@ def _play_win(playlist):  # NOTE: untested on Windows
                         paused = True
                         mixer.music.pause()
                 elif c == 'r':
-                    music_start_time = scrub(mixer.music, -SCRUB_TIME, music_start_time)
+                    music_start_time = scrub(
+                        mixer.music, -SCRUB_TIME, music_start_time)
                 elif c == 'f':
-                    music_start_time = scrub(mixer.music, SCRUB_TIME, music_start_time)
+                    music_start_time = scrub(
+                        mixer.music, SCRUB_TIME, music_start_time)
 
         if next_song == -1:
             i -= 1
@@ -482,9 +486,11 @@ def _play_posix(playlist):
                         paused = True
                         mixer.music.pause()
                 elif c == 'r':
-                    music_start_time = scrub(mixer.music, -SCRUB_TIME, music_start_time)
+                    music_start_time = scrub(
+                        mixer.music, -SCRUB_TIME, music_start_time)
                 elif c == 'f':
-                    music_start_time = scrub(mixer.music, SCRUB_TIME, music_start_time)
+                    music_start_time = scrub(
+                        mixer.music, SCRUB_TIME, music_start_time)
 
         if next_song == -1:
             i -= 1

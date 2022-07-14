@@ -2,13 +2,13 @@
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
 ## Installation
-Download one of the wheels or tarballs or whatnot from the `dist/` folder. Alternatively, you can build `maestro` yourself—download `setup.py` and `maestro.py` into the same folder, then run
+Download one of the wheels or tarballs or whatnot from the `dist/` folder. Alternatively, you can build `maestro` yourself—download `setup.py` and `maestro.py` into the same folder (preferably an empty one so you can easily clean it up later), then run
 ```
 python setup.py install
 ```
 
 ### Platforms
-Tested with `.wav` and `.mp3` files on macOS. `maestro` was built to be cross-platform but unfortunately I don't have a Windows to test on.
+Tested with `.mp3` files on macOS. `maestro` was built to be cross-platform but unfortunately I don't have a Windows to test on.
 
 ## Usage
 For the most part, `maestro` is pretty self-explanatory and easy to use—running `maestro` or `maestro -h` gives you an overview of the commands, and `maestro [command] -h` for any one specific command is hopefully self-explanatory enough.

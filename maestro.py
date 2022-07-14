@@ -16,6 +16,7 @@ MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SCRUB_TIME = 5000
+EXTS = ['.mp3']
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -45,6 +46,10 @@ def add(path, tags, move_, recurse):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if `-r` is passed). The name of each
     song will be the filename, with spaces replaced with '_'."""
+    ext = os.path.splitext(path)[1]
+    if not os.path.isdir(path) and ext not in EXTS:
+        click.secho(f"'{ext}' is not supported", fg="red")
+        return
     with open(SONGS_INFO_PATH, 'a+') as songs_file:
         songs_file.seek(0)  # start reading from beginning
 
@@ -394,10 +399,10 @@ def _play_win(playlist):  # NOTE: untested on Windows
                         mixer.music.pause()
                 elif c == 'r':
                     music_start_time = scrub(
-                        mixer.music, -SCRUB_TIME, music_start_time)
+                        mixer.music, -SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
                 elif c == 'f':
                     music_start_time = scrub(
-                        mixer.music, SCRUB_TIME, music_start_time)
+                        mixer.music, SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
 
         if next_song == -1:
             i -= 1
@@ -487,10 +492,10 @@ def _play_posix(playlist):
                         mixer.music.pause()
                 elif c == 'r':
                     music_start_time = scrub(
-                        mixer.music, -SCRUB_TIME, music_start_time)
+                        mixer.music, -SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
                 elif c == 'f':
                     music_start_time = scrub(
-                        mixer.music, SCRUB_TIME, music_start_time)
+                        mixer.music, SCRUB_TIME, music_start_time, os.path.splitext(playlist[i])[1])
 
         if next_song == -1:
             i -= 1
@@ -501,11 +506,15 @@ def _play_posix(playlist):
             i += 1
 
 
-def scrub(music_player, scrub_time, music_start_time):
+def scrub(music_player, scrub_time, music_start_time, ext):
     """Returns new value of `music_start_time`."""
-    music_player.set_pos(
-        (music_player.get_pos()-music_start_time+scrub_time)/1000)
-    return music_start_time-scrub_time
+    if ext == '.mp3':
+        music_player.set_pos(
+            (music_player.get_pos()-music_start_time+scrub_time)/1000)
+        return music_start_time-scrub_time
+    else:
+        music_player.play(start=(music_player.get_pos()-music_start_time+scrub_time)/1000)
+        return music_start_time
 
 
 @cli.command()

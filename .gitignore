@@ -1,4 +1,5 @@
 .vscode
 design.md
 build
-maestro.egg-info
+*.egg-info
+*.egg

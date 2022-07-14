@@ -11,7 +11,7 @@ python setup.py install
 Tested with `.wav` and `.mp3` files on macOS. `maestro` was built to be cross-platform but unfortunately I don't have a Windows to test on.
 
 ## Usage
-For the most part, `maestro` is pretty self-explanatory and easy to use—running `maestro` or `maestro -h` gives you an overview of the commands, and `maestro [command] -h ` for any one specific command is hopefully self-explanatory enough.
+For the most part, `maestro` is pretty self-explanatory and easy to use—running `maestro` or `maestro -h` gives you an overview of the commands, and `maestro [command] -h` for any one specific command is hopefully self-explanatory enough.
 
 `maestro` allows you to add and remove songs with `maestro add` and `maestro remove`, add tags to songs with `maestro add-tags` and `maestro remove-tags`, etc.
 

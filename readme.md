@@ -19,7 +19,7 @@ For the most part, `maestro` is pretty self-explanatory and easy to use—runnin
 
 `maestro play` is very versatile, allowing you to shuffle your playlist, reverse your playlist (most recently added first), play only a single song, or play only songs with certain tags.
 
-Every song is given an ID—so if you want to remove the song `examplesong`, you would run
+Every song is given a positive integer ID (this does *not* necessarily equal its position in your playlist)—so if you want to remove the song `examplesong`, you would run
 ```
 maestro search examplesong
 ```
@@ -27,6 +27,8 @@ which would show you all songs that contained the phrase `examplesong` along wit
 ```
 maestro remove 17
 ```
+
+A feature to refer to songs with a phrase instead of having to know the ID of the song is coming soon!
 
 ## Other Tips
 
@@ -39,3 +41,14 @@ youtube-dl -x --audio-format mp3 LINK_TO_VIDEO_OR_PLAYLIST
 
 ### Converting Songs to MP3
 There's a bunch of online conversion tools, and if you want something more versatile there's [ffmpeg](https://ffmpeg.org/).
+
+#### macOS
+```
+brew install ffmpeg
+```
+#### Linux
+```
+apt-get install ffmpeg libavcodec-extra
+```
+#### Windows
+Check out [this wikiHow link](https://www.wikihow.com/Install-FFmpeg-on-Windows).

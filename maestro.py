@@ -93,7 +93,7 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
         details = line.split()
         if details[1] == song_name:
             click.secho(
-                f"Song with name '{song_name}' already exists", fg="red")
+                f"Song with name '{os.path.splitext(song_name)[0]}' already exists", fg="red")
             return
 
     if move_:
@@ -108,7 +108,7 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
     songs_file.write(
         f"{song_id} {song_name}{' '+' '.join(tags) if tags else ''}\n")
 
-    click.secho(f"Added song '{song_name}' with id {song_id}", fg='green')
+    click.secho(f"Added song '{os.path.splitext(song_name)[0]}' with id {song_id}", fg='green')
 
 
 @cli.command(name="list")
@@ -141,7 +141,7 @@ def remove(song_id):
             os.remove(os.path.join(SONGS_DIR, song_name))  # remove actual song
 
             click.secho(
-                f"Removed song '{song_name}' with id {song_id}", fg='green')
+                f"Removed song '{os.path.splitext(song_name)[0]}' with id {song_id}", fg='green')
 
             break
         elif int(details[0]) > song_id:
@@ -177,7 +177,7 @@ def add_tags(song_id, tags):
                 songs_file = open(SONGS_INFO_PATH, 'w')
                 songs_file.write('\n'.join(lines))
                 click.secho(
-                    f"Added tags {tags} to song '{details[1]}' with id {song_id}",
+                    f"Added tags {tags} to song '{os.path.splitext(details[1])[0]}' with id {song_id}",
                     fg='green'
                 )
                 break
@@ -217,7 +217,7 @@ def remove_tags(song_id, tags):
                 songs_file = open(SONGS_INFO_PATH, 'w')
                 songs_file.write('\n'.join(lines))
                 click.secho(
-                    f"Removed tags {tags} from song '{details[1]}' with id {song_id}",
+                    f"Removed tags {tags} from song '{os.path.splitext(details[1])[0]}' with id {song_id}",
                     fg='green'
                 )
                 break
@@ -328,14 +328,14 @@ def play(tags, shuffle_, reverse, only):
 
 
 def output(i, playlist):
-    return f"""{click.style(playlist[i], fg="blue", bold=True)} {click.style(f"{i+1}/{len(playlist)}", fg="blue")}
-{click.style("Next up: "+playlist[i+1] if i != len(playlist)-1 else '', fg="black")}"""
+    return f"""{click.style(os.path.splitext(playlist[i])[0], fg="blue", bold=True)} {click.style(f"{i+1}/{len(playlist)}", fg="blue")}
+{click.style("Next up: "+os.path.splitext(playlist[i+1])[0] if i != len(playlist)-1 else '', fg="black")}"""
 
 
 def output_list(i, playlist):
     res = ""
     for j in range(len(playlist)):
-        song_name = playlist[j]+('\n' if j != len(playlist)-1 else '')
+        song_name = os.path.splitext(playlist[j])[0]+('\n' if j != len(playlist)-1 else '')
         if j != i:
             res += click.style(song_name, fg="black")
         else:
@@ -526,7 +526,8 @@ def scrub(music_player, scrub_time, music_start_time):
 @click.argument('song_id', type=click.INT)
 @click.argument('name')
 def rename(song_id, name):
-    """Renames the song with the id SONG_ID to NAME."""
+    """Renames the song with the id SONG_ID to NAME. Any spaces in NAME are
+    replaced with underscores."""
     songs_file = open(SONGS_INFO_PATH, 'r')
     lines = songs_file.read().splitlines()
     for i in range(len(lines)):
@@ -547,7 +548,7 @@ def rename(song_id, name):
                 SONGS_DIR, details[1]))
 
             click.secho(
-                f"Renamed song '{old_name}' with id {song_id} to '{details[1]}'",
+                f"Renamed song '{os.path.splitext(old_name)[0]}' with id {song_id} to '{os.path.splitext(details[1])[0]}'",
                 fg='green'
             )
 

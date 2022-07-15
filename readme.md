@@ -4,7 +4,7 @@
 ## Installation
 Download one of the wheels or tarballs or whatnot from the `dist/` folder. Alternatively, you can build `maestro` yourself—download `setup.py` and `maestro.py` into the same folder (preferably an empty one so you can easily clean it up later), then run
 ```
-python setup.py install
+pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
 ```
 
 ### Platforms

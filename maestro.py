@@ -1,12 +1,12 @@
+from time import sleep
+from shutil import copy, move
+from random import shuffle
 import os
 import multiprocessing
 import click
 
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 from pygame import mixer  # NOQA
-from random import shuffle
-from shutil import copy, move
-from time import sleep
 
 if os.name != 'nt':
     from getch import getch as posix_getch
@@ -108,7 +108,8 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
     songs_file.write(
         f"{song_id} {song_name}{' '+' '.join(tags) if tags else ''}\n")
 
-    click.secho(f"Added song '{os.path.splitext(song_name)[0]}' with id {song_id}", fg='green')
+    click.secho(
+        f"Added song '{os.path.splitext(song_name)[0]}' with id {song_id}", fg='green')
 
 
 @cli.command(name="list")
@@ -328,13 +329,13 @@ def play(tags, shuffle_, reverse, only):
 
 
 def output(i, playlist):
-    return f"""{click.style(os.path.splitext(playlist[i])[0], fg="blue", bold=True)} {click.style(f"{i+1}/{len(playlist)}", fg="blue")}{click.style("\nNext up: "+os.path.splitext(playlist[i+1])[0] if i != len(playlist)-1 else '', fg="black")}"""
-
+    return f"{click.style(os.path.splitext(playlist[i])[0], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}" + click.style("\nNext up: "+os.path.splitext(playlist[i+1])[0] if i != len(playlist)-1 else '', fg="black")
 
 def output_list(i, playlist):
     res = ""
     for j in range(len(playlist)):
-        song_name = os.path.splitext(playlist[j])[0]+('\n' if j != len(playlist)-1 else '')
+        song_name = os.path.splitext(playlist[j])[
+            0]+('\n' if j != len(playlist)-1 else '')
         if j != i:
             res += click.style(song_name, fg="black")
         else:

@@ -328,8 +328,7 @@ def play(tags, shuffle_, reverse, only):
 
 
 def output(i, playlist):
-    return f"""{click.style(os.path.splitext(playlist[i])[0], fg="blue", bold=True)} {click.style(f"{i+1}/{len(playlist)}", fg="blue")}
-{click.style("Next up: "+os.path.splitext(playlist[i+1])[0] if i != len(playlist)-1 else '', fg="black")}"""
+    return f"""{click.style(os.path.splitext(playlist[i])[0], fg="blue", bold=True)} {click.style(f"{i+1}/{len(playlist)}", fg="blue")}{click.style("\nNext up: "+os.path.splitext(playlist[i+1])[0] if i != len(playlist)-1 else '', fg="black")}"""
 
 
 def output_list(i, playlist):

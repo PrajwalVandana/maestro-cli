@@ -1,12 +1,12 @@
-from playsound import playsound
 import os
 import multiprocessing
 import click
-from time import sleep
-from shutil import copy, move
-from random import shuffle
+
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
 from pygame import mixer  # NOQA
+from random import shuffle
+from shutil import copy, move
+from time import sleep
 
 if os.name != 'nt':
     from getch import getch as posix_getch

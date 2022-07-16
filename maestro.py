@@ -10,13 +10,60 @@ from pygame import mixer  # NOQA
 
 if os.name != 'nt':
     from getch import getch as posix_getch
-
+else:
+    from msvcrt import getch as win_getch, kbhit as win_kbhit
 
 MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SCRUB_TIME = 5000
 EXTS = ['.mp3']
+
+
+def posix_getch_wrapper(q):
+    while True:
+        c = posix_getch()
+        q.put(c)
+
+        # NOTE: since q.put is async, this ensures the next call to q.empty()
+        # is correct
+        q.empty()
+
+
+class GetchManager:
+    def __init__(self):
+        if os.name == 'nt':
+            self.started = True
+        else:
+            self.q = multiprocessing.Queue()
+            self.p = multiprocessing.Process(
+                target=posix_getch_wrapper, args=(self.q,))
+            self.started = False
+
+    def start(self):
+        if os.name != 'nt':
+            self.p.start()
+            self.started = True
+
+    def kbhit(self):
+        if os.name == 'nt':
+            return win_kbhit()
+        else:
+            return not self.q.empty()
+
+    def getch(self):
+        if os.name == 'nt':
+            return win_getch()
+        else:
+            return self.q.get()
+
+    def is_alive(self):
+        return self.started
+
+    def stop(self):
+        if os.name != 'nt':
+            self.p.terminate()
+            self.started = False
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -343,94 +390,8 @@ def output_list(i, playlist):
     return res
 
 
-def _play_win(playlist):  # NOTE: untested on Windows
-    from msvcrt import kbhit as win_kbhit, getch as win_getch
-
-    mixer.init()
-
-    i = 0
-    while i in range(len(playlist)):
-        click.clear()
-        click.echo(output(i, playlist))
-
-        mixer.music.load(os.path.join(SONGS_DIR, playlist[i]))
-        mixer.music.play()
-        music_start_time = mixer.music.get_pos()
-
-        next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
-        paused = False
-        while True:
-            if not mixer.music.get_busy() and not paused:
-                next_song = 1
-                break
-
-            if not win_kbhit():
-                c = win_getch()
-                if c == 's':
-                    if i == len(playlist)-1:
-                        click.clear()
-                        click.secho("No next song", fg="red")
-                        sleep(2)
-                        click.clear()
-                        click.echo(output(i, playlist))
-                    else:
-                        next_song = 1
-                        mixer.music.stop()
-                        mixer.music.unload()
-                        break
-                elif c == 'g':
-                    if i == 0:
-                        click.clear()
-                        click.secho("No previous song", fg="red")
-                        sleep(2)
-                        click.clear()
-                        click.echo(output(i, playlist))
-                    else:
-                        next_song = -1
-                        mixer.music.stop()
-                        mixer.music.unload()
-                        break
-                elif c == 'a':
-                    mixer.music.stop()
-                    mixer.music.unload()
-                    next_song = 0
-                    break
-                elif c == 'e':
-                    mixer.music.stop()
-                    mixer.music.unload()
-                    return
-                elif c == 'p':
-                    if paused:
-                        paused = False
-                        mixer.music.unpause()
-                    else:
-                        paused = True
-                        mixer.music.pause()
-                elif c == 'r':
-                    music_start_time = scrub(
-                        mixer.music, -SCRUB_TIME, music_start_time)
-                elif c == 'f':
-                    music_start_time = scrub(
-                        mixer.music, SCRUB_TIME, music_start_time)
-
-        if next_song == -1:
-            i -= 1
-        elif next_song == 1:
-            if i == len(playlist)-1:
-                return
-            i += 1
-
-
-def posix_getch_wrapper(q):
-    while True:
-        c = posix_getch()
-        q.put(c)
-
-
 def _play_posix(playlist):
-    chars_queue = multiprocessing.SimpleQueue()
-    getch_process = multiprocessing.Process(
-        target=posix_getch_wrapper, args=(chars_queue,))
+    getch_manager = GetchManager()
 
     mixer.init()
 
@@ -439,8 +400,8 @@ def _play_posix(playlist):
         click.clear()
         click.echo(output(i, playlist))
 
-        if not getch_process.is_alive():
-            getch_process.start()
+        if not getch_manager.is_alive():
+            getch_manager.start()
 
         mixer.music.load(os.path.join(SONGS_DIR, playlist[i]))
         mixer.music.play()
@@ -456,8 +417,8 @@ def _play_posix(playlist):
                 next_song = 1
                 break
 
-            if not chars_queue.empty():
-                c = chars_queue.get()
+            if getch_manager.is_alive():
+                c = getch_manager.getch()
                 if c == 's':
                     if i == len(playlist)-1:
                         click.clear()
@@ -490,7 +451,7 @@ def _play_posix(playlist):
                 elif c == 'e':
                     mixer.music.stop()
                     mixer.music.unload()
-                    getch_process.terminate()
+                    getch_manager.stop()
                     return
                 elif c == 'p':
                     if paused:
@@ -510,7 +471,7 @@ def _play_posix(playlist):
             i -= 1
         elif next_song == 1:
             if i == len(playlist)-1:
-                getch_process.terminate()
+                getch_manager.stop()
                 return
             i += 1
 

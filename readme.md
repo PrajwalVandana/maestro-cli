@@ -44,4 +44,4 @@ youtube-dl -x --audio-format WHATEVER_FORMAT LINK_TO_VIDEO_OR_PLAYLIST
 
 ## Thanks
 
-Big thanks to the creators of [just_playback](https://github.com/cheofusi/just_playback), no doubt the best Python module for playing sound.
+Big thanks to the creators of [just_playback](https://github.com/cheofusi/just_playback), no doubt the best Python module for playing sound!

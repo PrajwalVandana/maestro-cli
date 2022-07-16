@@ -112,14 +112,14 @@ def add(path, tags, move_, recurse):
             if recurse:
                 for dirpath, _, fnames in os.walk(path):
                     for fname in fnames:
-                        if not fname.startswith('.'):
+                        if os.path.splitext(fname)[1] in EXTS:
                             _add(os.path.join(dirpath, fname), tags, move_,
                                  songs_file, lines, song_id, prepend_newline)
                             prepend_newline = False
                             song_id += 1
             else:
                 for fname in os.listdir(path):
-                    if not fname.startswith('.'):
+                    if os.path.splitext(fname)[1] in EXTS:
                         full_path = os.path.join(path, fname)
                         if os.path.isfile(full_path):
                             _add(full_path, tags, move_,

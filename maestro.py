@@ -5,8 +5,7 @@ import os
 import multiprocessing
 import click
 
-os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = '1'
-from pygame import mixer  # NOQA
+from just_playback import Playback
 
 if os.name != 'nt':
     from getch import getch as posix_getch
@@ -17,7 +16,7 @@ MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SCRUB_TIME = 5000
-EXTS = ['.mp3']
+EXTS = ['.mp3', '.wav', '.flac']
 
 
 def posix_getch_wrapper(q):
@@ -140,7 +139,7 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
         details = line.split()
         if details[1] == song_name:
             click.secho(
-                f"Song with name '{os.path.splitext(song_name)[0]}' already exists", fg="red")
+                f"Song with name '{song_name}' already exists", fg="red")
             return
 
     if move_:
@@ -156,7 +155,7 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
         f"{song_id} {song_name}{' '+' '.join(tags) if tags else ''}\n")
 
     click.secho(
-        f"Added song '{os.path.splitext(song_name)[0]}' with id {song_id}", fg='green')
+        f"Added song '{song_name}' with id {song_id}", fg='green')
 
 
 @cli.command(name="list")
@@ -189,7 +188,7 @@ def remove(song_id):
             os.remove(os.path.join(SONGS_DIR, song_name))  # remove actual song
 
             click.secho(
-                f"Removed song '{os.path.splitext(song_name)[0]}' with id {song_id}", fg='green')
+                f"Removed song '{song_name}' with id {song_id}", fg='green')
 
             break
         elif int(details[0]) > song_id:
@@ -225,7 +224,7 @@ def add_tags(song_id, tags):
                 songs_file = open(SONGS_INFO_PATH, 'w')
                 songs_file.write('\n'.join(lines))
                 click.secho(
-                    f"Added tags {tags} to song '{os.path.splitext(details[1])[0]}' with id {song_id}",
+                    f"Added tags {tags} to song '{details[1]}' with id {song_id}",
                     fg='green'
                 )
                 break
@@ -265,7 +264,7 @@ def remove_tags(song_id, tags):
                 songs_file = open(SONGS_INFO_PATH, 'w')
                 songs_file.write('\n'.join(lines))
                 click.secho(
-                    f"Removed tags {tags} from song '{os.path.splitext(details[1])[0]}' with id {song_id}",
+                    f"Removed tags {tags} from song '{details[1]}' with id {song_id}",
                     fg='green'
                 )
                 break
@@ -369,14 +368,12 @@ def play(tags, shuffle_, reverse, only):
     if not playlist:
         click.secho("No songs found matching criteria", fg="black")
     else:
-        if os.name == 'nt':
-            _play_win(playlist)
-        else:
-            _play_posix(playlist)
+        _play(playlist)
 
 
 def output(i, playlist):
-    return f"{click.style(os.path.splitext(playlist[i])[0], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}" + click.style("\nNext up: "+os.path.splitext(playlist[i+1])[0] if i != len(playlist)-1 else '', fg="black")
+    return f"{click.style(playlist[i], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}" + click.style("\nNext up: "+playlist[i+1] if i != len(playlist)-1 else '', fg="black")
+
 
 def output_list(i, playlist):
     res = ""
@@ -390,10 +387,8 @@ def output_list(i, playlist):
     return res
 
 
-def _play_posix(playlist):
+def _play(playlist):
     getch_manager = GetchManager()
-
-    mixer.init()
 
     i = 0
     while i in range(len(playlist)):
@@ -403,21 +398,18 @@ def _play_posix(playlist):
         if not getch_manager.is_alive():
             getch_manager.start()
 
-        mixer.music.load(os.path.join(SONGS_DIR, playlist[i]))
-        mixer.music.play()
-        # NOTE: mixer.music.get_pos()-music_start_time should return where the
-        #       song is right now. Every time we rewind or fast forward, we
-        #       change music_start_time accordingly
-        music_start_time = mixer.music.get_pos()
+        playback = Playback()
+        playback.load_file(os.path.join(SONGS_DIR, playlist[i]))
+        playback.play()
 
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
         paused = False
         while True:
-            if not mixer.music.get_busy() and not paused:
+            if not playback.active:
                 next_song = 1
                 break
 
-            if getch_manager.is_alive():
+            if getch_manager.kbhit():
                 c = getch_manager.getch()
                 if c == 's':
                     if i == len(playlist)-1:
@@ -428,8 +420,7 @@ def _play_posix(playlist):
                         click.echo(output(i, playlist))
                     else:
                         next_song = 1
-                        mixer.music.stop()
-                        mixer.music.unload()
+                        playback.stop()
                         break
                 elif c == 'g':
                     if i == 0:
@@ -440,32 +431,31 @@ def _play_posix(playlist):
                         click.echo(output(i, playlist))
                     else:
                         next_song = -1
-                        mixer.music.stop()
-                        mixer.music.unload()
+                        playback.stop()
                         break
                 elif c == 'a':
-                    mixer.music.stop()
-                    mixer.music.unload()
+                    playback.stop()
                     next_song = 0
                     break
                 elif c == 'e':
-                    mixer.music.stop()
-                    mixer.music.unload()
+                    playback.stop()
                     getch_manager.stop()
                     return
                 elif c == 'p':
                     if paused:
                         paused = False
-                        mixer.music.unpause()
+                        playback.resume()
                     else:
                         paused = True
-                        mixer.music.pause()
+                        playback.pause()
                 elif c == 'r':
-                    music_start_time = scrub(
-                        mixer.music, -SCRUB_TIME, music_start_time)
+                    playback.pause()
+                    playback.seek(playback.curr_pos-5)
+                    playback.resume()
                 elif c == 'f':
-                    music_start_time = scrub(
-                        mixer.music, SCRUB_TIME, music_start_time)
+                    playback.pause()
+                    playback.seek(playback.curr_pos+5)
+                    playback.resume()
 
         if next_song == -1:
             i -= 1
@@ -476,19 +466,13 @@ def _play_posix(playlist):
             i += 1
 
 
-def scrub(music_player, scrub_time, music_start_time):
-    """Returns new value of `music_start_time`."""
-    music_player.set_pos(
-        (music_player.get_pos()-music_start_time+scrub_time)/1000)
-    return music_start_time-scrub_time
-
-
 @cli.command()
 @click.argument('song_id', type=click.INT)
 @click.argument('name')
 def rename(song_id, name):
     """Renames the song with the id SONG_ID to NAME. Any spaces in NAME are
-    replaced with underscores."""
+    replaced with underscores. The extension of the song (e.g. '.wav', '.mp3')
+    is preserved."""
     songs_file = open(SONGS_INFO_PATH, 'r')
     lines = songs_file.read().splitlines()
     for i in range(len(lines)):
@@ -509,7 +493,7 @@ def rename(song_id, name):
                 SONGS_DIR, details[1]))
 
             click.secho(
-                f"Renamed song '{os.path.splitext(old_name)[0]}' with id {song_id} to '{os.path.splitext(details[1])[0]}'",
+                f"Renamed song '{old_name}' with id {song_id} to '{details[1]}'",
                 fg='green'
             )
 
@@ -563,6 +547,6 @@ def _print_entry(entry):
     """`entry` should be passed as a list (what you get when you call
     `line.split()`)."""
     click.secho(entry[0]+' ', fg="black", nl=False)
-    click.secho(os.path.splitext(entry[1])[0], fg="blue", nl=(len(entry) == 2))
+    click.secho(entry[1], fg="blue", nl=(len(entry) == 2))
     if len(entry) > 2:
         click.echo(' '+' '.join(entry[2:]))

@@ -8,9 +8,9 @@ pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
 ```
 
 ### Platforms
-Tested on macOS with MP3 and WAV. `maestro` was built to be cross-platform but unfortunately I don't have a Windows or Linux machine to test on.
+Tested on macOS. `maestro` was built to be cross-platform but unfortunately I don't have a Windows or Linux machine to test on.
 
-Should support `.wav`, `.flac`, and `.mp3`.
+Supports `.wav`, `.flac`, and `.mp3`.
 
 ## Usage
 For the most part, `maestro` is pretty self-explanatory and easy to use—running `maestro` or `maestro -h` gives you an overview of the commands, and `maestro [command] -h` for any one specific command is hopefully self-explanatory enough.
@@ -41,3 +41,7 @@ Use [youtube-dl](https://github.com/ytdl-org/youtube-dl) to download from YouTub
 youtube-dl -x --audio-format WHATEVER_FORMAT LINK_TO_VIDEO_OR_PLAYLIST
 ```
 `-x` will download only the audio instead of the entire video
+
+## Thanks
+
+Big thanks to the creators of [just_playback](https://github.com/cheofusi/just_playback), no doubt the best Python module for playing sound.

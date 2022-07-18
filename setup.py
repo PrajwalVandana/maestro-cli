@@ -9,7 +9,7 @@ setup(
     name='maestro',
     author="Prajwal Vandana",
     keyword="music, sound, audio, music-player, cli",
-    version='1.1.0',
+    version='1.1.1',
     py_modules=['maestro'],
     install_requires=dependencies,
     entry_points={

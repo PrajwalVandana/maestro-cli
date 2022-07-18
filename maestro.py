@@ -16,7 +16,7 @@ MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SCRUB_TIME = 5000
-EXTS = ['.mp3', '.wav', '.flac']
+EXTS = ['.mp3', '.wav', '.flac', '.ogg']
 
 
 def posix_getch_wrapper(q):

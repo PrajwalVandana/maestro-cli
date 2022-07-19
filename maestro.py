@@ -15,7 +15,7 @@ else:
 MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
-SCRUB_TIME = 5000
+SCRUB_TIME = 5
 EXTS = ['.mp3', '.wav', '.flac', '.ogg']
 
 
@@ -450,11 +450,11 @@ def _play(playlist):
                         playback.pause()
                 elif c == 'r':
                     playback.pause()
-                    playback.seek(playback.curr_pos-5)
+                    playback.seek(playback.curr_pos-SCRUB_TIME)
                     playback.resume()
                 elif c == 'f':
                     playback.pause()
-                    playback.seek(playback.curr_pos+5)
+                    playback.seek(playback.curr_pos+SCRUB_TIME)
                     playback.resume()
 
         if next_song == -1:
@@ -541,6 +541,20 @@ def search(phrase):
             details = line.split()
             if int(details[0]) in results[1]:
                 _print_entry(details)
+
+
+@cli.command()
+@click.argument("song_id", type=click.INT)
+def entry(song_id):
+    """Prints the details of the song with the id SONG_ID."""
+    with open(SONGS_INFO_PATH, 'r') as songs_file:
+        for line in songs_file:
+            details = line.split()
+            if int(details[0]) == song_id:
+                _print_entry(details)
+                break
+        else:
+            click.secho(f'Song with id {song_id} not found', fg='red')
 
 
 def _print_entry(entry):

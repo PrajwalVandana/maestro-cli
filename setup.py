@@ -1,9 +1,6 @@
 from os import name as sys_name
 from setuptools import setup
 
-dependencies = ['click', 'just_playback']
-if sys_name != 'nt':
-    dependencies.append('getch')
 
 setup(
     name='maestro',
@@ -11,7 +8,7 @@ setup(
     keyword="music, sound, audio, music-player, cli",
     version='1.1.1',
     py_modules=['maestro'],
-    install_requires=dependencies,
+    install_requires=['click', 'just_playback', 'getch;platform_system=="Linux"'],
     entry_points={
         'console_scripts': [
             'maestro = maestro:cli',

@@ -8,9 +8,9 @@ pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
 ```
 
 ### Platforms
-Tested on macOS. `maestro` was built to be cross-platform but unfortunately I don't have a Windows or Linux machine to test on.
+Tested on macOS and Windows. `maestro` was built to work on Linux as well but unfortunately I don't have a Linux machine to test on.
 
-Supports `.wav`, `.flac`, `.ogg`, and `.mp3`.
+Supports `.mp3`, `.wav`, `.flac`, and `.ogg`.
 
 ## Usage
 For the most part, `maestro` is pretty self-explanatory and easy to use—running `maestro` or `maestro -h` gives you an overview of the commands, and `maestro [command] -h` for any one specific command is hopefully self-explanatory enough.

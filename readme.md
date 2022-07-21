@@ -55,7 +55,7 @@ find the `win_amd64` wheel of `just_playback` in `dependency_builds`, then run
 ```
 pip install PATH_TO_DOWNLOADED_WHEEL
 ```
-and *now* installing `maestro` should work.
+and *now* installing `maestro` should work. Alternatively, just get C++ Build Tools.
 
 ## Other Tips
 

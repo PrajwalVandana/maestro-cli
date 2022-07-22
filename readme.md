@@ -15,7 +15,33 @@ OR
 python PATH_TO_SETUP_PY install
 ```
 
-### Platforms
+**NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
+
+### Known Installation Issues
+
+`maestro` uses [just_playback](https://github.com/cheofusi/just_playback) to play sound, which uses a C library called [miniaudio](https://github.com/mackron/miniaudio). Unfortunately, the creators did not provide wheels, so installation of `just_playback` and therefore `maestro` usually fails if there's any problems with your C/C++ compiler. Here are platforms where there are known issues:
+
+#### M1 Macs
+
+There's a problem with the flag `-march=native` for older versions of the `clang` compiler. I manually removed this from the `just_playback` code and built a M1-compatible version. Just check out the `dependency_builds/` folder in this repo, and look for the wheel that says `arm64`. Then, run
+```
+pip install PATH_TO_DOWNLOADED_ARM64_WHEEL
+```
+and *now* installing `maestro` should work.
+
+#### Windows
+
+If you get this error on a 64-bit Windows
+```
+error: Microsoft Visual C++ 14.0 or greater is required. Get it with "Microsoft C++ Build Tools": https://visualstudio.microsoft.com/visual-cpp-build-tools/
+```
+find the `win_amd64` wheel of `just_playback` in `dependency_builds`, then run
+```
+pip install PATH_TO_DOWNLOADED_WHEEL
+```
+and *now* installing `maestro` should work. Another option (especially if you're on a 32-bit Windows) is to just get C++ Build Tools.
+
+## Platforms
 Tested on macOS and Windows. `maestro` was built to work on Linux as well but unfortunately I don't have a Linux machine to test on.
 
 Supports `.mp3`, `.wav`, `.flac`, and `.ogg`.
@@ -40,30 +66,6 @@ If you wanted to search for all MP3 files (for whatever reason), this works:
 ```
 maestro search .mp3
 ```
-
-## Known Issues
-
-`maestro` uses [just_playback](https://github.com/cheofusi/just_playback) to play sound, which uses a C library called [miniaudio](https://github.com/mackron/miniaudio). Unfortunately, the creators did not provide wheels, so installation of `just_playback` and therefore `maestro` usually fails if there's any problems with your C/C++ compiler. Here are platforms where there are known issues:
-
-### M1 Macs
-
-There's a problem with the flag `-march=native` for older versions of the `clang` compiler. I manually removed this from the `just_playback` code and built a M1-compatible version. Just check out the `dependency_builds/` folder in this repo, and look for the wheel that says `arm64`. Then, run
-```
-pip install PATH_TO_DOWNLOADED_ARM64_WHEEL
-```
-and *now* installing `maestro` should work.
-
-### Windows
-
-If you get this error on a 64-bit Windows
-```
-error: Microsoft Visual C++ 14.0 or greater is required. Get it with "Microsoft C++ Build Tools": https://visualstudio.microsoft.com/visual-cpp-build-tools/
-```
-find the `win_amd64` wheel of `just_playback` in `dependency_builds`, then run
-```
-pip install PATH_TO_DOWNLOADED_WHEEL
-```
-and *now* installing `maestro` should work. Another option (especially if you're on a 32-bit Windows) is to just get C++ Build Tools.
 
 ## Other Tips
 

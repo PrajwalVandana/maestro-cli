@@ -47,7 +47,7 @@ and *now* installing `maestro` should work.
 
 ### Windows
 
-If you get this error
+If you get this error on a 64-bit Windows
 ```
 error: Microsoft Visual C++ 14.0 or greater is required. Get it with "Microsoft C++ Build Tools": https://visualstudio.microsoft.com/visual-cpp-build-tools/
 ```
@@ -55,7 +55,7 @@ find the `win_amd64` wheel of `just_playback` in `dependency_builds`, then run
 ```
 pip install PATH_TO_DOWNLOADED_WHEEL
 ```
-and *now* installing `maestro` should work. Alternatively, just get C++ Build Tools.
+and *now* installing `maestro` should work. Another option (especially if you're on a 32-bit Windows) is to just get C++ Build Tools.
 
 ## Other Tips
 

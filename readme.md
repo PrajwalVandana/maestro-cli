@@ -2,9 +2,17 @@
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
 ## Installation
-Download one of the wheels or tarballs or whatnot from the `dist/` folder. Alternatively, you can build `maestro` yourself—download `setup.py` and `maestro.py` into the same EMPTY folder, then run
+Download the wheel or tarball (wheel is usually better) from the `dist/` folder, then run
+```
+pip install PATH_TO_WHEEL
+```
+Alternatively, you can build `maestro` yourself—download `setup.py` and `maestro.py` into the same EMPTY folder, then run
 ```
 pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
+```
+OR
+```
+python PATH_TO_SETUP_PY install
 ```
 
 ### Platforms

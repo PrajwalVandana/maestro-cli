@@ -1,4 +1,4 @@
-# Maestro
+# maestro
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
 ## Installation

@@ -366,7 +366,7 @@ def output(i, playlist, volume):
         f"{click.style(playlist[i], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}",
         click.style(f"Volume: {int(volume*100)}/100", fg="red"),
         click.style(
-            "Next up: " + (playlist[i+1] if i != len(playlist)-1 else ''),
+            ("Next up: "+playlist[i+1]) if i != len(playlist)-1 else '',
             fg="black"
         )
     ])
@@ -385,8 +385,8 @@ def _play(playlist, volume):
 
         playback = Playback()
         playback.load_file(os.path.join(SONGS_DIR, playlist[i]))
-        playback.set_volume(volume)
         playback.play()
+        playback.set_volume(volume)
 
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
         paused = False
@@ -447,13 +447,13 @@ def _play(playlist, volume):
                     playback.set_volume(volume)
 
                     click.clear()
-                    click.echo(output(i, playlist, playback.volume))
+                    click.echo(output(i, playlist, volume))
                 elif c == keys.UP:
                     volume = min(1, volume+VOLUME_STEP)
                     playback.set_volume(volume)
 
                     click.clear()
-                    click.echo(output(i, playlist, playback.volume))
+                    click.echo(output(i, playlist, volume))
 
         if next_song == -1:
             i -= 1

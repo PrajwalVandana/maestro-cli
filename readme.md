@@ -62,9 +62,7 @@ If you wanted to search for all MP3 files (for whatever reason), this works:
 maestro search .mp3
 ```
 
-## Other Tips
-
-### Downloading Songs
+## Downloading Songs
 Use [youtube-dl](https://github.com/ytdl-org/youtube-dl) to download from YouTube, like this:
 ```
 youtube-dl -x --audio-format WHATEVER_FORMAT LINK_TO_VIDEO_OR_PLAYLIST

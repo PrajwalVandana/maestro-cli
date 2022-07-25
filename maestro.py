@@ -1,16 +1,13 @@
-from time import sleep
-from shutil import copy, move
-from random import shuffle
-import os
 import multiprocessing
+import os
+
 import click
 
+from getkey import getkey, keys
 from just_playback import Playback
-
-if os.name != 'nt':
-    from getch import getch as posix_getch
-else:
-    from msvcrt import getch as win_getch, kbhit as win_kbhit
+from random import shuffle
+from shutil import copy, move
+from time import sleep
 
 MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
@@ -20,9 +17,9 @@ VOLUME_STEP = 0.01  # volume is 0-1
 EXTS = ['.mp3', '.wav', '.flac', '.ogg']
 
 
-def posix_getch_wrapper(q):
+def getkey_wrapper(q):
     while True:
-        c = posix_getch()
+        c = getkey()
         q.put(c)
 
         # NOTE: since q.put is async, this ensures the next call to q.empty()
@@ -32,38 +29,27 @@ def posix_getch_wrapper(q):
 
 class GetchManager:
     def __init__(self):
-        if os.name == 'nt':
-            self.started = True
-        else:
-            self.q = multiprocessing.Queue()
-            self.p = multiprocessing.Process(
-                target=posix_getch_wrapper, args=(self.q,))
-            self.started = False
+        self.q = multiprocessing.Queue()
+        self.p = multiprocessing.Process(
+            target=getkey_wrapper, args=(self.q,))
+        self.started = False
 
     def start(self):
-        if os.name != 'nt':
-            self.p.start()
-            self.started = True
+        self.p.start()
+        self.started = True
 
     def kbhit(self):
-        if os.name == 'nt':
-            return win_kbhit()
-        else:
-            return not self.q.empty()
+        return not self.q.empty()
 
     def getch(self):
-        if os.name == 'nt':
-            return win_getch()
-        else:
-            return self.q.get()
+        return self.q.get()
 
     def is_alive(self):
         return self.started
 
     def stop(self):
-        if os.name != 'nt':
-            self.p.terminate()
-            self.started = False
+        self.p.terminate()
+        self.started = False
 
 
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -294,15 +280,15 @@ def play(tags, shuffle_, reverse, only, volume):
     your playlist. Any spaces in tags will be converted to underscores ('_').
 
     \b
-    p  to (p)ause
-    g  to (g)o back to previous song
-    a  to play song (a)gain from beginning
-    s  to (s)kip to next song
-    r  to (r)ewind 5s
-    f  to (f)ast (f)orward 5s
-    e  to (e)nd the song player
-    [  to decrease volume
-    ]  to increase volume
+    SPACE  to pause
+      b/p  to go (b)ack to (p)revious song
+        r  to (r)eplay song
+      s/n  to (s)kip to (n)ext song
+     LEFT  to rewind 5s
+    RIGHT  to fast forward 5s
+     DOWN  to decrease volume
+       UP  to increase volume
+      e/q  to (e)nd/(q)uit the song player
     """
     playlist = []
 
@@ -411,57 +397,61 @@ def _play(playlist, volume):
 
             if getch_manager.kbhit():
                 c = getch_manager.getch()
-                if c == 's':
+                if c == 'n' or c == 's':
                     if i == len(playlist)-1:
                         click.clear()
                         click.secho("No next song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist, playback.volume))
+                        click.echo(output(i, playlist, volume))
                     else:
                         next_song = 1
                         playback.stop()
                         break
-                elif c == 'g':
+                elif c == 'b' or c == 'p':
                     if i == 0:
                         click.clear()
                         click.secho("No previous song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist, playback.volume))
+                        click.echo(output(i, playlist, volume))
                     else:
                         next_song = -1
                         playback.stop()
                         break
-                elif c == 'a':
+                elif c == 'r':
                     playback.stop()
                     next_song = 0
                     break
-                elif c == 'e':
+                elif c == 'e' or c == 'q':
                     playback.stop()
                     getch_manager.stop()
                     return
-                elif c == 'p':
+                elif c == ' ':
                     if paused:
                         paused = False
                         playback.resume()
                     else:
                         paused = True
                         playback.pause()
-                elif c == 'r':
+                elif c == keys.LEFT:
                     playback.pause()
                     playback.seek(playback.curr_pos-SCRUB_TIME)
                     playback.resume()
-                elif c == 'f':
+                elif c == keys.RIGHT:
                     playback.pause()
                     playback.seek(playback.curr_pos+SCRUB_TIME)
                     playback.resume()
-                elif c == '[':
-                    playback.set_volume(playback.volume-VOLUME_STEP)
+                elif c == keys.DOWN:
+                    volume = max(0, volume-VOLUME_STEP)
+                    playback.set_volume(volume)
+
                     click.clear()
                     click.echo(output(i, playlist, playback.volume))
-                elif c == ']':
-                    playback.set_volume(playback.volume+VOLUME_STEP)
+                elif c == keys.UP:
+                    volume = min(1, volume+VOLUME_STEP)
+                    playback.set_volume(volume)
+
                     click.clear()
                     click.echo(output(i, playlist, playback.volume))
 

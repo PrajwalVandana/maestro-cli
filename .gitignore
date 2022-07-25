@@ -3,3 +3,4 @@ todo.md
 build
 *.egg-info
 *.egg
+log.txt

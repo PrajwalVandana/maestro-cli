@@ -15,7 +15,8 @@ else:
 MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
-SCRUB_TIME = 5
+SCRUB_TIME = 5  # in seconds
+VOLUME_STEP = 0.01  # volume is 0-1
 EXTS = ['.mp3', '.wav', '.flac', '.ogg']
 
 
@@ -84,9 +85,9 @@ def cli():
 @cli.command()
 @click.argument('path', type=click.Path(exists=True))
 @click.argument('tags', nargs=-1)
-@click.option('-m', "-move", "move_", is_flag=True,
+@click.option('-m', "--move", "move_", is_flag=True,
               help="Move file from PATH to maestro's internal song database instead of copying.")
-@click.option('-r', '-recursive', "recurse", is_flag=True,
+@click.option('-r', '--recursive', "recurse", is_flag=True,
               help="If PATH is a folder, add songs in subfolders.")
 def add(path, tags, move_, recurse):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
@@ -281,24 +282,27 @@ def remove_tags(song_id, tags):
 
 @cli.command()
 @click.argument('tags', nargs=-1)
-@click.option("-s", "-shuffle", "shuffle_", is_flag=True,
+@click.option("-s", "--shuffle", "shuffle_", is_flag=True,
               help="Randomize order of songs when played.")
-@click.option("-r", "-reverse", "reverse", is_flag=True,
+@click.option("-r", "--reverse", "reverse", is_flag=True,
               help="Play songs in reverse (most recently added first).")
-@click.option("-o", "-only", "only", type=click.INT,
+@click.option("-o", "--only", "only", type=click.INT,
               help="Play only this song.")
-def play(tags, shuffle_, reverse, only):
+@click.option("-v", "--volume", "volume", type=click.IntRange(0, 100), default=100, show_default=True,)
+def play(tags, shuffle_, reverse, only, volume):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist. Any spaces in tags will be converted to underscores ('_').
 
     \b
-    p  to pause
-    g  to go back to previous song
-    a  to play song again from beginning
-    s  to skip to next song
-    r  to rewind 5s
-    f  to fast forward 5s
-    e  to end the song player
+    p  to (p)ause
+    g  to (g)o back to previous song
+    a  to play song (a)gain from beginning
+    s  to (s)kip to next song
+    r  to (r)ewind 5s
+    f  to (f)ast (f)orward 5s
+    e  to (e)nd the song player
+    [  to decrease volume
+    ]  to increase volume
     """
     playlist = []
 
@@ -366,40 +370,36 @@ def play(tags, shuffle_, reverse, only):
                         playlist.append(songs_dict[song_id])
 
     if not playlist:
-        click.secho("No songs found matching criteria", fg="black")
+        click.secho("No songs found matching criteria", fg="red")
     else:
-        _play(playlist)
+        _play(playlist, volume/100)
 
 
-def output(i, playlist):
-    return f"{click.style(playlist[i], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}" + click.style("\nNext up: "+playlist[i+1] if i != len(playlist)-1 else '', fg="black")
+def output(i, playlist, volume):
+    return '\n'.join([
+        f"{click.style(playlist[i], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}",
+        click.style(f"Volume: {int(volume*100)}/100", fg="red"),
+        click.style(
+            "Next up: " + (playlist[i+1] if i != len(playlist)-1 else ''),
+            fg="black"
+        )
+    ])
 
 
-def output_list(i, playlist):
-    res = ""
-    for j in range(len(playlist)):
-        song_name = os.path.splitext(playlist[j])[
-            0]+('\n' if j != len(playlist)-1 else '')
-        if j != i:
-            res += click.style(song_name, fg="black")
-        else:
-            res += click.style(song_name, fg="blue", bold=True)
-    return res
-
-
-def _play(playlist):
+def _play(playlist, volume):
     getch_manager = GetchManager()
 
     i = 0
     while i in range(len(playlist)):
         click.clear()
-        click.echo(output(i, playlist))
+        click.echo(output(i, playlist, volume))
 
         if not getch_manager.is_alive():
             getch_manager.start()
 
         playback = Playback()
         playback.load_file(os.path.join(SONGS_DIR, playlist[i]))
+        playback.set_volume(volume)
         playback.play()
 
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
@@ -417,7 +417,7 @@ def _play(playlist):
                         click.secho("No next song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist))
+                        click.echo(output(i, playlist, playback.volume))
                     else:
                         next_song = 1
                         playback.stop()
@@ -428,7 +428,7 @@ def _play(playlist):
                         click.secho("No previous song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist))
+                        click.echo(output(i, playlist, playback.volume))
                     else:
                         next_song = -1
                         playback.stop()
@@ -456,6 +456,14 @@ def _play(playlist):
                     playback.pause()
                     playback.seek(playback.curr_pos+SCRUB_TIME)
                     playback.resume()
+                elif c == '[':
+                    playback.set_volume(playback.volume-VOLUME_STEP)
+                    click.clear()
+                    click.echo(output(i, playlist, playback.volume))
+                elif c == ']':
+                    playback.set_volume(playback.volume+VOLUME_STEP)
+                    click.clear()
+                    click.echo(output(i, playlist, playback.volume))
 
         if next_song == -1:
             i -= 1

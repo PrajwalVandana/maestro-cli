@@ -10,11 +10,6 @@ Alternatively, you can build `maestro` yourself—download `setup.py` and `maest
 ```
 pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
 ```
-OR
-```
-python PATH_TO_SETUP_PY install
-```
-
 **NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
 
 ### Known Installation Issues

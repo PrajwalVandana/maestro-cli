@@ -4,3 +4,4 @@ build
 *.egg-info
 *.egg
 log.txt
+__pycache__

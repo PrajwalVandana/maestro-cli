@@ -74,3 +74,5 @@ youtube-dl -x --audio-format WHATEVER_FORMAT LINK_TO_VIDEO_OR_PLAYLIST
 ## Thanks
 
 Big thanks to the creators of [just_playback](https://github.com/cheofusi/just_playback), no doubt the best Python module for playing sound!
+
+Also thanks to the creators of [getkey](https://github.com/kcsaff/getkey) for providing a cross-platform way to get terminal input without newline.

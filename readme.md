@@ -62,13 +62,6 @@ If you wanted to search for all MP3 files (for whatever reason), this works:
 maestro search .mp3
 ```
 
-## Downloading Songs
-Use [youtube-dl](https://github.com/ytdl-org/youtube-dl) to download from YouTube, like this:
-```
-youtube-dl -x --audio-format WHATEVER_FORMAT LINK_TO_VIDEO_OR_PLAYLIST
-```
-`-x` will download only the audio instead of the entire video
-
 ## Thanks
 
 Big thanks to the creators of [just_playback](https://github.com/cheofusi/just_playback), no doubt the best Python module for playing sound!

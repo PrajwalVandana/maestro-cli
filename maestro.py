@@ -29,7 +29,7 @@ def getkey_wrapper(q):
 
 class GetchManager:
     def __init__(self):
-        self.q = multiprocessing.Queue()
+        self.q = multiprocessing.SimpleQueue()
         self.p = multiprocessing.Process(
             target=getkey_wrapper, args=(self.q,))
         self.started = False
@@ -275,7 +275,10 @@ def remove_tags(song_id, tags):
 @click.option("-o", "--only", "only", type=click.INT,
               help="Play only this song.")
 @click.option("-v", "--volume", "volume", type=click.IntRange(0, 100), default=100, show_default=True,)
-def play(tags, shuffle_, reverse, only, volume):
+@click.option("-l", "--loop", "loop", is_flag=True, help="Loop the playlist.")
+@click.option("-R", "--reshuffle", "reshuffle", is_flag=True,
+              help="If --shuffle AND --loop are passed, reshuffle the playlist once the last song has been played (default behavior is to only shuffle once on start).")
+def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist. Any spaces in tags will be converted to underscores ('_').
 
@@ -356,29 +359,40 @@ def play(tags, shuffle_, reverse, only, volume):
                         playlist.append(songs_dict[song_id])
 
     if not playlist:
-        click.secho("No songs found matching criteria", fg="red")
+        click.secho("No songs found matching tag criteria", fg="red")
     else:
-        _play(playlist, volume/100)
+        volume /= 100
+        if loop:
+            while True:
+                res = _play(playlist, volume, only)
+                if res[0]:
+                    return
+
+                volume = res[1]
+                if shuffle_ and reshuffle:
+                    shuffle(playlist)
+        else:
+            _play(playlist, volume, only)
 
 
-def output(i, playlist, volume):
-    return '\n'.join([
-        f"{click.style(playlist[i], fg='blue', bold=True)} {click.style('%d/%d'%(i+1, len(playlist)), fg='blue')}",
-        click.style(f"Volume: {int(volume*100)}/100", fg="red"),
+def output(i, playlist, volume, only):
+    return click.style(playlist[i], fg='blue', bold=True) + \
+        ((' '+click.style('%d/%d'%(i+1, len(playlist)), fg='blue')) if only is None else '') + \
+        click.style(f"\nVolume: {int(volume*100)}/100", fg="red") + \
         click.style(
-            ("Next up: "+playlist[i+1]) if i != len(playlist)-1 else '',
+            ("\nNext up: "+playlist[i+1]) if i != len(playlist)-1 else '',
             fg="black"
         )
-    ])
 
 
-def _play(playlist, volume):
+# returns (whether or not playback has been ended by the user, volume)
+def _play(playlist, volume, only):
     getch_manager = GetchManager()
 
     i = 0
     while i in range(len(playlist)):
         click.clear()
-        click.echo(output(i, playlist, volume))
+        click.echo(output(i, playlist, volume, only))
 
         if not getch_manager.is_alive():
             getch_manager.start()
@@ -403,7 +417,7 @@ def _play(playlist, volume):
                         click.secho("No next song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist, volume))
+                        click.echo(output(i, playlist, volume, only))
                     else:
                         next_song = 1
                         playback.stop()
@@ -414,7 +428,7 @@ def _play(playlist, volume):
                         click.secho("No previous song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist, volume))
+                        click.echo(output(i, playlist, volume, only))
                     else:
                         next_song = -1
                         playback.stop()
@@ -426,7 +440,7 @@ def _play(playlist, volume):
                 elif c == 'e' or c == 'q':
                     playback.stop()
                     getch_manager.stop()
-                    return
+                    return (True, volume)
                 elif c == ' ':
                     if paused:
                         paused = False
@@ -447,20 +461,20 @@ def _play(playlist, volume):
                     playback.set_volume(volume)
 
                     click.clear()
-                    click.echo(output(i, playlist, volume))
+                    click.echo(output(i, playlist, volume, only))
                 elif c == keys.UP:
                     volume = min(1, volume+VOLUME_STEP)
                     playback.set_volume(volume)
 
                     click.clear()
-                    click.echo(output(i, playlist, volume))
+                    click.echo(output(i, playlist, volume, only))
 
         if next_song == -1:
             i -= 1
         elif next_song == 1:
             if i == len(playlist)-1:
                 getch_manager.stop()
-                return
+                return (False, volume)
             i += 1
 
 

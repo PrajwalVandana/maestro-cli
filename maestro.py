@@ -8,6 +8,7 @@ from just_playback import Playback
 from random import shuffle
 from shutil import copy, move
 from time import sleep
+from tinytag import TinyTag
 
 MAESTRO_DIR = os.path.join(os.path.expanduser('~'), ".maestro-files/")
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
@@ -375,14 +376,15 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
             _play(playlist, volume, only)
 
 
-def output(i, playlist, volume, only):
+def output(i, playlist, volume, duration, timestamp, only):
     return click.style(playlist[i], fg='blue', bold=True) + \
-        ((' '+click.style('%d/%d'%(i+1, len(playlist)), fg='blue')) if only is None else '') + \
+        ((' '+click.style('%d/%d' % (i+1, len(playlist)), fg='blue')) if only is None else '') + \
         click.style(f"\nVolume: {int(volume*100)}/100", fg="red") + \
+        click.style(f"\t{timestamp//60}:{timestamp%60:02} / {duration//60}:{duration%60:02}", fg="yellow") + \
         click.style(
             ("\nNext up: "+playlist[i+1]) if i != len(playlist)-1 else '',
             fg="black"
-        )
+    )
 
 
 # returns (whether or not playback has been ended by the user, volume)
@@ -391,16 +393,20 @@ def _play(playlist, volume, only):
 
     i = 0
     while i in range(len(playlist)):
+        song_path = os.path.join(SONGS_DIR, playlist[i])
+        duration = int(TinyTag.get(song_path).duration)
+
+        playback = Playback()
+        playback.load_file(song_path)
+        playback.play()
+        playback.set_volume(volume)
+
+        last_timestamp = int(playback.curr_pos)
         click.clear()
-        click.echo(output(i, playlist, volume, only))
+        click.echo(output(i, playlist, volume, duration, last_timestamp, only))
 
         if not getch_manager.is_alive():
             getch_manager.start()
-
-        playback = Playback()
-        playback.load_file(os.path.join(SONGS_DIR, playlist[i]))
-        playback.play()
-        playback.set_volume(volume)
 
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
         paused = False
@@ -408,6 +414,12 @@ def _play(playlist, volume, only):
             if not playback.active:
                 next_song = 1
                 break
+
+            if int(playback.curr_pos) != last_timestamp:
+                click.clear()
+                last_timestamp = int(playback.curr_pos)
+                click.echo(output(i, playlist, volume,
+                           duration, last_timestamp, only))
 
             if getch_manager.kbhit():
                 c = getch_manager.getch()
@@ -417,7 +429,8 @@ def _play(playlist, volume, only):
                         click.secho("No next song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist, volume, only))
+                        click.echo(output(i, playlist, volume,
+                                   duration, last_timestamp, only))
                     else:
                         next_song = 1
                         playback.stop()
@@ -428,7 +441,8 @@ def _play(playlist, volume, only):
                         click.secho("No previous song", fg="red")
                         sleep(2)
                         click.clear()
-                        click.echo(output(i, playlist, volume, only))
+                        click.echo(output(i, playlist, volume,
+                                   duration, last_timestamp, only))
                     else:
                         next_song = -1
                         playback.stop()
@@ -461,13 +475,15 @@ def _play(playlist, volume, only):
                     playback.set_volume(volume)
 
                     click.clear()
-                    click.echo(output(i, playlist, volume, only))
+                    click.echo(output(i, playlist, volume,
+                               duration, last_timestamp, only))
                 elif c == keys.UP:
                     volume = min(1, volume+VOLUME_STEP)
                     playback.set_volume(volume)
 
                     click.clear()
-                    click.echo(output(i, playlist, volume, only))
+                    click.echo(output(i, playlist, volume,
+                               duration, last_timestamp, only))
 
         if next_song == -1:
             i -= 1

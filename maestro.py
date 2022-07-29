@@ -142,8 +142,16 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
     songs_file.write(
         f"{song_id} {song_name}{' '+' '.join(tags) if tags else ''}\n")
 
+    if not tags:
+        tags_string = ''
+    elif len(tags) == 1:
+        tags_string = f" and tag '{tags[0]}'"
+    else:
+        tags_string = f" and tags {tags}"
     click.secho(
-        f"Added song '{song_name}' with id {song_id}", fg='green')
+        f"Added song '{song_name}' with id {song_id}" + tags_string,
+        fg='green'
+    )
 
 
 @cli.command(name="list")
@@ -152,7 +160,7 @@ def list_():
     with open(SONGS_INFO_PATH, 'r') as songs_file:
         for line in songs_file:
             details = line.split()
-            _print_entry(details)
+            print_entry(details)
 
 
 @cli.command()
@@ -194,7 +202,7 @@ def remove(song_id):
 def add_tags(song_id, tags):
     """Add tags to a song (passed as ID). Any spaces in tags will be replaced
     with underscores ('_')."""
-    if len(tags) > 0:
+    if tags:
         songs_file = open(SONGS_INFO_PATH, 'r')
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
@@ -211,8 +219,14 @@ def add_tags(song_id, tags):
 
                 songs_file = open(SONGS_INFO_PATH, 'w')
                 songs_file.write('\n'.join(lines))
+
+                if len(tags) == 1:
+                    prefix_string = f"Added tag '{tags[0]}' "
+                else:
+                    prefix_string = f"Added tags {tags} "
                 click.secho(
-                    f"Added tags {tags} to song '{details[1]}' with id {song_id}",
+                    prefix_string +
+                    f"to song '{details[1]}' with id {song_id}",
                     fg='green'
                 )
                 break
@@ -230,11 +244,12 @@ def add_tags(song_id, tags):
 @cli.command()
 @click.argument('song_id', type=click.INT, required=True)
 @click.argument('tags', nargs=-1)
-def remove_tags(song_id, tags):
+@click.option('-a', '--all', "all", is_flag=True)
+def remove_tags(song_id, tags, all):
     """Remove tags from a song (passed as ID). Passing tags that the song
     doesn't have will not cause an error. Any spaces in tags will be replaced
     with underscores ('_')."""
-    if len(tags) > 0:
+    if tags:
         songs_file = open(SONGS_INFO_PATH, 'r')
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
@@ -251,8 +266,14 @@ def remove_tags(song_id, tags):
 
                 songs_file = open(SONGS_INFO_PATH, 'w')
                 songs_file.write('\n'.join(lines))
+
+                if len(tags) == 1:
+                    prefix_string = f"Removed tag '{tags[0]}' "
+                else:
+                    prefix_string = f"Removed tags {tags} "
                 click.secho(
-                    f"Removed tags {tags} from song '{details[1]}' with id {song_id}",
+                    prefix_string +
+                    f"from song '{details[1]}' with id {song_id}",
                     fg='green'
                 )
                 break
@@ -264,7 +285,46 @@ def remove_tags(song_id, tags):
 
         songs_file.close()
     else:
-        click.secho('No tags passed', fg='red')
+        if not all:
+            click.secho(
+                'No tags passed—to remove all tags from this song, pass the `-a` flag',
+                fg='red'
+            )
+        else:
+            songs_file = open(SONGS_INFO_PATH, 'r')
+            lines = songs_file.read().splitlines()
+            for i in range(len(lines)):
+                line = lines[i]
+                details = line.split()
+                if int(details[0]) == song_id:
+                    removed_tags = []
+                    for tag in details[2:]:
+                        tag = tag.replace('_', ' ')
+                        removed_tags.append(tag)
+
+                    lines[i] = ' '.join(details[:2])
+                    songs_file.close()
+
+                    songs_file = open(SONGS_INFO_PATH, 'w')
+                    songs_file.write('\n'.join(lines))
+
+                    if len(removed_tags) == 1:
+                        prefix_string = f"Removed tag '{removed_tags[0]}' "
+                    else:
+                        prefix_string = f"Removed tags {tuple(removed_tags)} "
+                    click.secho(
+                        prefix_string +
+                        f"from song '{details[1]}' with id {song_id}",
+                        fg='green'
+                    )
+                    break
+                elif int(details[0]) > song_id:
+                    click.secho(f'Song with id {song_id} not found', fg='red')
+                    break
+            else:
+                click.secho(f'Song with id {song_id} not found', fg='red')
+
+            songs_file.close()
 
 
 @cli.command()
@@ -562,13 +622,13 @@ def search(phrase):
         for line in songs_file:
             details = line.split()
             if int(details[0]) in results[0]:
-                _print_entry(details)
+                print_entry(details)
 
         songs_file.seek(0)
         for line in songs_file:
             details = line.split()
             if int(details[0]) in results[1]:
-                _print_entry(details)
+                print_entry(details)
 
 
 @cli.command()
@@ -579,13 +639,13 @@ def entry(song_id):
         for line in songs_file:
             details = line.split()
             if int(details[0]) == song_id:
-                _print_entry(details)
+                print_entry(details)
                 break
         else:
             click.secho(f'Song with id {song_id} not found', fg='red')
 
 
-def _print_entry(entry):
+def print_entry(entry):
     """`entry` should be passed as a list (what you get when you call
     `line.split()`)."""
     click.secho(entry[0]+' ', fg="black", nl=False)

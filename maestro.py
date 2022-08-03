@@ -59,13 +59,13 @@ def cli():
     if not os.path.exists(MAESTRO_DIR):
         os.mkdir(MAESTRO_DIR)
         os.mkdir(SONGS_DIR)
-        f = open(SONGS_INFO_PATH, "x")
+        f = open(SONGS_INFO_PATH, "x", encoding="utf-8")
         f.close()
     else:
         if not os.path.exists(SONGS_DIR):
             os.mkdir(SONGS_DIR)
         if not os.path.exists(SONGS_INFO_PATH):
-            f = open(SONGS_INFO_PATH, "x")
+            f = open(SONGS_INFO_PATH, "x", encoding="utf-8")
             f.close()
 
 
@@ -85,7 +85,7 @@ def add(path, tags, move_, recurse):
     if not os.path.isdir(path) and ext not in EXTS:
         click.secho(f"'{ext}' is not supported", fg="red")
         return
-    with open(SONGS_INFO_PATH, 'a+') as songs_file:
+    with open(SONGS_INFO_PATH, 'a+', encoding="utf-8") as songs_file:
         songs_file.seek(0)  # start reading from beginning
 
         lines = songs_file.readlines()
@@ -157,7 +157,7 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
 @cli.command(name="list")
 def list_():
     """List all songs (with IDs and tags)."""
-    with open(SONGS_INFO_PATH, 'r') as songs_file:
+    with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
         for line in songs_file:
             details = line.split()
             print_entry(details)
@@ -167,7 +167,7 @@ def list_():
 @click.argument('song_id', required=True, type=click.INT)
 def remove(song_id):
     """Remove a song (passed as ID)."""
-    songs_file = open(SONGS_INFO_PATH, 'r')
+    songs_file = open(SONGS_INFO_PATH, 'r', encoding="utf-8")
     lines = songs_file.read().splitlines()
     for i in range(len(lines)):
         line = lines[i]
@@ -176,7 +176,7 @@ def remove(song_id):
             lines.pop(i)
             songs_file.close()
 
-            songs_file = open(SONGS_INFO_PATH, 'w')
+            songs_file = open(SONGS_INFO_PATH, 'w', encoding="utf-8")
             # line containing song to be removed has been removed
             songs_file.write('\n'.join(lines))
 
@@ -203,7 +203,7 @@ def add_tags(song_id, tags):
     """Add tags to a song (passed as ID). Any spaces in tags will be replaced
     with underscores ('_')."""
     if tags:
-        songs_file = open(SONGS_INFO_PATH, 'r')
+        songs_file = open(SONGS_INFO_PATH, 'r', encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
             line = lines[i]
@@ -217,7 +217,7 @@ def add_tags(song_id, tags):
                 lines[i] = ' '.join(details+new_tags)
                 songs_file.close()
 
-                songs_file = open(SONGS_INFO_PATH, 'w')
+                songs_file = open(SONGS_INFO_PATH, 'w', encoding="utf-8")
                 songs_file.write('\n'.join(lines))
 
                 if len(tags) == 1:
@@ -250,7 +250,7 @@ def remove_tags(song_id, tags, all):
     doesn't have will not cause an error. Any spaces in tags will be replaced
     with underscores ('_')."""
     if tags:
-        songs_file = open(SONGS_INFO_PATH, 'r')
+        songs_file = open(SONGS_INFO_PATH, 'r', encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
             line = lines[i]
@@ -264,7 +264,7 @@ def remove_tags(song_id, tags, all):
                 lines[i] = ' '.join(details[:2]+tags_to_keep)
                 songs_file.close()
 
-                songs_file = open(SONGS_INFO_PATH, 'w')
+                songs_file = open(SONGS_INFO_PATH, 'w', encoding="utf-8")
                 songs_file.write('\n'.join(lines))
 
                 if len(tags) == 1:
@@ -291,7 +291,7 @@ def remove_tags(song_id, tags, all):
                 fg='red'
             )
         else:
-            songs_file = open(SONGS_INFO_PATH, 'r')
+            songs_file = open(SONGS_INFO_PATH, 'r', encoding="utf-8")
             lines = songs_file.read().splitlines()
             for i in range(len(lines)):
                 line = lines[i]
@@ -305,7 +305,7 @@ def remove_tags(song_id, tags, all):
                     lines[i] = ' '.join(details[:2])
                     songs_file.close()
 
-                    songs_file = open(SONGS_INFO_PATH, 'w')
+                    songs_file = open(SONGS_INFO_PATH, 'w', encoding="utf-8")
                     songs_file.write('\n'.join(lines))
 
                     if len(removed_tags) == 1:
@@ -357,7 +357,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
     playlist = []
 
     if only is not None:
-        with open(SONGS_INFO_PATH, 'r') as songs_file:
+        with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
             for line in songs_file:
                 details = line.split()
                 if int(details[0]) == only:
@@ -369,12 +369,12 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
     else:
         if not tags:
             if not shuffle_ and not reverse:
-                with open(SONGS_INFO_PATH, 'r') as songs_file:
+                with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
                     for line in songs_file:
                         details = line.split()
                         playlist.append(details[1])
             else:
-                with open(SONGS_INFO_PATH, 'r') as songs_file:
+                with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
                     songs_dict = {}
                     for line in songs_file:
                         details = line.split()
@@ -391,7 +391,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
         else:
             if not shuffle_ and not reverse:
                 playlist = []
-                with open(SONGS_INFO_PATH, 'r') as songs_file:
+                with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
                     for line in songs_file:
                         details = line.split()
                         for tag in details[2:]:
@@ -400,7 +400,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
                                 playlist.append(details[1])
                                 break
             else:
-                with open(SONGS_INFO_PATH, 'r') as songs_file:
+                with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
                     songs_dict = {}
                     for line in songs_file:
                         details = line.split()
@@ -561,7 +561,7 @@ def rename(song_id, name):
     """Renames the song with the id SONG_ID to NAME. Any spaces in NAME are
     replaced with underscores. The extension of the song (e.g. '.wav', '.mp3')
     is preserved."""
-    songs_file = open(SONGS_INFO_PATH, 'r')
+    songs_file = open(SONGS_INFO_PATH, 'r', encoding="utf-8")
     lines = songs_file.read().splitlines()
     for i in range(len(lines)):
         line = lines[i]
@@ -574,7 +574,7 @@ def rename(song_id, name):
 
             lines[i] = ' '.join(details)
             songs_file.close()
-            songs_file = open(SONGS_INFO_PATH, 'w')
+            songs_file = open(SONGS_INFO_PATH, 'w', encoding="utf-8")
             songs_file.write('\n'.join(lines))
 
             os.rename(os.path.join(SONGS_DIR, old_name), os.path.join(
@@ -603,7 +603,7 @@ def search(phrase):
     contains spaces, they will be replaced with underscores. This search is
     case-insensitive."""
     phrase = phrase.replace(' ', '_').lower()
-    with open(SONGS_INFO_PATH, 'r') as songs_file:
+    with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
         results = [], []  # starts, contains but does not start
         for line in songs_file:
             song_id, song_name, *tags = line.split()
@@ -635,7 +635,7 @@ def search(phrase):
 @click.argument("song_id", type=click.INT)
 def entry(song_id):
     """Prints the details of the song with the id SONG_ID."""
-    with open(SONGS_INFO_PATH, 'r') as songs_file:
+    with open(SONGS_INFO_PATH, 'r', encoding="utf-8") as songs_file:
         for line in songs_file:
             details = line.split()
             if int(details[0]) == song_id:

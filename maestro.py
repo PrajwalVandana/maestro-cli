@@ -53,6 +53,13 @@ class GetchManager:
         self.started = False
 
 
+def clear_screen():
+    if os.name == 'posix':
+        os.system('clear')
+    else:
+        click.clear()
+
+
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
 def cli():
     """A command line interface for playing music."""

@@ -469,7 +469,7 @@ def _play(playlist, volume, only):
         playback.set_volume(volume)
 
         last_timestamp = int(playback.curr_pos)
-        click.clear()
+        clear_screen()
         click.echo(output(i, playlist, volume, duration, last_timestamp, only))
 
         if not getch_manager.is_alive():
@@ -483,7 +483,7 @@ def _play(playlist, volume, only):
                 break
 
             if int(playback.curr_pos) != last_timestamp:
-                click.clear()
+                clear_screen()
                 last_timestamp = int(playback.curr_pos)
                 click.echo(output(i, playlist, volume,
                            duration, last_timestamp, only))
@@ -492,10 +492,10 @@ def _play(playlist, volume, only):
                 c = getch_manager.getch()
                 if c == 'n' or c == 's':
                     if i == len(playlist)-1:
-                        click.clear()
+                        clear_screen()
                         click.secho("No next song", fg="red")
                         sleep(2)
-                        click.clear()
+                        clear_screen()
                         click.echo(output(i, playlist, volume,
                                    duration, last_timestamp, only))
                     else:
@@ -504,10 +504,10 @@ def _play(playlist, volume, only):
                         break
                 elif c == 'b' or c == 'p':
                     if i == 0:
-                        click.clear()
+                        clear_screen()
                         click.secho("No previous song", fg="red")
                         sleep(2)
-                        click.clear()
+                        clear_screen()
                         click.echo(output(i, playlist, volume,
                                    duration, last_timestamp, only))
                     else:
@@ -541,14 +541,14 @@ def _play(playlist, volume, only):
                     volume = max(0, volume-VOLUME_STEP)
                     playback.set_volume(volume)
 
-                    click.clear()
+                    clear_screen()
                     click.echo(output(i, playlist, volume,
                                duration, last_timestamp, only))
                 elif c == keys.UP:
                     volume = min(1, volume+VOLUME_STEP)
                     playback.set_volume(volume)
 
-                    click.clear()
+                    clear_screen()
                     click.echo(output(i, playlist, volume,
                                duration, last_timestamp, only))
 

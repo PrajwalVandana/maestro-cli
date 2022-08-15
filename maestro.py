@@ -206,7 +206,7 @@ def remove(song_id):
 @cli.command()
 @click.argument('song_id', type=click.INT, required=True)
 @click.argument('tags', nargs=-1)
-def add_tags(song_id, tags):
+def tag(song_id, tags):
     """Add tags to a song (passed as ID). Any spaces in tags will be replaced
     with underscores ('_')."""
     if tags:
@@ -252,7 +252,7 @@ def add_tags(song_id, tags):
 @click.argument('song_id', type=click.INT, required=True)
 @click.argument('tags', nargs=-1)
 @click.option('-a', '--all', "all", is_flag=True)
-def remove_tags(song_id, tags, all):
+def untag(song_id, tags, all):
     """Remove tags from a song (passed as ID). Passing tags that the song
     doesn't have will not cause an error. Any spaces in tags will be replaced
     with underscores ('_')."""
@@ -443,11 +443,11 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
             _play(playlist, volume, only)
 
 
-def output(i, playlist, volume, duration, timestamp, only):
-    return click.style(playlist[i], fg='blue', bold=True) + \
+def output(i, playlist, volume, duration, timestamp, only, paused):
+    return click.style(("| " if paused else "> ") + click.style(playlist[i], bold=True), fg='blue') + \
         ((' '+click.style('%d/%d' % (i+1, len(playlist)), fg='blue')) if only is None else '') + \
         click.style(f"\nVolume: {int(volume*100)}/100", fg="red") + \
-        click.style(f"\t{timestamp//60}:{timestamp%60:02} / {duration//60}:{duration%60:02}", fg="yellow") + \
+        click.style(f"\t {timestamp//60}:{timestamp%60:02} / {duration//60}:{duration%60:02}", fg="yellow") + \
         click.style(
             ("\nNext up: "+playlist[i+1]) if i != len(playlist)-1 else '',
             fg="black"
@@ -460,6 +460,8 @@ def _play(playlist, volume, only):
 
     i = 0
     while i in range(len(playlist)):
+        paused = False
+
         song_path = os.path.join(SONGS_DIR, playlist[i])
         duration = int(TinyTag.get(song_path).duration)
 
@@ -470,13 +472,13 @@ def _play(playlist, volume, only):
 
         last_timestamp = int(playback.curr_pos)
         clear_screen()
-        click.echo(output(i, playlist, volume, duration, last_timestamp, only))
+        click.echo(output(i, playlist, volume, duration,
+                   last_timestamp, only, paused))
 
         if not getch_manager.is_alive():
             getch_manager.start()
 
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
-        paused = False
         while True:
             if not playback.active:
                 next_song = 1
@@ -486,7 +488,7 @@ def _play(playlist, volume, only):
                 clear_screen()
                 last_timestamp = int(playback.curr_pos)
                 click.echo(output(i, playlist, volume,
-                           duration, last_timestamp, only))
+                           duration, last_timestamp, only, paused))
 
             if getch_manager.kbhit():
                 c = getch_manager.getch()
@@ -497,7 +499,7 @@ def _play(playlist, volume, only):
                         sleep(2)
                         clear_screen()
                         click.echo(output(i, playlist, volume,
-                                   duration, last_timestamp, only))
+                                   duration, last_timestamp, only, paused))
                     else:
                         next_song = 1
                         playback.stop()
@@ -509,7 +511,7 @@ def _play(playlist, volume, only):
                         sleep(2)
                         clear_screen()
                         click.echo(output(i, playlist, volume,
-                                   duration, last_timestamp, only))
+                                   duration, last_timestamp, only, paused))
                     else:
                         next_song = -1
                         playback.stop()
@@ -529,6 +531,10 @@ def _play(playlist, volume, only):
                     else:
                         paused = True
                         playback.pause()
+
+                    clear_screen()
+                    click.echo(output(i, playlist, volume,
+                               duration, last_timestamp, only, paused))
                 elif c == keys.LEFT:
                     playback.pause()
                     playback.seek(playback.curr_pos-SCRUB_TIME)
@@ -543,14 +549,14 @@ def _play(playlist, volume, only):
 
                     clear_screen()
                     click.echo(output(i, playlist, volume,
-                               duration, last_timestamp, only))
+                               duration, last_timestamp, only, paused))
                 elif c == keys.UP:
                     volume = min(1, volume+VOLUME_STEP)
                     playback.set_volume(volume)
 
                     clear_screen()
                     click.echo(output(i, playlist, volume,
-                               duration, last_timestamp, only))
+                               duration, last_timestamp, only, paused))
 
         if next_song == -1:
             i -= 1

@@ -145,8 +145,7 @@ def add(path, tags, move_, recurse):
                             prepend_newline = False
                             song_id += 1
         else:
-            _add(path, tags, move_, songs_file,
-                 lines, song_id, prepend_newline)
+            _add(path, tags, move_, songs_file, lines, song_id, prepend_newline)
 
 
 def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
@@ -186,46 +185,72 @@ def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
 
 
 @cli.command(name="list")
-def list_():
-    """List all songs (with IDs and tags)."""
+@click.argument("search_tags", metavar="TAGS", nargs=-1)
+def list_(search_tags):
+    """List all songs (with IDs and tags).
+
+    If TAGS are passed, any song matching any tag will be listed. Any spaces in
+    tags will be converted to underscores ('_')."""
+    if search_tags:
+        seach_tags = set(search_tags)
+    no_results = True
     with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         for line in songs_file:
             details = line.split()
+            tags = set(details[2:])
+            if search_tags and not tags.intersection(search_tags):
+                continue
             print_entry(details)
+            no_results = False
+    if no_results and search_tags:
+        click.secho("No songs found matching tags", fg="red")
 
 
 @cli.command()
-@click.argument("song_id", required=True, type=click.INT)
-def remove(song_id):
-    """Remove a song (passed as ID)."""
-    songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
-    lines = songs_file.read().splitlines()
-    for i in range(len(lines)):
-        line = lines[i]
-        details = line.split()
-        if int(details[0]) == song_id:
-            lines.pop(i)
-            songs_file.close()
+@click.argument("song_ids", required=True, type=click.INT, nargs=-1)
+@click.option("-f", "--force", is_flag=True, help="Force deletion.")
+def remove(song_ids, force):
+    """Remove song(s) passed as ID(s)."""
+    if not force:
+        char = input(
+            f"Are you sure you want to delete {len(song_ids)} song(s)? [y/n] "
+        )
 
-            songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
-            # line containing song to be removed has been removed
-            songs_file.write("\n".join(lines))
+        if char.lower() != "y":
+            print("Did not delete.")
+            return
 
-            song_name = details[1]
-            os.remove(os.path.join(SONGS_DIR, song_name))  # remove actual song
+    for song_id in song_ids:
+        songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+        lines = songs_file.read().splitlines()
+        for i in range(len(lines)):
+            line = lines[i]
+            details = line.split()
+            if int(details[0]) == song_id:
+                lines.pop(i)
+                songs_file.close()
 
-            click.secho(
-                f"Removed song '{song_name}' with id {song_id}", fg="green"
-            )
+                songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+                # line containing song to be removed has been removed
+                songs_file.write("\n".join(lines))
 
-            break
-        elif int(details[0]) > song_id:
+                song_name = details[1]
+                os.remove(
+                    os.path.join(SONGS_DIR, song_name)
+                )  # remove actual song
+
+                click.secho(
+                    f"Removed song '{song_name}' with id {song_id}", fg="green"
+                )
+
+                break
+            elif int(details[0]) > song_id:
+                click.secho(f"Song with id {song_id} not found", fg="red")
+                songs_file.close()
+                break
+        else:
             click.secho(f"Song with id {song_id} not found", fg="red")
             songs_file.close()
-            break
-    else:
-        click.secho(f"Song with id {song_id} not found", fg="red")
-        songs_file.close()
 
 
 @cli.command()
@@ -257,8 +282,7 @@ def tag(song_id, tags):
                 else:
                     prefix_string = f"Added tags {tags} "
                 click.secho(
-                    prefix_string +
-                    f"to song '{details[1]}' with id {song_id}",
+                    prefix_string + f"to song '{details[1]}' with id {song_id}",
                     fg="green",
                 )
                 break
@@ -280,7 +304,8 @@ def tag(song_id, tags):
 def untag(song_id, tags, all):
     """Remove tags from a song (passed as ID). Passing tags that the song
     doesn't have will not cause an error. Any spaces in tags will be replaced
-    with underscores ('_')."""
+    with underscores ('_'). Passing the '-a/--all' flag will remove all tags
+    from the song, unless TAGS is passed (in which case the flag is ignored)."""
     if tags:
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
@@ -319,7 +344,7 @@ def untag(song_id, tags, all):
     else:
         if not all:
             click.secho(
-                "No tags passed—to remove all tags from this song, pass the `-a` flag",
+                "No tags passed—to remove all tags from this song, pass the `-a/--all` flag",
                 fg="red",
             )
         else:
@@ -376,7 +401,12 @@ def untag(song_id, tags, all):
     help="Play songs in reverse (most recently added first).",
 )
 @click.option(
-    "-o", "--only", "only", type=click.INT, help="Play only this song."
+    "-o",
+    "--only",
+    "only",
+    type=click.INT,
+    multiple=True,
+    help="Play only this/these song(s) (can be passed multiple times, e.g. 'maestro play -o 1 -o 17').",
 )
 @click.option(
     "-v",
@@ -411,23 +441,30 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
     """
     playlist = []
 
-    if only is not None:
+    if only:
+        not_found = []
         with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
-            for line in songs_file:
-                details = line.split()
-                if int(details[0]) == only:
-                    playlist.append(details[1])
-                    break
-            else:
-                click.secho(f"Song with id {only} not found", fg="red")
-                return
+            for song_id in only:
+                for line in songs_file:
+                    details = line.split()
+                    if int(details[0]) == song_id:
+                        playlist.append((details[1], song_id))
+                        break
+                else:
+                    not_found.append(str(song_id))
+                songs_file.seek(0)
+        if not_found:
+            click.secho(
+                f"Song(s) with ID(s) {', '.join(not_found)} not found", fg="red"
+            )
+            sleep(1)
     else:
         if not tags:
             if not shuffle_ and not reverse:
                 with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                     for line in songs_file:
                         details = line.split()
-                        playlist.append(details[1])
+                        playlist.append((details[1], int(details[0])))
             else:
                 with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                     songs_dict = {}
@@ -442,7 +479,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
                         song_ids.reverse()
 
                     for song_id in song_ids:
-                        playlist.append(songs_dict[song_id])
+                        playlist.append((songs_dict[song_id], song_id))
         else:
             if not shuffle_ and not reverse:
                 playlist = []
@@ -452,7 +489,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
                         for tag in details[2:]:
                             tag = tag.replace(" ", "_")
                             if tag in tags:
-                                playlist.append(details[1])
+                                playlist.append((details[1], int(details[0])))
                                 break
             else:
                 with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
@@ -472,7 +509,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
                         song_ids.reverse()
 
                     for song_id in song_ids:
-                        playlist.append(songs_dict[song_id])
+                        playlist.append((songs_dict[song_id], song_id))
 
     if not playlist:
         click.secho("No songs found matching tag criteria", fg="red")
@@ -480,47 +517,48 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
         volume /= 100
         if loop:
             while True:
-                res = _play(playlist, volume, only)
-                if res[0]:
+                status = _play(playlist, volume)
+                if status[0]:
                     return
 
-                volume = res[1]
+                volume = status[1]
                 if shuffle_ and reshuffle:
                     shuffle(playlist)
         else:
-            _play(playlist, volume, only)
+            _play(playlist, volume)
 
 
-def output(i, playlist, volume, duration, timestamp, only, paused):
+def output(i, playlist, volume, duration, timestamp, paused):
     return (
         click.style(
-            ("| " if paused else "> ") + click.style(playlist[i], bold=True),
+            ("| " if paused else "> ") + click.style(playlist[i][0], bold=True),
             fg="blue",
-        ) + (
-            (" " + click.style("%d/%d" % (i + 1, len(playlist)), fg="blue"))
-            if only is None
-            else ""
-        ) + click.style(f"\nVolume: {int(volume*100)}/100", fg="red")
+        )
+        + click.style(f" ({playlist[i][1]}) ", fg="blue")
+        + click.style("%d/%d" % (i + 1, len(playlist)), fg="black")
+        + click.style(f"\nvol: {int(volume*100)}/100", fg="red")
         + click.style(
             f"\t {timestamp//60}:{timestamp%60:02} / {duration//60}:{duration%60:02}",
             fg="yellow",
-        ) + click.style(
-            ("\nNext up: " + playlist[i + 1]
-             ) if i != len(playlist) - 1 else "",
+        )
+        + click.style(
+            ("\nNext up: " + playlist[i + 1][0])
+            if i != len(playlist) - 1
+            else "",
             fg="black",
         )
     )
 
 
 # returns (whether or not playback has been ended by the user, volume)
-def _play(playlist, volume, only):
+def _play(playlist, volume):
     getch_manager = GetchManager()
 
     i = 0
     while i in range(len(playlist)):
         paused = False
 
-        song_path = os.path.join(SONGS_DIR, playlist[i])
+        song_path = os.path.join(SONGS_DIR, playlist[i][0])
         duration = int(TinyTag.get(song_path).duration)
 
         playback = Playback()
@@ -531,7 +569,7 @@ def _play(playlist, volume, only):
         last_timestamp = int(playback.curr_pos)
         clear_screen()
         click.echo(
-            output(i, playlist, volume, duration, last_timestamp, only, paused)
+            output(i, playlist, volume, duration, last_timestamp, paused)
         )
 
         if not getch_manager.is_alive():
@@ -553,7 +591,6 @@ def _play(playlist, volume, only):
                         volume,
                         duration,
                         last_timestamp,
-                        only,
                         paused,
                     )
                 )
@@ -573,7 +610,6 @@ def _play(playlist, volume, only):
                                 volume,
                                 duration,
                                 last_timestamp,
-                                only,
                                 paused,
                             )
                         )
@@ -594,7 +630,6 @@ def _play(playlist, volume, only):
                                 volume,
                                 duration,
                                 last_timestamp,
-                                only,
                                 paused,
                             )
                         )
@@ -626,7 +661,6 @@ def _play(playlist, volume, only):
                             volume,
                             duration,
                             last_timestamp,
-                            only,
                             paused,
                         )
                     )
@@ -650,7 +684,6 @@ def _play(playlist, volume, only):
                             volume,
                             duration,
                             last_timestamp,
-                            only,
                             paused,
                         )
                     )
@@ -666,7 +699,6 @@ def _play(playlist, volume, only):
                             volume,
                             duration,
                             last_timestamp,
-                            only,
                             paused,
                         )
                     )
@@ -725,38 +757,72 @@ def rename(song_id, name):
 
 @cli.command()
 @click.argument("phrase")
-def search(phrase):
+@click.option("-t", "--tag", "searching_for_tags", is_flag=True)
+def search(phrase, searching_for_tags):
     """Searches for songs that containing PHRASE. All songs starting with PHRASE
     will appear before songs containing but not starting with PHRASE. If PHRASE
     contains spaces, they will be replaced with underscores. This search is
-    case-insensitive."""
+    case-insensitive.
+
+    If '-t' is passed, searches for tags matching PHRASE instead of song names
+    (same search method)."""
     phrase = phrase.replace(" ", "_").lower()
     with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
-        results = [], []  # starts, contains but does not start
-        for line in songs_file:
-            song_id, song_name, *tags = line.split()
-            song_id = int(song_id)
-            song_name = song_name.lower()
-            if song_name.startswith(phrase):
-                results[0].append(song_id)
-            elif phrase in song_name:
-                results[1].append(song_id)
+        if not searching_for_tags:
+            results = [], []  # starts, contains but does not start
+            for line in songs_file:
+                song_id, song_name, *tags = line.split()
+                song_id = int(song_id)
+                song_name = song_name.lower()
 
-        if not any(results):
-            click.secho("No results found", fg="red")
-            return
+                if song_name.startswith(phrase):
+                    results[0].append(song_id)
+                elif phrase in song_name:
+                    results[1].append(song_id)
 
-        songs_file.seek(0)
-        for line in songs_file:
-            details = line.split()
-            if int(details[0]) in results[0]:
-                print_entry(details)
+            if not any(results):
+                click.secho("No results found", fg="red")
+                return
 
-        songs_file.seek(0)
-        for line in songs_file:
-            details = line.split()
-            if int(details[0]) in results[1]:
-                print_entry(details)
+            songs_file.seek(0)
+            for line in songs_file:
+                details = line.split()
+                if int(details[0]) in results[0]:
+                    print_entry(details)
+
+            songs_file.seek(0)
+            for line in songs_file:
+                details = line.split()
+                if int(details[0]) in results[1]:
+                    print_entry(details)
+
+            click.secho(
+                f"Found {len(results[0]) + len(results[1])} song(s)", fg="green"
+            )
+        else:
+            results = set(), set()  # starts, contains but does not start
+            for line in songs_file:
+                song_id, song_name, *tags = line.split()
+
+                for tag in tags:
+                    if tag.startswith(phrase):
+                        results[0].add(tag)
+                    elif phrase in tag:
+                        results[1].add(tag)
+
+            if not any(results):
+                click.secho("No results found", fg="red")
+                return
+
+            for tag in results[0]:
+                print(tag)
+
+            for tag in results[1]:
+                print(tag)
+
+            click.secho(
+                f"Found {len(results[0]) + len(results[1])} tag(s)", fg="green"
+            )
 
 
 @cli.command()

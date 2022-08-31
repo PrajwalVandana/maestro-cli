@@ -5,3 +5,5 @@ build
 *.egg
 log.txt
 __pycache__
+*.code-workspace
+test/

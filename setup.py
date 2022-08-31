@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
     name='maestro',
-    version='1.2.0',
+    version='1.2.1',
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",

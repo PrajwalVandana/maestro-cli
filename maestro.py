@@ -207,50 +207,95 @@ def list_(search_tags):
 
 
 @cli.command()
-@click.argument("song_ids", required=True, type=click.INT, nargs=-1)
+@click.argument("ARGS", required=True, nargs=-1)
 @click.option("-f", "--force", is_flag=True, help="Force deletion.")
-def remove(song_ids, force):
+@click.option(
+    "-t",
+    "--tag",
+    is_flag=True,
+    help="If passed, treat all arguments as tags, deleting each tag from all songs.",
+)
+def remove(args, force, tag):
     """Remove song(s) passed as ID(s)."""
-    if not force:
-        char = input(
-            f"Are you sure you want to delete {len(song_ids)} song(s)? [y/n] "
-        )
-
-        if char.lower() != "y":
-            print("Did not delete.")
+    if not tag:
+        try:
+            song_ids = [int(song_id) for song_id in args]
+        except ValueError:
+            click.secho(
+                "Song IDs must be integers. To delete tags, pass the '-t' flag.",
+                fg="red",
+            )
             return
 
-    for song_id in song_ids:
+        if not force:
+            char = input(
+                f"Are you sure you want to delete {len(song_ids)} song(s)? [y/n] "
+            )
+
+            if char.lower() != "y":
+                print("Did not delete.")
+                return
+
+        for song_id in song_ids:
+            songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+            lines = songs_file.read().splitlines()
+            for i in range(len(lines)):
+                line = lines[i]
+                details = line.split()
+                if int(details[0]) == song_id:
+                    lines.pop(i)
+                    songs_file.close()
+
+                    songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+                    # line containing song to be removed has been removed
+                    songs_file.write("\n".join(lines))
+
+                    song_name = details[1]
+                    os.remove(
+                        os.path.join(SONGS_DIR, song_name)
+                    )  # remove actual song
+
+                    click.secho(
+                        f"Removed song '{song_name}' with id {song_id}",
+                        fg="green",
+                    )
+
+                    break
+                elif int(details[0]) > song_id:
+                    click.secho(f"Song with id {song_id} not found", fg="red")
+                    songs_file.close()
+                    break
+            else:
+                click.secho(f"Song with id {song_id} not found", fg="red")
+                songs_file.close()
+    else:
+        tags = set([tag.replace(" ", "_") for tag in args])
+        if not force:
+            char = input(
+                f"Are you sure you want to delete {len(tags)} tag(s)? [y/n] "
+            )
+
+            if char.lower() != "y":
+                print("Did not delete.")
+                return
+
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
-            line = lines[i]
-            details = line.split()
-            if int(details[0]) == song_id:
-                lines.pop(i)
-                songs_file.close()
+            details = lines[i].split()
+            for j in range(2, len(details)):
+                if details[j] in tags:
+                    details[j] = ""
+                    lines[i] = " ".join(details)
+        songs_file.close()
 
-                songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
-                # line containing song to be removed has been removed
-                songs_file.write("\n".join(lines))
+        songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+        # line containing tag to be removed has been removed
+        songs_file.write("\n".join(lines))
 
-                song_name = details[1]
-                os.remove(
-                    os.path.join(SONGS_DIR, song_name)
-                )  # remove actual song
-
-                click.secho(
-                    f"Removed song '{song_name}' with id {song_id}", fg="green"
-                )
-
-                break
-            elif int(details[0]) > song_id:
-                click.secho(f"Song with id {song_id} not found", fg="red")
-                songs_file.close()
-                break
-        else:
-            click.secho(f"Song with id {song_id} not found", fg="red")
-            songs_file.close()
+        click.secho(
+            f"Deleted all occurrences of {len(tags)} tag(s)", fg="green"
+        )
 
 
 @cli.command()
@@ -302,10 +347,11 @@ def tag(song_id, tags):
 @click.argument("tags", nargs=-1)
 @click.option("-a", "--all", "all", is_flag=True)
 def untag(song_id, tags, all):
-    """Remove tags from a song (passed as ID). Passing tags that the song
-    doesn't have will not cause an error. Any spaces in tags will be replaced
-    with underscores ('_'). Passing the '-a/--all' flag will remove all tags
-    from the song, unless TAGS is passed (in which case the flag is ignored)."""
+    """Remove tags from a specific song (passed as ID). Passing tags that the
+    song doesn't have will not cause an error. Any spaces in tags will be
+    replaced with underscores ('_'). Passing the '-a/--all' flag will remove
+    all tags from the song, unless TAGS is passed (in which case the flag is
+    ignored)."""
     if tags:
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
@@ -718,7 +764,7 @@ def _play(playlist, volume):
 def rename(song_id, name):
     """Renames the song with the id SONG_ID to NAME. Any spaces in NAME are
     replaced with underscores. The extension of the song (e.g. '.wav', '.mp3')
-    is preserved."""
+    is preserved—do not include it in the name."""
     songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
     lines = songs_file.read().splitlines()
     for i in range(len(lines)):
@@ -757,15 +803,18 @@ def rename(song_id, name):
 
 @cli.command()
 @click.argument("phrase")
-@click.option("-t", "--tag", "searching_for_tags", is_flag=True)
+@click.option(
+    "-t",
+    "--tag",
+    "searching_for_tags",
+    is_flag=True,
+    help="Searches for matching tags instead of song names.",
+)
 def search(phrase, searching_for_tags):
     """Searches for songs that containing PHRASE. All songs starting with PHRASE
     will appear before songs containing but not starting with PHRASE. If PHRASE
     contains spaces, they will be replaced with underscores. This search is
-    case-insensitive.
-
-    If '-t' is passed, searches for tags matching PHRASE instead of song names
-    (same search method)."""
+    case-insensitive."""
     phrase = phrase.replace(" ", "_").lower()
     with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
@@ -805,9 +854,10 @@ def search(phrase, searching_for_tags):
                 song_id, song_name, *tags = line.split()
 
                 for tag in tags:
-                    if tag.startswith(phrase):
+                    tag_lower = tag.lower()
+                    if tag_lower.startswith(phrase):
                         results[0].add(tag)
-                    elif phrase in tag:
+                    elif phrase in tag_lower:
                         results[1].add(tag)
 
             if not any(results):

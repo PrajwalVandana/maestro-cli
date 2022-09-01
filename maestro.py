@@ -262,7 +262,7 @@ def remove(args, force, tag):
         with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
             songs_file.write("\n".join(lines))
     else:
-        tags = set([tag.replace(" ", "_") for tag in args])
+        tags = {tag.replace(" ", "_") for tag in args}
         if not force:
             char = input(
                 f"Are you sure you want to delete {len(tags)} tag(s)? [y/n] "
@@ -289,10 +289,10 @@ def remove(args, force, tag):
         )
 
 
-@cli.command()
+@cli.command(name="tag")
 @click.argument("song_id", type=click.INT, required=True)
 @click.argument("tags", nargs=-1)
-def tag(song_id, tags):  # NOTE: should I add multiple song support?
+def tag_(song_id, tags):  # NOTE: should I add multiple song support?
     """Add tags to a song (passed as ID). Any spaces in tags will be replaced
     with underscores ('_')."""
     if tags:
@@ -322,7 +322,7 @@ def tag(song_id, tags):  # NOTE: should I add multiple song support?
                     fg="green",
                 )
                 break
-            elif int(details[0]) > song_id:
+            if int(details[0]) > song_id:
                 click.secho(f"Song with id {song_id} not found", fg="red")
                 break
         else:
@@ -336,8 +336,8 @@ def tag(song_id, tags):  # NOTE: should I add multiple song support?
 @cli.command()
 @click.argument("song_id", type=click.INT, required=True)
 @click.argument("tags", nargs=-1)
-@click.option("-a", "--all", "all", is_flag=True)
-def untag(song_id, tags, all):
+@click.option("-a", "--all", "all_", is_flag=True)
+def untag(song_id, tags, all_):
     """Remove tags from a specific song (passed as ID). Passing tags that the
     song doesn't have will not cause an error. Any spaces in tags will be
     replaced with underscores ('_'). Passing the '-a/--all' flag will remove
@@ -372,12 +372,12 @@ def untag(song_id, tags, all):
                     fg="green",
                 )
                 return
-            elif int(details[0]) > song_id:
+            if int(details[0]) > song_id:
                 break
         click.secho(f"Song with id {song_id} not found", fg="red")
         songs_file.close()
     else:
-        if not all:
+        if not all_:
             click.secho(
                 "No tags passed—to remove all tags from this song, pass the `-a/--all` flag",
                 fg="red",
@@ -411,7 +411,7 @@ def untag(song_id, tags, all):
                         fg="green",
                     )
                     return
-                elif int(details[0]) > song_id:
+                if int(details[0]) > song_id:
                     break
             click.secho(f"Song with id {song_id} not found", fg="red")
             songs_file.close()
@@ -482,7 +482,6 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
                 song_id = int(details[0])
                 if song_id in only:
                     playlist.append((details[1], song_id))
-                    break
         if not playlist:
             click.secho("No songs found with the given IDs", fg="red")
             return
@@ -871,10 +870,10 @@ def entry(song_id):
             click.secho(f"Song with id {song_id} not found", fg="red")
 
 
-def print_entry(entry):
-    """`entry` should be passed as a list (what you get when you call
+def print_entry(entry_list):
+    """`entry_list` should be passed as a list (what you get when you call
     `line.split()`)."""
-    click.secho(entry[0] + " ", fg="black", nl=False)
-    click.secho(entry[1], fg="blue", nl=(len(entry) == 2))
-    if len(entry) > 2:
-        click.echo(" " + " ".join(entry[2:]))
+    click.secho(entry_list[0] + " ", fg="black", nl=False)
+    click.secho(entry_list[1], fg="blue", nl=(len(entry_list) == 2))
+    if len(entry_list) > 2:
+        click.echo(" " + " ".join(entry_list[2:]))

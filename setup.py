@@ -1,4 +1,3 @@
-from os import name as sys_name
 from setuptools import setup
 
 

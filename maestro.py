@@ -479,7 +479,8 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
         with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             for line in songs_file:
                 details = line.split()
-                if int(details[0]) in only:
+                song_id = int(details[0])
+                if song_id in only:
                     playlist.append((details[1], song_id))
                     break
         if not playlist:

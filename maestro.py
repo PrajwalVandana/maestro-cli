@@ -101,6 +101,7 @@ def add(path, tags, move_, recurse):
     if not os.path.isdir(path) and ext not in EXTS:
         click.secho(f"'{ext}' is not supported", fg="red")
         return
+
     with open(SONGS_INFO_PATH, "a+", encoding="utf-8") as songs_file:
         songs_file.seek(0)  # start reading from beginning
 
@@ -192,7 +193,8 @@ def list_(search_tags):
     If TAGS are passed, any song matching any tag will be listed. Any spaces in
     tags will be converted to underscores ('_')."""
     if search_tags:
-        seach_tags = set(search_tags)
+        search_tags = set(search_tags)
+
     no_results = True
     with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         for line in songs_file:
@@ -202,6 +204,7 @@ def list_(search_tags):
                 continue
             print_entry(details)
             no_results = False
+
     if no_results and search_tags:
         click.secho("No songs found matching tags", fg="red")
 
@@ -219,7 +222,7 @@ def remove(args, force, tag):
     """Remove song(s) passed as ID(s)."""
     if not tag:
         try:
-            song_ids = [int(song_id) for song_id in args]
+            song_ids = set([int(song_id) for song_id in args])
         except ValueError:
             click.secho(
                 "Song IDs must be integers. To delete tags, pass the '-t' flag.",
@@ -236,19 +239,13 @@ def remove(args, force, tag):
                 print("Did not delete.")
                 return
 
-        for song_id in song_ids:
-            songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             lines = songs_file.read().splitlines()
             for i in range(len(lines)):
-                line = lines[i]
-                details = line.split()
-                if int(details[0]) == song_id:
-                    lines.pop(i)
-                    songs_file.close()
-
-                    songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
-                    # line containing song to be removed has been removed
-                    songs_file.write("\n".join(lines))
+                details = lines[i].split()
+                song_id = int(details[0])
+                if song_id in song_ids:
+                    lines[i] = ""
 
                     song_name = details[1]
                     os.remove(
@@ -261,13 +258,9 @@ def remove(args, force, tag):
                     )
 
                     break
-                elif int(details[0]) > song_id:
-                    click.secho(f"Song with id {song_id} not found", fg="red")
-                    songs_file.close()
-                    break
-            else:
-                click.secho(f"Song with id {song_id} not found", fg="red")
-                songs_file.close()
+
+        with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
+            songs_file.write("\n".join(lines))
     else:
         tags = set([tag.replace(" ", "_") for tag in args])
         if not force:
@@ -279,19 +272,17 @@ def remove(args, force, tag):
                 print("Did not delete.")
                 return
 
-        songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
-        lines = songs_file.read().splitlines()
-        for i in range(len(lines)):
-            details = lines[i].split()
-            for j in range(2, len(details)):
-                if details[j] in tags:
-                    details[j] = ""
-                    lines[i] = " ".join(details)
-        songs_file.close()
+        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+            lines = songs_file.read().splitlines()
+            for i in range(len(lines)):
+                details = lines[i].split()
+                for j in range(2, len(details)):
+                    if details[j] in tags:
+                        details[j] = ""
+                        lines[i] = " ".join(details)
 
-        songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
-        # line containing tag to be removed has been removed
-        songs_file.write("\n".join(lines))
+        with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
+            songs_file.write("\n".join(lines))
 
         click.secho(
             f"Deleted all occurrences of {len(tags)} tag(s)", fg="green"
@@ -301,21 +292,21 @@ def remove(args, force, tag):
 @cli.command()
 @click.argument("song_id", type=click.INT, required=True)
 @click.argument("tags", nargs=-1)
-def tag(song_id, tags):
+def tag(song_id, tags):  # NOTE: should I add multiple song support?
     """Add tags to a song (passed as ID). Any spaces in tags will be replaced
     with underscores ('_')."""
     if tags:
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
-            line = lines[i]
-            details = line.split()
+            details = lines[i].split()
             if int(details[0]) == song_id:
                 new_tags = []
                 for tag in tags:
                     tag = tag.replace(" ", "_")
                     if tag not in details[2:]:
                         new_tags.append(tag)
+
                 lines[i] = " ".join(details + new_tags)
                 songs_file.close()
 
@@ -356,19 +347,20 @@ def untag(song_id, tags, all):
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
-            line = lines[i]
-            details = line.split()
+            details = lines[i].split()
             if int(details[0]) == song_id:
                 tags_to_keep = []
                 for tag in details[2:]:
                     tag = tag.replace("_", " ")
                     if tag not in tags:
                         tags_to_keep.append(tag)
+
                 lines[i] = " ".join(details[:2] + tags_to_keep)
                 songs_file.close()
 
                 songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
                 songs_file.write("\n".join(lines))
+                songs_file.close()
 
                 if len(tags) == 1:
                     prefix_string = f"Removed tag '{tags[0]}' "
@@ -379,13 +371,10 @@ def untag(song_id, tags, all):
                     + f"from song '{details[1]}' with id {song_id}",
                     fg="green",
                 )
-                break
+                return
             elif int(details[0]) > song_id:
-                click.secho(f"Song with id {song_id} not found", fg="red")
                 break
-        else:
-            click.secho(f"Song with id {song_id} not found", fg="red")
-
+        click.secho(f"Song with id {song_id} not found", fg="red")
         songs_file.close()
     else:
         if not all:
@@ -410,6 +399,7 @@ def untag(song_id, tags, all):
 
                     songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
                     songs_file.write("\n".join(lines))
+                    songs_file.close()
 
                     if len(removed_tags) == 1:
                         prefix_string = f"Removed tag '{removed_tags[0]}' "
@@ -420,13 +410,10 @@ def untag(song_id, tags, all):
                         + f"from song '{details[1]}' with id {song_id}",
                         fg="green",
                     )
-                    break
+                    return
                 elif int(details[0]) > song_id:
-                    click.secho(f"Song with id {song_id} not found", fg="red")
                     break
-            else:
-                click.secho(f"Song with id {song_id} not found", fg="red")
-
+            click.secho(f"Song with id {song_id} not found", fg="red")
             songs_file.close()
 
 
@@ -488,22 +475,16 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle):
     playlist = []
 
     if only:
-        not_found = []
+        only = set(only)
         with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
-            for song_id in only:
-                for line in songs_file:
-                    details = line.split()
-                    if int(details[0]) == song_id:
-                        playlist.append((details[1], song_id))
-                        break
-                else:
-                    not_found.append(str(song_id))
-                songs_file.seek(0)
-        if not_found:
-            click.secho(
-                f"Song(s) with ID(s) {', '.join(not_found)} not found", fg="red"
-            )
-            sleep(1)
+            for line in songs_file:
+                details = line.split()
+                if int(details[0]) in only:
+                    playlist.append((details[1], song_id))
+                    break
+        if not playlist:
+            click.secho("No songs found with the given IDs", fg="red")
+            return
     else:
         if not tags:
             if not shuffle_ and not reverse:

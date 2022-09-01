@@ -6,4 +6,4 @@ build
 log.txt
 __pycache__
 *.code-workspace
-test/
+test_songs/

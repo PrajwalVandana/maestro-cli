@@ -1,9 +1,12 @@
 .vscode
-todo.md
 build
 *.egg-info
-*.egg
 log.txt
+*.egg
 __pycache__
 *.code-workspace
+
+todo.md
 test_songs/
+convert_to_psv.py
+curses_test.py

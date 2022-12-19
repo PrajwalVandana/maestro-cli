@@ -6,7 +6,7 @@ Download the wheel or tarball (wheel is usually better) from the `dist/` folder,
 ```
 pip install PATH_TO_WHEEL
 ```
-Alternatively, you can build `maestro` yourself—download `setup.py` and `maestro.py` into the same EMPTY folder, then run
+Alternatively, you can build `maestro` yourself—download `setup.py`, `maestro.py`, and `mac_presence.py` into the same EMPTY folder, then run
 ```
 pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
 ```
@@ -65,5 +65,3 @@ maestro search .mp3
 ## Thanks
 
 Big thanks to the creators of [just_playback](https://github.com/cheofusi/just_playback), no doubt the best Python module for playing sound!
-
-Also thanks to the creators of [getkey](https://github.com/kcsaff/getkey) for providing a cross-platform way to get terminal input without newline.

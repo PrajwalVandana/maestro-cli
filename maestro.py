@@ -813,7 +813,7 @@ def cli():
 
 
 @cli.command()
-@click.argument("path")
+@click.argument("path_", metavar="PATH_OR_URL")
 @click.argument("tags", nargs=-1)
 @click.option(
     "-m",
@@ -858,7 +858,14 @@ def cli():
     type=float,
     help="Add a clip.",
 )
-def add(path, tags, move_, recurse, url, format_, clip):
+@click.option(
+    "-p",
+    "--playlist",
+    "playlist_",
+    is_flag=True,
+    help="If song URL passed is from a playlist, download all the songs. If the URL points directly to a playlist, this flag is unncessary.",
+)
+def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if `-r` is passed). The name of each
     song will be the filename. Filenames and tags cannot contain the character
@@ -870,147 +877,180 @@ def add(path, tags, move_, recurse, url, format_, clip):
     Unlike `maestro clip`, you cannot pass only the start time and not the end.
     To get around this, you can pass -1 as the end time."""
 
-    if not url and not os.path.exists(path):
+    paths = None
+    if not url and not os.path.exists(path_):
         click.secho(
-            f"'{path}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-u/--url' flag.",
+            f"The path '{path_}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-u/--url' flag.",
             fg="red",
         )
         return
     elif url:
-        subprocess.run(
-            [
-                "youtube-dl",
-                path,
-                "-x",
-                "--audio-format",
-                format_,
-                "--no-playlist",
-                "-o",
-                os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
-            ],
-            check=True,
-        )
+        try:
+            subprocess.run(
+                [
+                    "yt-dlp",
+                    path_,
+                    "-x",
+                    "--audio-format",
+                    format_,
+                    "--no-playlist" if not playlist_ else "",
+                    "-o",
+                    os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
+                ],
+                check=True,
+            )
+        except subprocess.CalledProcessError:
+            click.echo(
+                "yt-dlp not found ... trying youtube-dl instead",
+            )
+            try:
+                subprocess.run(
+                    [
+                        "youtube-dl",
+                        path_,
+                        "-x",
+                        "--audio-format",
+                        format_,
+                        "--no-playlist" if not playlist_ else "",
+                        "-o",
+                        os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
+                    ],
+                    check=True,
+                )
+            except subprocess.CalledProcessError:
+                click.secho(
+                    "Neither yt-dlp nor youtube-dl is installed. Please install one of them and try again.",
+                )
+                return
 
+        paths = []
         for fname in os.listdir(MAESTRO_DIR):
             if fname.endswith(format_):
-                path = os.path.join(MAESTRO_DIR, fname).replace("|", "-")
-                break
+                raw_path = os.path.join(MAESTRO_DIR, fname)
+                sanitized_path = raw_path.replace("|", "-")
+
+                os.rename(raw_path, sanitized_path)
+                paths.append(sanitized_path)
 
         move_ = True
 
-    if clip is not None:
-        song_duration = TinyTag.get(path).duration
+    if paths is None:
+        paths = [path_]
 
-        start, end = clip
-        if start < 0:
-            click.secho("Clip start time cannot be negative", fg="red")
-            return
-        elif start > song_duration:
-            click.secho(
-                "Clip start time cannot be greater than the song duration",
-                fg="red",
-            )
-            return
+    for path in paths:
+        if clip is not None:
+            song_duration = TinyTag.get(path).duration
 
-        if end == -1:
-            end = song_duration
-        elif end < start:
-            click.secho(
-                "Clip end time cannot be less than the clip start time",
-                fg="red",
-            )
-            return
-        elif end > song_duration:
-            click.secho(
-                "Clip end time cannot be greater than the song duration",
-                fg="red",
-            )
-            return
-    else:
-        start = end = None
+            start, end = clip
+            if start < 0:
+                click.secho("Clip start time cannot be negative", fg="red")
+                return
+            elif start > song_duration:
+                click.secho(
+                    "Clip start time cannot be greater than the song duration",
+                    fg="red",
+                )
+                return
 
-    ext = os.path.splitext(path)[1]
-    if not os.path.isdir(path) and ext not in EXTS:
-        click.secho(f"'{ext}' is not supported", fg="red")
-        return
-
-    for tag in tags:
-        if "," in tag or "|" in tag:
-            click.secho("Tags cannot contain ',' or '|'", fg="red")
-            return
-
-    with open(SONGS_INFO_PATH, "a+", encoding="utf-8") as songs_file:
-        songs_file.seek(0)  # start reading from beginning
-
-        lines = songs_file.readlines()
-        if not lines:
-            song_id = 1
+            if end == -1:
+                end = song_duration
+            elif end < start:
+                click.secho(
+                    "Clip end time cannot be less than the clip start time",
+                    fg="red",
+                )
+                return
+            elif end > song_duration:
+                click.secho(
+                    "Clip end time cannot be greater than the song duration",
+                    fg="red",
+                )
+                return
         else:
-            song_id = int(lines[-1].split("|")[0]) + 1
+            start = end = None
 
-        prepend_newline = lines and lines[-1][-1] != "\n"
+        ext = os.path.splitext(path)[1]
+        if not os.path.isdir(path) and ext not in EXTS:
+            click.secho(f"'{ext}' is not supported", fg="red")
+            return
 
-        if os.path.isdir(path):
-            if recurse:
-                for dirpath, _, fnames in os.walk(path):
-                    for fname in fnames:
+        for tag in tags:
+            if "," in tag or "|" in tag:
+                click.secho("Tags cannot contain ',' or '|'", fg="red")
+                return
+
+        with open(SONGS_INFO_PATH, "a+", encoding="utf-8") as songs_file:
+            songs_file.seek(0)  # start reading from beginning
+
+            lines = songs_file.readlines()
+            if not lines:
+                song_id = 1
+            else:
+                song_id = int(lines[-1].split("|")[0]) + 1
+
+            prepend_newline = lines and lines[-1][-1] != "\n"
+
+            if os.path.isdir(path):
+                if recurse:
+                    for dirpath, _, fnames in os.walk(path):
+                        for fname in fnames:
+                            if os.path.splitext(fname)[1] in EXTS:
+                                if "|" in fname:
+                                    click.echo(
+                                        f"Skipping {fname} because it contains '|'"
+                                    )
+                                    continue
+                                add_song(
+                                    os.path.join(dirpath, fname),
+                                    tags,
+                                    move_,
+                                    songs_file,
+                                    lines,
+                                    song_id,
+                                    prepend_newline,
+                                    start,
+                                    end,
+                                )
+                                prepend_newline = False
+                                song_id += 1
+                else:
+                    for fname in os.listdir(path):
                         if os.path.splitext(fname)[1] in EXTS:
                             if "|" in fname:
                                 click.echo(
                                     f"Skipping {fname} because it contains '|'"
                                 )
                                 continue
-                            add_song(
-                                os.path.join(dirpath, fname),
-                                tags,
-                                move_,
-                                songs_file,
-                                lines,
-                                song_id,
-                                prepend_newline,
-                                start,
-                                end
-                            )
-                            prepend_newline = False
-                            song_id += 1
+                            full_path = os.path.join(path, fname)
+                            if os.path.isfile(full_path):
+                                add_song(
+                                    full_path,
+                                    tags,
+                                    move_,
+                                    songs_file,
+                                    lines,
+                                    song_id,
+                                    prepend_newline,
+                                    start,
+                                    end,
+                                )
+                                prepend_newline = False
+                                song_id += 1
             else:
-                for fname in os.listdir(path):
-                    if os.path.splitext(fname)[1] in EXTS:
-                        if "|" in fname:
-                            click.echo(
-                                f"Skipping {fname} because it contains '|'"
-                            )
-                            continue
-                        full_path = os.path.join(path, fname)
-                        if os.path.isfile(full_path):
-                            add_song(
-                                full_path,
-                                tags,
-                                move_,
-                                songs_file,
-                                lines,
-                                song_id,
-                                prepend_newline,
-                                start,
-                                end
-                            )
-                            prepend_newline = False
-                            song_id += 1
-        else:
-            if "|" in os.path.basename(path):
-                click.secho("Filename cannot contain '|'", fg="red")
-                return
-            add_song(
-                path,
-                tags,
-                move_,
-                songs_file,
-                lines,
-                song_id,
-                prepend_newline,
-                start,
-                end
-            )
+                if "|" in os.path.basename(path):
+                    click.secho("Filename cannot contain '|'", fg="red")
+                    return
+                add_song(
+                    path,
+                    tags,
+                    move_,
+                    songs_file,
+                    lines,
+                    song_id,
+                    prepend_newline,
+                    start,
+                    end,
+                )
 
 
 @cli.command()
@@ -1278,8 +1318,24 @@ def untag(song_ids, tags, all_):
     is_flag=True,
     help="Discord rich presence. Ignored if required dependencies are not installed. Will fail silently and retry every time the song changes if Discord connection fails (e.g. Discord not open).",
 )
+@click.option(
+    "-m",
+    "--match-all",
+    "match_all",
+    is_flag=True,
+    help="Play songs that match all tags, not any.",
+)
 def play(
-    tags, shuffle_, reverse, only, volume, loop, clips, reshuffle, discord
+    tags,
+    shuffle_,
+    reverse,
+    only,
+    volume,
+    loop,
+    clips,
+    reshuffle,
+    discord,
+    match_all,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist.
@@ -1308,7 +1364,7 @@ def play(
 
     \b
     progress bar color indicates status:
-        \x1b[1;33myellow\x1b[0m    normal
+        \x1b[1;33myellow\x1b[0m   normal
         \x1b[1;35mmagenta\x1b[0m  playing clip
     """
     playlist = []
@@ -1332,14 +1388,18 @@ def play(
                     details = line.strip().split("|")
                     playlist.append(details)
         else:
+            tags = set(tags)
             playlist = []
             with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                 for line in songs_file:
                     details = line.strip().split("|")
-                    for tag in details[2].split(","):
-                        if tag in tags:
+                    song_tags = set(details[2].split(","))
+                    if not match_all:
+                        if tags & song_tags:  # intersection
                             playlist.append(details)
-                            break
+                    else:
+                        if tags <= song_tags:  # subset
+                            playlist.append(details)
 
     if shuffle_:
         shuffle(playlist)
@@ -1558,7 +1618,14 @@ def search(phrase, searching_for_tags):
     help="Show time listened for a specific year, instead of the total. Passing 'cur' will show the time listened for the current year.",
 )
 @click.option("-T", "--top", "top", type=int, help="Show the top n songs/tags.")
-def list_(search_tags, listing_tags, year, sort_, top, reverse_):
+@click.option(
+    "-m",
+    "--match-all",
+    "match_all",
+    is_flag=True,
+    help="Shows songs that match all tags instead of any tag. Ignored if '-t/--tag' is passed.",
+)
+def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
     """List the entries for all songs.
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
@@ -1634,11 +1701,25 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_):
         stats = stats_file.readlines()
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
+
+            tags = set(details[2].split(","))
+            if search_tags:
+                if match_all:
+                    if not search_tags <= tags:  # subset
+                        lines[i] = ""
+                        continue
+                else:
+                    if not search_tags & tags:  # intersection
+                        lines[i] = ""
+                        continue
+
             time_listened = stats[i].strip().split("|")[1]
             lines[i] = tuple(details) + (
                 time_listened,
                 TinyTag.get(os.path.join(SONGS_DIR, details[1])).duration,
             )
+
+        lines = [line for line in lines if line]
 
         if sort_ == "id":
             sort_key = lambda t: int(t[0])
@@ -1656,9 +1737,6 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_):
         )
 
         for details in lines:
-            tags = set(details[2].split(","))
-            if search_tags and not tags.intersection(search_tags):
-                continue
             print_entry(details)
             num_lines += 1
             no_results = False
@@ -1740,7 +1818,8 @@ def recommend(song, title):
     """Recommends songs (possibly explicit) using the YouTube Music API similar
     to the song with ID SONG to listen to.
 
-    If the `-t` flag is passed, SONG is treated as a song title."""
+    If the `-t` flag is passed, SONG is treated as a song title to search for
+    on YouTube Music."""
     try:
         from ytmusicapi import YTMusic
     except ImportError:

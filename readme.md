@@ -58,7 +58,13 @@ Also, playlists don't exist—`maestro` uses **tags**. For example, let's say yo
 
 ### `maestro add`
 
-Add a song (can be a folder of songs too!) given a file path. Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL instead of a file path. By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-m` or `--move` flag to move the file instead.
+Add a song (can be a folder of songs too!) given a file path.
+
+Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [yt-dlp](https://github.com/yt-dlp/yt-dlp) or [youtube-dl](https://github.com/ytdl-org/youtube-dl) (`yt-dlp` is way faster).
+
+Pass the `-p` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
+
+By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-m` or `--move` flag to move the file instead.
 
 ### `maestro clip`
 
@@ -77,7 +83,7 @@ List songs (or tags) and details. Use `maestro list -h` to see full options (e.g
 ### `maestro play`
 
 Play songs. Use `maestro play -h` to see full options. Has lots of features:
-- pass tag(s) as arguments to play songs with any of those tag(s)
+- pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the '-m' or '--match-all' flag)
 - shuffle playlist with the '-s' or '--shuffle' flag
 - play songs in reverse order with the '-r' or '--reverse' flag
 - loop playlist with the '-l' or '--loop' flag
@@ -106,7 +112,7 @@ Push a song to the top (or bottom) of your song list. Useful if you usually play
 
 ### `maestro recommend` (experimental)
 
-Recommend songs similar to a specific song in your list using YouTube Music. Equivalent to searching for the title of the song on YouTube Music, finding the first "Song" result, and then looking at the "Up Next" section.
+Recommend songs similar to a song title (specified directly or by ID) using YouTube Music. Equivalent to searching for the title of the song on YouTube Music, clicking on the first "Song" result, and then looking at the "Up Next" section.
 
 ### `maestro remove`
 

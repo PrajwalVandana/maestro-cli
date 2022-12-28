@@ -732,6 +732,8 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                 player_output.output(playback.curr_pos)
 
         time_listened = time() - start_time
+        if player_output.paused:
+            time_listened -= time() - pause_start
 
         with open(TOTAL_STATS_PATH, "r+", encoding="utf-8") as playlist_file:
             lines = playlist_file.readlines()

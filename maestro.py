@@ -250,7 +250,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
         playback = Playback()
         playback.load_file(song_path)
         playback.play()
-        start_time = time()
+        start_time = pause_start = time()
         playback.set_volume(player_output.volume)
 
         player_output.output(playback.curr_pos)
@@ -313,8 +313,10 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
 
                     if player_output.paused:
                         playback.pause()
+                        pause_start = time()
                     else:
                         playback.resume()
+                        start_time += time() - pause_start
 
                     if sys.platform == "darwin" and can_mac_now_playing:
                         mac_now_playing.paused = player_output.paused
@@ -468,8 +470,10 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
 
                                     if player_output.paused:
                                         playback.pause()
+                                        pause_start = time()
                                     else:
                                         playback.resume()
+                                        start_time += time() - pause_start
 
                                     if (
                                         sys.platform == "darwin"

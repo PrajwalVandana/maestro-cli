@@ -58,7 +58,7 @@ Also, playlists don't exist—`maestro` uses **tags**. For example, let's say yo
 
 ### `maestro add`
 
-Add a song (can be a folder of songs too!) given a file path. Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL.
+Add a song (can be a folder of songs too!) given a file path. Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL instead of a file path. By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-m` or `--move` flag to move the file instead.
 
 ### `maestro clip`
 

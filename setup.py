@@ -8,7 +8,7 @@ setup(
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",
     keywords="music, sound, audio, music-player, cli",
-    py_modules=["maestro", "mac_presence", "icon"],
+    py_modules=["maestro", "mac_presence", "icon", "helpers"],
     install_requires=[
         "click",
         "just_playback",

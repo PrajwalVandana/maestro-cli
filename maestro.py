@@ -2,14 +2,16 @@
 import curses
 import multiprocessing
 import os
+import subprocess
 import sys
 
 import click
 
+from collections import defaultdict
 from queue import Queue
 from random import shuffle, randint
-from shutil import copy, move
 from time import sleep, time
+
 from icon import img
 
 from just_playback import Playback
@@ -21,12 +23,7 @@ try:
 except ImportError:
     can_update_discord = False
 
-# endregion
-
-
-MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
-SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
-SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
+from helpers import *  # pylint: disable=wildcard-import,unused-wildcard-import
 
 if sys.platform == "darwin":
     try:
@@ -47,7 +44,6 @@ if sys.platform == "darwin":
 
         # globals
         mac_now_playing = MacNowPlaying()
-
         cover_img = img
 
         can_mac_now_playing = True
@@ -55,66 +51,12 @@ if sys.platform == "darwin":
         # print(e, file=open("log.txt", "a"))
         can_mac_now_playing = False
 
-EXTS = (".mp3", ".wav", ".flac", ".ogg")
-
-SCRUB_TIME = 5  # in seconds
-VOLUME_STEP = 0.01  # volume is 0-1
-HORIZONTAL_BLOCKS = {
-    1: "▏",
-    2: "▎",
-    3: "▍",
-    4: "▌",
-    5: "▋",
-    6: "▊",
-    7: "▉",
-    8: "█",
-}
-MIN_PROGRESS_BAR_WIDTH = 20
-MIN_VOLUME_BAR_WIDTH, MAX_VOLUME_BAR_WIDTH = 10, 40
+# endregion
 
 # region utility functions/classes
 
 
-class Scroller:
-    def __init__(self, num_lines, win_size):
-        self.num_lines = num_lines
-        self.win_size = win_size
-        self.pos = 0
-        self.top = 0
-
-    def scroll_forward(self):
-        if self.pos < self.num_lines - 1:
-            if (
-                self.pos == self.halfway
-                and self.top < self.num_lines - self.win_size
-            ):
-                self.top += 1
-            self.pos += 1
-
-    def scroll_backward(self):
-        if self.pos > 0:
-            if self.pos == self.halfway and self.top > 0:
-                self.top -= 1
-            self.pos -= 1
-
-    @property
-    def halfway(self):
-        return self.top + self.win_size // 2
-
-    def resize(self, win_size):
-        self.win_size = win_size
-        self.top = max(0, self.pos - self.win_size // 2)
-        self.top = max(0, min(self.num_lines - self.win_size, self.top))
-
-
-def clear_screen():
-    if os.name == "posix":
-        os.system("clear")
-    else:
-        click.clear()
-
-
-class AppDelegate(NSObject):
+class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
     def applicationDidFinishLaunching_(self, _aNotification):
         pass
 
@@ -147,14 +89,6 @@ def discord_presence_loop(song_name_queue):
         discord_connected = False
 
     while True:
-        if not discord_connected:
-            try:
-                discord_rpc = pypresence.Presence(client_id=1039038199881810040)
-                discord_rpc.connect()
-                discord_connected = True
-            except:  # pylint: disable=bare-except
-                pass
-
         song_name = ""
         if not song_name_queue.empty() or song_name:
             while not song_name_queue.empty():
@@ -198,315 +132,7 @@ def discord_presence_loop(song_name_queue):
                         discord_connected = False
 
 
-def fit_string_to_width(string, width, length_so_far):
-    line_over = False
-    if length_so_far + len(string) > width:
-        line_over = True
-        remaining_width = width - length_so_far
-        if remaining_width >= 3:
-            string = string[: (remaining_width - 3)].rstrip() + "...\n"
-        else:
-            string = "..."[:remaining_width] + "\n"
-    length_so_far += len(string)
-    return string, length_so_far, line_over
-
-
-def addstr_fit_to_width(
-    stdscr, string, width, length_so_far, line_over, *args, **kwargs
-):
-    if not line_over:
-        string, length_so_far, line_over = fit_string_to_width(
-            string, width, length_so_far
-        )
-        if string:
-            stdscr.addstr(string, *args, **kwargs)
-    return length_so_far, line_over
-
-
-def output(
-    stdscr,
-    scroller,
-    i,
-    playlist,
-    looping,
-    volume,
-    duration,
-    pos,
-    paused,
-    adding_song,
-):
-    # NOTE: terminal prints newline for some reason if len(string) == width, so
-    # NOTE:   we subtract 1
-    screen_width = stdscr.getmaxyx()[1] - 1
-
-    for j in range(scroller.top, scroller.top + scroller.win_size):
-        if j > len(playlist) - 1:
-            stdscr.addstr("\n")
-        else:
-            length_so_far, line_over = 0, False
-
-            length_so_far, line_over = addstr_fit_to_width(
-                stdscr,
-                f"{j + 1} ",
-                screen_width,
-                length_so_far,
-                line_over,
-                curses.color_pair(2),
-            )
-            if j == i:
-                length_so_far, line_over = addstr_fit_to_width(
-                    stdscr,
-                    f"{playlist[j][1]} ",
-                    screen_width,
-                    length_so_far,
-                    line_over,
-                    curses.color_pair(3) | curses.A_BOLD,
-                )
-                length_so_far, line_over = addstr_fit_to_width(
-                    stdscr,
-                    f"({playlist[j][0]}) ",
-                    screen_width,
-                    length_so_far,
-                    line_over,
-                    curses.color_pair(3),
-                )
-            else:
-                length_so_far, line_over = addstr_fit_to_width(
-                    stdscr,
-                    f"{playlist[j][1]} ({playlist[j][0]}) ",
-                    screen_width,
-                    length_so_far,
-                    line_over,
-                    (
-                        curses.color_pair(4)
-                        if (j == scroller.pos)
-                        else curses.color_pair(1)
-                    ),
-                )
-            length_so_far, line_over = addstr_fit_to_width(
-                stdscr,
-                f"{', '.join(playlist[j][2].split(','))}\n",
-                screen_width,
-                length_so_far,
-                line_over,
-                curses.color_pair(2),
-            )
-
-    if adding_song is not None:
-        adding_song_length, line_over = addstr_fit_to_width(
-            stdscr,
-            "Add song (by ID): " + adding_song[0] + "\n",
-            screen_width,
-            0,
-            False,
-            curses.color_pair(1),
-        )
-        if line_over:
-            adding_song_length -= 1  # newline doesn't count
-
-    length_so_far, line_over = 0, False
-
-    length_so_far, line_over = addstr_fit_to_width(
-        stdscr,
-        ("| " if paused else "> ") + f"({playlist[i][0]}) ",
-        screen_width,
-        length_so_far,
-        line_over,
-        curses.color_pair(13),
-    )
-    length_so_far, line_over = addstr_fit_to_width(
-        stdscr,
-        f"{playlist[i][1]} ",
-        screen_width,
-        length_so_far,
-        line_over,
-        curses.color_pair(13) | curses.A_BOLD,
-    )
-    volume_line_length_so_far, line_over = addstr_fit_to_width(
-        stdscr,
-        "%d/%d  " % (i + 1, len(playlist)),
-        screen_width,
-        length_so_far,
-        line_over,
-        curses.color_pair(12),
-    )
-    if not line_over:
-        addstr_fit_to_width(
-            stdscr,
-            " " * (screen_width - length_so_far),
-            screen_width,
-            volume_line_length_so_far,
-            line_over,
-            curses.color_pair(13),
-        )
-        # stdscr.addstr("\n")
-
-    length_so_far, line_over = 0, False
-    secs = int(pos)
-    length_so_far, line_over = addstr_fit_to_width(
-        stdscr,
-        f"{secs//60:02}:{secs%60:02} / {duration//60:02}:{duration%60:02}  ",
-        screen_width,
-        length_so_far,
-        line_over,
-        curses.color_pair(15),
-    )
-    if not line_over:
-        if screen_width - length_so_far >= MIN_PROGRESS_BAR_WIDTH + 2:
-            progress_bar_width = screen_width - length_so_far - 2
-            bar = "|"
-            progress_block_width = (progress_bar_width * 8 * pos) // duration
-            for _ in range(progress_bar_width):
-                if progress_block_width > 8:
-                    bar += HORIZONTAL_BLOCKS[8]
-                    progress_block_width -= 8
-                elif progress_block_width > 0:
-                    bar += HORIZONTAL_BLOCKS[progress_block_width]
-                    progress_block_width = 0
-                else:
-                    bar += " "
-            bar += "|"
-
-            length_so_far, line_over = addstr_fit_to_width(
-                stdscr,
-                bar,
-                screen_width,
-                length_so_far,
-                line_over,
-                curses.color_pair(15),
-            )
-        else:
-            length_so_far, line_over = addstr_fit_to_width(
-                stdscr,
-                " " * (screen_width - length_so_far),
-                screen_width,
-                length_so_far,
-                line_over,
-                curses.color_pair(13),
-            )
-    # if not line_over:
-    #     addstr_fit_to_width(
-    #         stdscr,
-    #         " " * (screen_width - length_so_far),
-    #         screen_width,
-    #         length_so_far,
-    #         line_over,
-    #         curses.color_pair(13),
-    #     )
-
-    try:
-        # right align volume bar to (progress bar) length_so_far
-        stdscr.move(stdscr.getmaxyx()[0] - 2, volume_line_length_so_far)
-        # volume_line_length_so_far, line_over = addstr_fit_to_width(
-        #     stdscr,
-        #     f"vol: {str(int(volume*100)).rjust(3)}/100 ",
-        #     screen_width,
-        #     volume_line_length_so_far,
-        #     line_over,
-        #     curses.color_pair(16),
-        # )
-        if (
-            length_so_far - volume_line_length_so_far
-            >= MIN_VOLUME_BAR_WIDTH + 10
-        ):
-            volume_bar_width = min(
-                length_so_far - volume_line_length_so_far - 10,
-                MAX_VOLUME_BAR_WIDTH,
-            )
-            bar = f"{str(int(volume*100)).rjust(3)}/100 |"
-            block_width = int(volume_bar_width * 8 * volume)
-            for _ in range(volume_bar_width):
-                if block_width > 8:
-                    bar += HORIZONTAL_BLOCKS[8]
-                    block_width -= 8
-                elif block_width > 0:
-                    bar += HORIZONTAL_BLOCKS[block_width]
-                    block_width = 0
-                else:
-                    bar += " "
-            bar += "|"
-            bar = bar.rjust(length_so_far - volume_line_length_so_far)
-
-            length_so_far, line_over = addstr_fit_to_width(
-                stdscr,
-                bar,
-                length_so_far,
-                volume_line_length_so_far,
-                line_over,
-                curses.color_pair(16),
-            )
-            # addstr_fit_to_width(
-            #     stdscr,
-            #     " " * (screen_width - length_so_far),
-            #     screen_width,
-            #     length_so_far,
-            #     line_over,
-            #     curses.color_pair(13),
-            # )
-        elif length_so_far - volume_line_length_so_far >= 7:
-            length_so_far, line_over = addstr_fit_to_width(
-                stdscr,
-                f"{str(int(volume*100)).rjust(3)}/100".rjust(
-                    length_so_far - volume_line_length_so_far
-                ),
-                length_so_far,
-                volume_line_length_so_far,
-                line_over,
-                curses.color_pair(16),
-            )
-            addstr_fit_to_width(
-                stdscr,
-                " " * (screen_width - length_so_far),
-                screen_width,
-                length_so_far,
-                line_over,
-                curses.color_pair(13),
-            )
-    except curses.error:
-        pass
-    if adding_song is not None:
-        # adding_song_length-1 b/c 0-indexed
-        stdscr.move(
-            stdscr.getmaxyx()[0] - 3,
-            adding_song_length - 1 + (adding_song[1] - len(adding_song[0])),
-        )
-
-
-def _add(path, tags, move_, songs_file, lines, song_id, prepend_newline):
-    song_name = os.path.split(path)[1]
-    dest_path = os.path.join(SONGS_DIR, song_name)
-
-    for line in lines:
-        details = line.split("|")
-        if details[1] == song_name:
-            click.secho(
-                f"Song with name '{song_name}' already exists", fg="red"
-            )
-            return
-
-    if move_:
-        move(path, dest_path)
-    else:
-        copy(path, dest_path)
-
-    tags = list(set(tags))
-
-    if prepend_newline:
-        songs_file.write("\n")
-    songs_file.write(f"{song_id}|{song_name}|{','.join(tags)}|0\n")
-
-    if not tags:
-        tags_string = ""
-    elif len(tags) == 1:
-        tags_string = f" and tag '{tags[0]}'"
-    else:
-        tags_string = f" and tags {', '.join([repr(tag) for tag in tags])}"
-    click.secho(
-        f"Added song '{song_name}' with id {song_id}" + tags_string, fg="green"
-    )
-
-
-def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
+def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
     global can_mac_now_playing  # pylint: disable=global-statement
 
     # region curses setup
@@ -519,14 +145,14 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
     # region colors
     curses.init_pair(1, curses.COLOR_WHITE, -1)
     if curses.can_change_color():
-        curses.init_pair(2, curses.COLOR_BLACK + 8, -1)
+        curses.init_pair(2, curses.COLOR_BLACK + 8, -1)  # bright black
     else:
         curses.init_pair(2, curses.COLOR_BLACK, -1)
     curses.init_pair(3, curses.COLOR_BLUE, -1)
     curses.init_pair(4, curses.COLOR_RED, -1)
     curses.init_pair(5, curses.COLOR_YELLOW, -1)
     curses.init_pair(6, curses.COLOR_GREEN, -1)
-    # curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_GREEN)
+    curses.init_pair(7, curses.COLOR_MAGENTA, -1)
     # curses.init_pair(8, curses.COLOR_BLACK, curses.COLOR_GREEN)
     # curses.init_pair(9, curses.COLOR_BLUE, curses.COLOR_GREEN)
     # curses.init_pair(10, curses.COLOR_YELLOW, curses.COLOR_GREEN)
@@ -539,13 +165,10 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
     curses.init_pair(14, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(15, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(16, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(17, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
     # endregion
 
     # endregion
-
-    scroller = Scroller(
-        len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
-    )
 
     if loop:
         next_playlist = playlist[:]
@@ -588,60 +211,59 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
         )
         app_helper_process.start()
 
-    i = 0
-    adding_song: None | tuple = None
     prev_volume = volume
-    while i in range(len(playlist)):
-        paused = False
-        mac_now_playing.paused = paused
 
-        song_path = os.path.join(SONGS_DIR, playlist[i][1])
-        duration = int(TinyTag.get(song_path).duration)
+    player_output = PlayerOutput(stdscr, playlist, volume, clip_mode)
+    while player_output.i in range(len(player_output.playlist)):
+        player_output.paused = mac_now_playing.paused = False
+
+        song_path = os.path.join(
+            SONGS_DIR, player_output.playlist[player_output.i][1]
+        )
+        player_output.duration = full_duration = int(
+            TinyTag.get(song_path).duration
+        )
+
+        clip_string = player_output.playlist[player_output.i][3]
+        if clip_string:
+            player_output.clip = tuple(
+                map(float, player_output.playlist[player_output.i][3].split())
+            )
+        else:
+            player_output.clip = 0, player_output.duration
 
         if sys.platform == "darwin" and can_mac_now_playing:
-            mac_now_playing.length = duration
             mac_now_playing.pos = 0
+            mac_now_playing.length = player_output.duration
 
-            for c in playlist[i][1]:
+            for c in player_output.playlist[player_output.i][1]:
                 mac_now_playing.artist_queue.put(c)
             mac_now_playing.artist_queue.put("\n")
 
             update_now_playing = True
 
         if update_discord:
-            for c in playlist[i][1]:
+            for c in player_output.playlist[player_output.i][1]:
                 discord_song_name_queue.put(c)
             discord_song_name_queue.put("\n")
 
         playback = Playback()
         playback.load_file(song_path)
         playback.play()
-        playback.set_volume(volume)
-
         start_time = time()
+        playback.set_volume(player_output.volume)
 
-        stdscr.clear()
-        output(
-            stdscr,
-            scroller,
-            i,
-            playlist,
-            loop,
-            volume,
-            duration,
-            playback.curr_pos,
-            paused,
-            adding_song,
-        )
-        stdscr.refresh()
-
-        frame_duration = 1
+        player_output.output(playback.curr_pos)
 
         last_timestamp = playback.curr_pos
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
+        ending = False
         while True:
-            if not playback.active:
-                next_song = 1
+            if not playback.active or (
+                player_output.clip_mode
+                and playback.curr_pos > player_output.clip[1]
+            ):
+                next_song = not player_output.looping_current_song
                 break
 
             if sys.platform == "darwin" and can_mac_now_playing:
@@ -650,7 +272,7 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                         mac_now_playing.update()
                         update_now_playing = False
                     NSRunLoop.currentRunLoop().runUntilDate_(
-                        NSDate.dateWithTimeIntervalSinceNow_(0.1)
+                        NSDate.dateWithTimeIntervalSinceNow_(0.05)
                     )
                 except:  # pylint: disable=bare-except
                     can_mac_now_playing = False
@@ -662,14 +284,17 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
             ):
                 c = mac_now_playing.q.get()
                 if c in "nNsS":
-                    if i == len(playlist) - 1 and not loop:
+                    if (
+                        player_output.i == len(player_output.playlist) - 1
+                        and not loop
+                    ):
                         pass
                     else:
                         next_song = 1
                         playback.stop()
                         break
                 elif c in "bBpP":
-                    if i == 0:
+                    if player_output.i == 0:
                         pass
                     else:
                         next_song = -1
@@ -681,41 +306,33 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                     break
                 elif c in "eEqQ":
                     playback.stop()
-                    return
+                    ending = True
+                    break
                 elif c == " ":
-                    paused = not paused
+                    player_output.paused = not player_output.paused
 
-                    if paused:
+                    if player_output.paused:
                         playback.pause()
                     else:
                         playback.resume()
 
                     if sys.platform == "darwin" and can_mac_now_playing:
-                        mac_now_playing.paused = paused
-                        if paused:
+                        mac_now_playing.paused = player_output.paused
+                        if player_output.paused:
                             mac_now_playing.pause()
                         else:
                             mac_now_playing.resume()
                         update_now_playing = True
 
-                    stdscr.clear()
-                    output(
-                        stdscr,
-                        scroller,
-                        i,
-                        playlist,
-                        loop,
-                        volume,
-                        duration,
-                        playback.curr_pos,
-                        paused,
-                        adding_song,
-                    )
-                    stdscr.refresh()
+                    player_output.output(playback.curr_pos)
             else:
                 c = stdscr.getch()
+                next_c = stdscr.getch()
+                while next_c != -1:
+                    c, next_c = next_c, stdscr.getch()
+
                 if c != -1:
-                    if adding_song is None:
+                    if player_output.adding_song is None:
                         if c == curses.KEY_LEFT:
                             playback.seek(playback.curr_pos - SCRUB_TIME)
                             if sys.platform == "darwin" and can_mac_now_playing:
@@ -723,20 +340,7 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                 update_now_playing = True
 
                             last_timestamp = playback.curr_pos
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_RIGHT:
                             playback.seek(playback.curr_pos + SCRUB_TIME)
                             if sys.platform == "darwin" and can_mac_now_playing:
@@ -744,88 +348,43 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                 update_now_playing = True
 
                             last_timestamp = playback.curr_pos
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_UP:
-                            if scroller.pos != 0:
-                                scroller.scroll_backward()
-                                stdscr.clear()
-                                output(
-                                    stdscr,
-                                    scroller,
-                                    i,
-                                    playlist,
-                                    loop,
-                                    volume,
-                                    duration,
-                                    playback.curr_pos,
-                                    paused,
-                                    adding_song,
-                                )
-                                stdscr.refresh()
+                            if player_output.scroller.pos != 0:
+                                player_output.scroller.scroll_backward()
+                                player_output.output(playback.curr_pos)
                         elif c == curses.KEY_DOWN:
-                            if scroller.pos != scroller.num_lines - 1:
-                                scroller.scroll_forward()
-                                stdscr.clear()
-                                output(
-                                    stdscr,
-                                    scroller,
-                                    i,
-                                    playlist,
-                                    loop,
-                                    volume,
-                                    duration,
-                                    playback.curr_pos,
-                                    paused,
-                                    adding_song,
-                                )
-                                stdscr.refresh()
+                            if (
+                                player_output.scroller.pos
+                                != player_output.scroller.num_lines - 1
+                            ):
+                                player_output.scroller.scroll_forward()
+                                player_output.output(playback.curr_pos)
                         elif c == curses.KEY_ENTER:
-                            i = scroller.pos - 1
+                            player_output.i = player_output.scroller.pos - 1
                             next_song = 1
                             playback.stop()
                             break
                         elif c == curses.KEY_RESIZE:
                             screen_size = stdscr.getmaxyx()
-                            scroller.resize(screen_size[0] - 2)
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.scroller.resize(screen_size[0] - 2)
+                            player_output.output(playback.curr_pos)
                         else:
                             try:
                                 c = chr(c)
                                 if c in "nNsS":
-                                    if i == len(playlist) - 1 and not loop:
+                                    if (
+                                        player_output.i
+                                        == len(player_output.playlist) - 1
+                                        and not loop
+                                    ):
                                         pass
                                     else:
                                         next_song = 1
                                         playback.stop()
                                         break
                                 elif c in "bBpP":
-                                    if i == 0:
+                                    if player_output.i == 0:
                                         pass
                                     else:
                                         next_song = -1
@@ -835,69 +394,79 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                     playback.stop()
                                     next_song = 0
                                     break
+                                elif c in "lL":
+                                    player_output.looping_current_song = (
+                                        not player_output.looping_current_song
+                                    )
+                                    player_output.output(playback.curr_pos)
+                                elif c in "cC":
+                                    player_output.clip_mode = (
+                                        not player_output.clip_mode
+                                    )
+                                    if player_output.clip_mode:
+                                        start, end = player_output.clip
+                                        player_output.duration = end - start
+                                        if (
+                                            playback.curr_pos < start
+                                            or playback.curr_pos > end
+                                        ):
+                                            playback.seek(start)
+                                            if (
+                                                sys.platform == "darwin"
+                                                and can_mac_now_playing
+                                            ):
+                                                mac_now_playing.pos = round(
+                                                    playback.curr_pos
+                                                )
+                                                update_now_playing = True
+                                            last_timestamp = playback.curr_pos
+                                    else:
+                                        player_output.duration = full_duration
+                                    player_output.output(playback.curr_pos)
                                 elif c in "eEqQ":
                                     playback.stop()
-                                    return
+                                    ending = True
+                                    break
                                 elif c in "dD":
-                                    selected_song = scroller.pos
-                                    del playlist[selected_song]
-                                    scroller.num_lines -= 1
+                                    selected_song = player_output.scroller.pos
+                                    del player_output.playlist[selected_song]
+                                    player_output.scroller.num_lines -= 1
                                     if (
-                                        selected_song == i
+                                        selected_song == player_output.i
                                     ):  # deleted current song
                                         next_song = 1
                                         # will be incremented to i
-                                        scroller.pos = i - 1
-                                        i -= 1
+                                        player_output.scroller.pos = (
+                                            player_output.i - 1
+                                        )
+                                        player_output.i -= 1
                                         playback.stop()
                                         break
                                     # deleted song before current
-                                    if selected_song < i:
-                                        i -= 1
+                                    if selected_song < player_output.i:
+                                        player_output.i -= 1
                                 elif c in "aA":
-                                    adding_song = "", 0
+                                    player_output.adding_song = "", 0
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
-                                    scroller.resize(screen_size[0] - 3)
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
+                                    player_output.scroller.resize(
+                                        screen_size[0] - 3
                                     )
-                                    stdscr.refresh()
+                                    player_output.output(playback.curr_pos)
                                 elif c in "mM":
-                                    if volume == 0:
-                                        volume = prev_volume
+                                    if player_output.volume == 0:
+                                        player_output.volume = prev_volume
                                     else:
-                                        volume = 0
-                                    playback.set_volume(volume)
+                                        player_output.volume = 0
+                                    playback.set_volume(player_output.volume)
 
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
-                                    )
-                                    stdscr.refresh()
+                                    player_output.output(playback.curr_pos)
                                 elif c == " ":
-                                    paused = not paused
+                                    player_output.paused = (
+                                        not player_output.paused
+                                    )
 
-                                    if paused:
+                                    if player_output.paused:
                                         playback.pause()
                                     else:
                                         playback.resume()
@@ -906,69 +475,38 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                         sys.platform == "darwin"
                                         and can_mac_now_playing
                                     ):
-                                        mac_now_playing.paused = paused
-                                        if paused:
+                                        mac_now_playing.paused = (
+                                            player_output.paused
+                                        )
+                                        if player_output.paused:
                                             mac_now_playing.pause()
                                         else:
                                             mac_now_playing.resume()
                                         update_now_playing = True
 
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
-                                    )
-                                    stdscr.refresh()
+                                    player_output.output(playback.curr_pos)
                                 elif c == "[":
-                                    volume = max(0, volume - VOLUME_STEP)
-                                    playback.set_volume(volume)
-
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
+                                    player_output.volume = max(
+                                        0, player_output.volume - VOLUME_STEP
                                     )
-                                    stdscr.refresh()
+                                    playback.set_volume(player_output.volume)
 
-                                    prev_volume = volume
+                                    player_output.output(playback.curr_pos)
+
+                                    prev_volume = player_output.volume
                                 elif c == "]":
-                                    volume = min(1, volume + VOLUME_STEP)
-                                    playback.set_volume(volume)
-
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
+                                    player_output.volume = min(
+                                        1, player_output.volume + VOLUME_STEP
                                     )
-                                    stdscr.refresh()
+                                    playback.set_volume(player_output.volume)
 
-                                    prev_volume = volume
+                                    player_output.output(playback.curr_pos)
+
+                                    prev_volume = player_output.volume
                                 elif c in "\r\n":
-                                    i = scroller.pos - 1
+                                    player_output.i = (
+                                        player_output.scroller.pos - 1
+                                    )
                                     next_song = 1
                                     playback.stop()
                                     break
@@ -977,120 +515,56 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                     else:
                         if c == curses.KEY_RESIZE:
                             screen_size = stdscr.getmaxyx()
-                            scroller.resize(screen_size[0] - 3)
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.scroller.resize(screen_size[0] - 3)
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_LEFT:
                             # pylint: disable=unsubscriptable-object
-                            adding_song = adding_song[0], max(
-                                adding_song[1] - 1, 0
+                            player_output.adding_song = (
+                                player_output.adding_song[0],
+                                max(player_output.adding_song[1] - 1, 0),
                             )
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_RIGHT:
                             # pylint: disable=unsubscriptable-object
-                            adding_song = adding_song[0], min(
-                                adding_song[1] + 1, len(adding_song[0])
+                            player_output.adding_song = (
+                                player_output.adding_song[0],
+                                min(
+                                    player_output.adding_song[1] + 1,
+                                    len(player_output.adding_song[0]),
+                                ),
                             )
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_UP:
-                            if scroller.pos != 0:
-                                scroller.scroll_backward()
-                                stdscr.clear()
-                                output(
-                                    stdscr,
-                                    scroller,
-                                    i,
-                                    playlist,
-                                    loop,
-                                    volume,
-                                    duration,
-                                    playback.curr_pos,
-                                    paused,
-                                    adding_song,
-                                )
-                                stdscr.refresh()
+                            if player_output.scroller.pos != 0:
+                                player_output.scroller.scroll_backward()
+                                player_output.output(playback.curr_pos)
                         elif c == curses.KEY_DOWN:
-                            if scroller.pos != scroller.num_lines - 1:
-                                scroller.scroll_forward()
-                                stdscr.clear()
-                                output(
-                                    stdscr,
-                                    scroller,
-                                    i,
-                                    playlist,
-                                    loop,
-                                    volume,
-                                    duration,
-                                    playback.curr_pos,
-                                    paused,
-                                    adding_song,
-                                )
-                                stdscr.refresh()
+                            if (
+                                player_output.scroller.pos
+                                != player_output.scroller.num_lines - 1
+                            ):
+                                player_output.scroller.scroll_forward()
+                                player_output.output(playback.curr_pos)
                         elif c == curses.KEY_DC:
                             # pylint: disable=unsubscriptable-object
-                            if adding_song[1] > 0:
-                                adding_song = (
-                                    adding_song[0][: adding_song[1] - 1]
-                                    + adding_song[0][adding_song[1] :],
-                                    adding_song[1] - 1,
+                            if player_output.adding_song[1] > 0:
+                                player_output.adding_song = (
+                                    player_output.adding_song[0][
+                                        : player_output.adding_song[1] - 1
+                                    ]
+                                    + player_output.adding_song[0][
+                                        player_output.adding_song[1] :
+                                    ],
+                                    player_output.adding_song[1] - 1,
                                 )
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_ENTER:
                             # pylint: disable=unsubscriptable-object
-                            if adding_song[0].isnumeric():
-                                for details in playlist:
-                                    if int(details[0]) == int(adding_song[0]):
+                            if player_output.adding_song[0].isnumeric():
+                                for details in player_output.playlist:
+                                    if int(details[0]) == int(
+                                        player_output.adding_song[0]
+                                    ):
                                         break
                                 else:
                                     with open(
@@ -1101,9 +575,15 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                         for line in songs_file:
                                             details = line.strip().split("|")
                                             song_id = int(details[0])
-                                            if song_id == int(adding_song[0]):
-                                                playlist.append(details)
-                                                if loop:
+                                            if song_id == int(
+                                                player_output.adding_song[0]
+                                            ):
+                                                player_output.playlist.append(
+                                                    details
+                                                )
+                                                if (
+                                                    player_output.looping_current_song
+                                                ):
                                                     if reshuffle:
                                                         next_playlist.insert(
                                                             randint(
@@ -1119,54 +599,32 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                                         next_playlist.append(
                                                             details
                                                         )
-                                                scroller.num_lines += 1
-                                                adding_song = None
+                                                player_output.scroller.num_lines += (
+                                                    1
+                                                )
+                                                player_output.adding_song = None
                                                 curses.curs_set(False)
-                                                scroller.resize(
+                                                player_output.scroller.resize(
                                                     screen_size[0] - 2
                                                 )
-                                                stdscr.clear()
-                                                output(
-                                                    stdscr,
-                                                    scroller,
-                                                    i,
-                                                    playlist,
-                                                    loop,
-                                                    volume,
-                                                    duration,
-                                                    playback.curr_pos,
-                                                    paused,
-                                                    adding_song,
+                                                player_output.output(
+                                                    playback.curr_pos
                                                 )
-                                                stdscr.refresh()
                                                 break
                         elif c == 27:  # ESC key
-                            adding_song = None
+                            player_output.adding_song = None
                             curses.curs_set(False)
-                            scroller.resize(screen_size[0] - 2)
-                            stdscr.clear()
-                            output(
-                                stdscr,
-                                scroller,
-                                i,
-                                playlist,
-                                loop,
-                                volume,
-                                duration,
-                                playback.curr_pos,
-                                paused,
-                                adding_song,
-                            )
-                            stdscr.refresh()
+                            player_output.scroller.resize(screen_size[0] - 2)
+                            player_output.output(playback.curr_pos)
                         else:
                             try:
                                 c = chr(c)
                                 if c in "\r\n":
                                     # pylint: disable=unsubscriptable-object
-                                    if adding_song[0].isnumeric():
-                                        for details in playlist:
+                                    if player_output.adding_song[0].isnumeric():
+                                        for details in player_output.playlist:
                                             if int(details[0]) == int(
-                                                adding_song[0]
+                                                player_output.adding_song[0]
                                             ):
                                                 break
                                         else:
@@ -1181,10 +639,16 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                                     )
                                                     song_id = int(details[0])
                                                     if song_id == int(
-                                                        adding_song[0]
+                                                        player_output.adding_song[
+                                                            0
+                                                        ]
                                                     ):
-                                                        playlist.append(details)
-                                                        if loop:
+                                                        player_output.playlist.append(
+                                                            details
+                                                        )
+                                                        if (
+                                                            player_output.looping_current_song
+                                                        ):
                                                             if reshuffle:
                                                                 next_playlist.insert(
                                                                     randint(
@@ -1200,71 +664,47 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                                                                 next_playlist.append(
                                                                     details
                                                                 )
-                                                        scroller.num_lines += 1
-                                                        adding_song = None
+                                                        player_output.scroller.num_lines += (
+                                                            1
+                                                        )
+                                                        player_output.adding_song = (
+                                                            None
+                                                        )
                                                         curses.curs_set(False)
-                                                        scroller.resize(
+                                                        player_output.scroller.resize(
                                                             screen_size[0] - 2
                                                         )
-                                                        stdscr.clear()
-                                                        output(
-                                                            stdscr,
-                                                            scroller,
-                                                            i,
-                                                            playlist,
-                                                            loop,
-                                                            volume,
-                                                            duration,
-                                                            playback.curr_pos,
-                                                            paused,
-                                                            adding_song,
+                                                        player_output.output(
+                                                            playback.curr_pos
                                                         )
-                                                        stdscr.refresh()
                                                         break
                                 elif c in "\b\x7f":
                                     # pylint: disable=unsubscriptable-object
-                                    if adding_song[1] > 0:
-                                        adding_song = (
-                                            adding_song[0][: adding_song[1] - 1]
-                                            + adding_song[0][adding_song[1] :],
-                                            adding_song[1] - 1,
+                                    if player_output.adding_song[1] > 0:
+                                        player_output.adding_song = (
+                                            player_output.adding_song[0][
+                                                : player_output.adding_song[1]
+                                                - 1
+                                            ]
+                                            + player_output.adding_song[0][
+                                                player_output.adding_song[1] :
+                                            ],
+                                            player_output.adding_song[1] - 1,
                                         )
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
-                                    )
-                                    stdscr.refresh()
+                                    player_output.output(playback.curr_pos)
                                 else:
-                                    adding_song = (
+                                    player_output.adding_song = (
                                         # pylint: disable=unsubscriptable-object
-                                        adding_song[0][: adding_song[1]]
+                                        player_output.adding_song[0][
+                                            : player_output.adding_song[1]
+                                        ]
                                         + c
-                                        + adding_song[0][adding_song[1] :],
-                                        adding_song[1] + 1,
+                                        + player_output.adding_song[0][
+                                            player_output.adding_song[1] :
+                                        ],
+                                        player_output.adding_song[1] + 1,
                                     )
-                                    stdscr.clear()
-                                    output(
-                                        stdscr,
-                                        scroller,
-                                        i,
-                                        playlist,
-                                        loop,
-                                        volume,
-                                        duration,
-                                        playback.curr_pos,
-                                        paused,
-                                        adding_song,
-                                    )
-                                    stdscr.refresh()
+                                    player_output.output(playback.curr_pos)
                             except (ValueError, OverflowError):
                                 pass
 
@@ -1273,48 +713,29 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
                     playback.seek(mac_now_playing.pos)
                     last_timestamp = mac_now_playing.pos
                     update_now_playing = True
-                    stdscr.clear()
-                    output(
-                        stdscr,
-                        scroller,
-                        i,
-                        playlist,
-                        loop,
-                        volume,
-                        duration,
-                        playback.curr_pos,
-                        paused,
-                        adding_song,
-                    )
-                    stdscr.refresh()
+                    player_output.output(playback.curr_pos)
                 else:
                     mac_now_playing.pos = round(playback.curr_pos)
 
+            progress_bar_width = stdscr.getmaxyx()[1] - 18
+            frame_duration = (
+                1
+                if progress_bar_width < MIN_PROGRESS_BAR_WIDTH
+                else player_output.duration / (progress_bar_width * 8)
+            )
             if abs(playback.curr_pos - last_timestamp) > frame_duration:
                 last_timestamp = playback.curr_pos
-                stdscr.clear()
-                output(
-                    stdscr,
-                    scroller,
-                    i,
-                    playlist,
-                    loop,
-                    volume,
-                    duration,
-                    playback.curr_pos,
-                    paused,
-                    adding_song,
-                )
-                stdscr.refresh()
+                player_output.output(playback.curr_pos)
 
-        with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as playlist_file:
-            # get line with current song
+        time_listened = time() - start_time
+
+        with open(TOTAL_STATS_PATH, "r+", encoding="utf-8") as playlist_file:
             lines = playlist_file.readlines()
             for j in range(len(lines)):
-                song_id, *other, listened = lines[j].strip().split("|")
-                if song_id == playlist[i][0]:
-                    listened = float(listened) + (time() - start_time)
-                    lines[j] = "|".join([song_id, *other, str(listened)]) + "\n"
+                song_id, listened = lines[j].strip().split("|")
+                if song_id == player_output.playlist[player_output.i][0]:
+                    listened = float(listened) + time_listened
+                    lines[j] = f"{song_id}|{listened}\n"
                     break
 
             # write out
@@ -1322,36 +743,45 @@ def _play(stdscr, playlist, volume, loop, reshuffle, update_discord):
             playlist_file.write("".join(lines))
             playlist_file.truncate()
 
+        with open(CUR_YEAR_STATS_PATH, "r+", encoding="utf-8") as playlist_file:
+            lines = playlist_file.readlines()
+            for j in range(len(lines)):
+                song_id, listened = lines[j].strip().split("|")
+                if song_id == player_output.playlist[player_output.i][0]:
+                    listened = float(listened) + time_listened
+                    lines[j] = f"{song_id}|{listened}\n"
+                    break
+
+            # write out
+            playlist_file.seek(0)
+            playlist_file.write("".join(lines))
+            playlist_file.truncate()
+
+        if ending:
+            return
+
         if next_song == -1:
-            if i == scroller.pos:
-                scroller.scroll_backward()
-            i -= 1
+            if player_output.i == player_output.scroller.pos:
+                player_output.scroller.scroll_backward()
+            player_output.i -= 1
         elif next_song == 1:
-            if i == len(playlist) - 1:
+            if player_output.i == len(player_output.playlist) - 1:
                 if loop:
                     next_next_playlist = next_playlist[:]
                     if reshuffle:
                         shuffle(next_next_playlist)
-                    playlist, next_playlist = next_playlist, next_next_playlist
-                    i = -1
-                    scroller.pos = 0
+                    player_output.playlist, next_playlist = (
+                        next_playlist,
+                        next_next_playlist,
+                    )
+                    player_output.i = -1
+                    player_output.scroller.pos = 0
                 else:
-                    # getch_manager.stop()
                     return
             else:
-                if i == scroller.pos:
-                    scroller.scroll_forward()
-            i += 1
-
-
-def print_entry(entry_list):
-    """`entry_list` should be passed as a list (what you get when you call
-    `line.split("|")`)."""
-    click.secho(entry_list[0] + " ", fg="bright_black", nl=False)
-    click.secho(entry_list[1] + " ", fg="blue", nl=False)
-    if len(entry_list) > 2:
-        click.echo(", ".join(entry_list[2].split(",")) + " ", nl=False)
-    click.secho(f"{float(entry_list[3]):0.2f} secs", fg="bright_black")
+                if player_output.i == player_output.scroller.pos:
+                    player_output.scroller.scroll_forward()
+            player_output.i += 1
 
 
 # endregion
@@ -1366,9 +796,18 @@ def cli():
         with open(SONGS_INFO_PATH, "x", encoding="utf-8") as _:
             pass
 
+    if not os.path.exists(STATS_DIR):
+        os.makedirs(STATS_DIR)
+    if not os.path.exists(TOTAL_STATS_PATH):
+        with open(TOTAL_STATS_PATH, "x", encoding="utf-8") as _:
+            pass
+    if not os.path.exists(CUR_YEAR_STATS_PATH):
+        with open(CUR_YEAR_STATS_PATH, "x", encoding="utf-8") as _:
+            pass
+
 
 @cli.command()
-@click.argument("path", type=click.Path(exists=True))
+@click.argument("path")
 @click.argument("tags", nargs=-1)
 @click.option(
     "-m",
@@ -1384,11 +823,106 @@ def cli():
     is_flag=True,
     help="If PATH is a folder, add songs in subfolders.",
 )
-def add(path, tags, move_, recurse):
+@click.option(
+    "-u",
+    "--url",
+    is_flag=True,
+    help="Add a song from a YouTube or YouTube Music URL.",
+)
+@click.option(
+    "-f",
+    "--format",
+    "format_",
+    type=click.Choice(
+        [
+            "wav",
+            "mp3",
+            "flac",
+            "ogg",
+        ]
+    ),
+    help="Specify the format of the song if downloading.",
+    default="wav",
+    show_default=True,
+)
+@click.option(
+    "-c",
+    "--clip",
+    nargs=2,
+    type=float,
+    help="Add a clip.",
+)
+def add(path, tags, move_, recurse, url, format_, clip):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if `-r` is passed). The name of each
     song will be the filename. Filenames and tags cannot contain the character
-    '|', and tags cannot contain ','."""
+    '|', and tags cannot contain ','.
+
+    If the '-u' or '--url' flag is passed, PATH is treated as a YouTube or
+    YouTube Music URL instead of a file path.
+
+    Unlike `maestro clip`, you cannot pass only the start time and not the end.
+    To get around this, you can pass -1 as the end time."""
+
+    if not url and not os.path.exists(path):
+        click.secho(
+            f"'{path}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-u/--url' flag.",
+            fg="red",
+        )
+        return
+    elif url:
+        subprocess.run(
+            [
+                "youtube-dl",
+                path,
+                "-x",
+                "--audio-format",
+                format_,
+                "--no-playlist",
+                "-o",
+                os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
+            ],
+            check=True,
+        )
+
+        for fname in os.listdir(MAESTRO_DIR):
+            if fname.endswith(format_):
+                path = os.path.join(MAESTRO_DIR, fname).replace("|", "-")
+                break
+
+        move_ = True
+
+    if clip is not None:
+        song_duration = TinyTag.get(path).duration
+
+        start, end = clip
+        if start < 0:
+            click.secho("Clip start time cannot be negative", fg="red")
+            return
+        elif start > song_duration:
+            click.secho(
+                "Clip start time cannot be greater than the song duration",
+                fg="red",
+            )
+            return
+
+        if end == -1:
+            end = song_duration
+        elif end < start:
+            click.secho(
+                "Clip end time cannot be less than the clip start time",
+                fg="red",
+            )
+            return
+        elif end > song_duration:
+            click.secho(
+                "Clip end time cannot be greater than the song duration",
+                fg="red",
+            )
+            return
+    else:
+        start = end = None
+
     ext = os.path.splitext(path)[1]
     if not os.path.isdir(path) and ext not in EXTS:
         click.secho(f"'{ext}' is not supported", fg="red")
@@ -1420,7 +954,7 @@ def add(path, tags, move_, recurse):
                                     f"Skipping {fname} because it contains '|'"
                                 )
                                 continue
-                            _add(
+                            add_song(
                                 os.path.join(dirpath, fname),
                                 tags,
                                 move_,
@@ -1428,6 +962,8 @@ def add(path, tags, move_, recurse):
                                 lines,
                                 song_id,
                                 prepend_newline,
+                                start,
+                                end
                             )
                             prepend_newline = False
                             song_id += 1
@@ -1441,7 +977,7 @@ def add(path, tags, move_, recurse):
                             continue
                         full_path = os.path.join(path, fname)
                         if os.path.isfile(full_path):
-                            _add(
+                            add_song(
                                 full_path,
                                 tags,
                                 move_,
@@ -1449,6 +985,8 @@ def add(path, tags, move_, recurse):
                                 lines,
                                 song_id,
                                 prepend_newline,
+                                start,
+                                end
                             )
                             prepend_newline = False
                             song_id += 1
@@ -1456,7 +994,7 @@ def add(path, tags, move_, recurse):
             if "|" in os.path.basename(path):
                 click.secho("Filename cannot contain '|'", fg="red")
                 return
-            _add(
+            add_song(
                 path,
                 tags,
                 move_,
@@ -1464,41 +1002,9 @@ def add(path, tags, move_, recurse):
                 lines,
                 song_id,
                 prepend_newline,
+                start,
+                end
             )
-
-
-@cli.command(name="list")
-@click.argument("search_tags", metavar="TAGS", nargs=-1)
-@click.option(
-    "-s", "--sort", "sort_", is_flag=True, help="Sort by time listened."
-)
-def list_(search_tags, sort_):
-    """List the entries for all songs.
-
-    If TAGS are passed, any song matching any tag will be listed.
-
-    If the `-s` flag is passed, the songs will be sorted by time listened."""
-    if search_tags:
-        search_tags = set(search_tags)
-
-    no_results = True
-    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
-        lines = songs_file.readlines()
-        if sort_:
-            lines.sort(
-                key=lambda line: float(line.strip().split("|")[3]),
-                reverse=True,
-            )
-        for line in lines:
-            details = line.strip().split("|")
-            tags = set(details[2].split(","))
-            if search_tags and not tags.intersection(search_tags):
-                continue
-            print_entry(details)
-            no_results = False
-
-    if no_results and search_tags:
-        click.secho("No songs found matching tags", fg="red")
 
 
 @cli.command()
@@ -1517,7 +1023,7 @@ def remove(args, force, tag):
             song_ids = {int(song_id) for song_id in args}
         except ValueError:
             click.secho(
-                "Song IDs must be integers. To delete tags, pass the '-t' flag.",
+                "Song IDs must be integers. To delete tags, pass the '-t/--tag' flag.",
                 fg="red",
             )
             return
@@ -1531,8 +1037,17 @@ def remove(args, force, tag):
                 print("Did not delete.")
                 return
 
-        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        with (
+            open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+            open(TOTAL_STATS_PATH, "r", encoding="utf-8") as total_stats_file,
+            open(
+                CUR_YEAR_STATS_PATH, "r", encoding="utf-8"
+            ) as cur_year_stats_file,
+        ):
             lines = songs_file.read().splitlines()
+            total_stats_lines = total_stats_file.read().splitlines()
+            cur_year_stats_lines = cur_year_stats_file.read().splitlines()
+
             to_be_deleted = []
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")
@@ -1546,14 +1061,25 @@ def remove(args, force, tag):
                     )  # remove actual song
 
                     click.secho(
-                        f"Removed song '{song_name}' with id {song_id}",
+                        f"Removed song '{song_name}' with ID {song_id}",
                         fg="green",
                     )
+
             for i in reversed(to_be_deleted):
                 del lines[i]
+                del total_stats_lines[i]
+                del cur_year_stats_lines[i]
 
-        with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
+        with (
+            open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file,
+            open(TOTAL_STATS_PATH, "w", encoding="utf-8") as total_stats_file,
+            open(
+                CUR_YEAR_STATS_PATH, "w", encoding="utf-8"
+            ) as cur_year_stats_file,
+        ):
             songs_file.write("\n".join(lines))
+            total_stats_file.write("\n".join(total_stats_lines))
+            cur_year_stats_file.write("\n".join(cur_year_stats_lines))
     else:
         tags_to_remove = set(args)
         if not force:
@@ -1730,6 +1256,9 @@ def untag(song_ids, tags, all_):
 )
 @click.option("-l", "--loop", "loop", is_flag=True, help="Loop the playlist.")
 @click.option(
+    "-c", "--clips", "clips", is_flag=True, help="Start in clip mode."
+)
+@click.option(
     "-R",
     "--reshuffle",
     "reshuffle",
@@ -1743,24 +1272,38 @@ def untag(song_ids, tags, all_):
     is_flag=True,
     help="Discord rich presence. Ignored if required dependencies are not installed. Will fail silently and retry every time the song changes if Discord connection fails (e.g. Discord not open).",
 )
-def play(tags, shuffle_, reverse, only, volume, loop, reshuffle, discord):
+def play(
+    tags, shuffle_, reverse, only, volume, loop, clips, reshuffle, discord
+):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist.
 
     \b
-      SPACE  to pause
+      SPACE  to pause/play
         b/p  to go (b)ack to (p)revious song
           r  to (r)eplay song
         s/n  to (s)kip to (n)ext song
+          l  to (l)oop the current song
+          c  to toggle (c)lip mode
        LEFT  to rewind 5s
       RIGHT  to fast forward 5s
           [  to decrease volume
           ]  to increase volume
           m  to (m)ute/unmute
         e/q  to (e)nd/(q)uit the song player
-    UP/DOWN  to scroll through the playlist (changing selected song)
+    UP/DOWN  to scroll through the playlist (mouse scrolling should also work)
           d  to delete the selected (not necessarily currently playing!) song from the playlist
           a  to add a song (by ID) to the end of the playlist
+
+    \b
+    song color indicates mode:
+        \x1b[1;34mblue\x1b[0m     normal
+        \x1b[1;33myellow\x1b[0m   looping current song
+
+    \b
+    progress bar color indicates status:
+        \x1b[1;33myellow\x1b[0m    normal
+        \x1b[1;35mmagenta\x1b[0m  playing clip
     """
     playlist = []
 
@@ -1806,6 +1349,7 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle, discord):
             playlist,
             volume,
             loop,
+            clips,
             reshuffle,
             discord and can_update_discord,
         )
@@ -1822,21 +1366,22 @@ def play(tags, shuffle_, reverse, only, volume, loop, reshuffle, discord):
 @click.argument("original")
 @click.argument("new_name")
 def rename(original, new_name, renaming_tag):
-    """Renames the song with the id ORIGINAL to NEW_NAME. The extension of the
+    """Renames the song with the ID ORIGINAL to NEW_NAME. The extension of the
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
 
-    If the `-t/--tag` flag is passed, treats ORIGINAL as a tag, renaming it to
-    NEW_NAME.
+    If the `-t/--tag` flag is passed, treats ORIGINAL as a tag, renaming all
+    ocurrences of it to NEW_NAME.
     """
     songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
     lines = songs_file.read().splitlines()
     if not renaming_tag:
         if not original.isnumeric():
             click.secho(
-                "Song ID must be an integer. To rename a tag, pass the -t flag",
+                "Song ID must be an integer. To rename a tag, pass the '-t/--tag' flag",
                 fg="red",
             )
             return
+        original = int(original)
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
             if int(details[0]) == original:
@@ -1854,16 +1399,15 @@ def rename(original, new_name, renaming_tag):
                 )
 
                 click.secho(
-                    f"Renamed song '{old_name}' with id {original} to '{details[1]}'",
+                    f"Renamed song '{old_name}' with ID {original} to '{details[1]}'",
                     fg="green",
                 )
 
                 break
         else:
-            click.secho(f"Song with id {original} not found", fg="red")
+            click.secho(f"Song with ID {original} not found", fg="red")
             songs_file.close()
     else:
-        original = original.lower()
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
             tags = details[2].split(",")
@@ -1937,14 +1481,15 @@ def search(phrase, searching_for_tags):
             results = set(), set()  # starts, contains but does not start
             for line in songs_file:
                 song_id, song_name, tags, *_ = line.strip().split("|")
-                tags = tags.split(",")
+                if tags:
+                    tags = tags.split(",")
 
-                for tag in tags:
-                    tag_lower = tag.lower()
-                    if tag_lower.startswith(phrase):
-                        results[0].add(tag)
-                    elif phrase in tag_lower:
-                        results[1].add(tag)
+                    for tag in tags:
+                        tag_lower = tag.lower()
+                        if tag_lower.startswith(phrase):
+                            results[0].add(tag)
+                        elif phrase in tag_lower:
+                            results[1].add(tag)
 
             if not any(results):
                 click.secho("No results found", fg="red")
@@ -1961,13 +1506,426 @@ def search(phrase, searching_for_tags):
             )
 
 
+@cli.command(name="list")
+@click.argument("search_tags", metavar="TAGS", nargs=-1)
+@click.option(
+    "-s",
+    "--sort",
+    "sort_",
+    type=click.Choice(
+        (
+            "id",
+            "name",
+            "n",
+            "listen-time",
+            "listen_time",
+            "l",
+            "duration",
+            "d",
+            "times-listened",
+            "times_listened",
+            "t",
+        )
+    ),
+    help="Sort by ID, name, seconds listened, or times listened (seconds/song duration). Greatest first.",
+    default="id",
+    show_default=True,
+)
+@click.option(
+    "-r",
+    "--reverse",
+    "reverse_",
+    is_flag=True,
+    help="Reverse the sorting order (greatest first).",
+)
+@click.option(
+    "-t",
+    "--tag",
+    "listing_tags",
+    is_flag=True,
+    help="List tags matching TAGS.",
+)
+@click.option(
+    "-y",
+    "--year",
+    "year",
+    help="Show time listened for a specific year, instead of the total. Passing 'cur' will show the time listened for the current year.",
+)
+@click.option("-T", "--top", "top", type=int, help="Show the top n songs/tags.")
+def list_(search_tags, listing_tags, year, sort_, top, reverse_):
+    """List the entries for all songs.
+
+    Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
+
+    If the `-t` flag is passed, tags will be listed instead of songs.
+
+    Output format: tag, duration, listen time, times listened
+
+    If TAGS are passed, any tag/song matching any tag in TAGS will be listed.
+    """
+    if top is not None:
+        if top < 1:
+            click.secho(
+                "The option `--top` must be a positive number", fg="red"
+            )
+            return
+
+    if year is None:
+        stats_path = TOTAL_STATS_PATH
+    else:
+        if year == "cur":
+            year = CUR_YEAR
+            stats_path = CUR_YEAR_STATS_PATH
+        else:
+            if not year.isdigit():
+                click.secho("Year must be a number or 'cur'", fg="red")
+                return
+            stats_path = os.path.join(STATS_DIR, f"{year}.txt")
+
+    if search_tags:
+        search_tags = set(search_tags)
+
+    num_lines = 0
+
+    if listing_tags:
+        with (
+            open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+            open(stats_path, "r", encoding="utf-8") as stats_file,
+        ):
+            tags = defaultdict(lambda: (0.0, 0.0))
+
+            songs_lines = songs_file.readlines()
+            stats_lines = stats_file.readlines()
+            for i in range(len(songs_lines)):
+                song_name, tag_string = songs_lines[i].strip().split("|")[1:3]
+                if tag_string:
+                    for tag in tag_string.split(","):
+                        if not search_tags or tag in search_tags:
+                            tags[tag] = (
+                                tags[tag][0]
+                                + float(stats_lines[i].strip().split("|")[1]),
+                                tags[tag][1]
+                                + TinyTag.get(
+                                    os.path.join(SONGS_DIR, song_name)
+                                ).duration,
+                            )
+
+            for tag, (listen_time, total_duration) in tags.items():
+                click.echo(
+                    f"{tag} {click.style(format_seconds(total_duration, show_decimal=True), fg='bright_black')} {click.style(format_seconds(listen_time, show_decimal=True), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='bright_black')}"
+                )
+                num_lines += 1
+                if top is not None and num_lines == top:
+                    break
+        return
+
+    no_results = True
+    with (
+        open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+        open(stats_path, "r", encoding="utf-8") as stats_file,
+    ):
+        lines = songs_file.readlines()
+        stats = stats_file.readlines()
+        for i in range(len(lines)):
+            details = lines[i].strip().split("|")
+            time_listened = stats[i].strip().split("|")[1]
+            lines[i] = tuple(details) + (
+                time_listened,
+                TinyTag.get(os.path.join(SONGS_DIR, details[1])).duration,
+            )
+
+        if sort_ == "id":
+            sort_key = lambda t: int(t[0])
+        elif sort_ in ("name", "n"):
+            sort_key = lambda t: t[1]
+        elif sort_ in ("listen-time", "listen_time", "l"):
+            sort_key = lambda t: float(t[-2])
+        elif sort_ in ("duration", "d"):
+            sort_key = lambda t: float(t[-1])
+        elif sort_ in ("times-listened", "times_listened", "t"):
+            sort_key = lambda t: float(t[-2]) / float(t[-1])
+        lines.sort(
+            key=sort_key,
+            reverse=not reverse_,
+        )
+
+        for details in lines:
+            tags = set(details[2].split(","))
+            if search_tags and not tags.intersection(search_tags):
+                continue
+            print_entry(details)
+            num_lines += 1
+            no_results = False
+            if top is not None and num_lines == top:
+                break
+
+    if no_results and search_tags:
+        click.secho("No songs found matching tags", fg="red")
+    elif no_results:
+        click.secho(
+            "No songs found. Use `maestro add` to add a song.", fg="red"
+        )
+
+
 @cli.command()
+@click.option(
+    "-y",
+    "--year",
+    "year",
+    help="Show time listened for a specific year, instead of the total. Passing 'cur' will show the time listened for the current year.",
+)
 @click.argument("song_ids", type=click.INT, nargs=-1, required=True)
-def entry(song_ids):
-    """Prints the details of the song(s) with the id(s) SONG_IDS."""
+def entry(song_ids, year):
+    """Prints the details of the song(s) with the ID(s) SONG_IDS.
+
+    Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any"""
     song_ids = set(song_ids)
-    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
-        for line in songs_file:
-            details = line.strip().split("|")
-            if int(details[0]) in song_ids:
-                print_entry(details)
+
+    if year is None:
+        stats_path = TOTAL_STATS_PATH
+    else:
+        if year == "cur":
+            year = CUR_YEAR
+            stats_path = CUR_YEAR_STATS_PATH
+        else:
+            if not year.isdigit():
+                click.secho("Year must be a number", fg="red")
+                return
+            stats_path = os.path.join(STATS_DIR, f"{year}.txt")
+
+    try:
+        with (
+            open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+            open(stats_path, "r", encoding="utf-8") as stats_file,
+        ):
+            lines = songs_file.readlines()
+            stats_lines = stats_file.readlines()
+            for i in range(len(lines)):
+                details = lines[i].strip().split("|")
+                if int(details[0]) in song_ids:
+                    print_entry(
+                        details
+                        + stats_lines[i].strip().split("|")[1:2]
+                        + [
+                            TinyTag.get(
+                                os.path.join(SONGS_DIR, details[1])
+                            ).duration
+                        ]
+                    )
+                    song_ids.remove(int(details[0]))
+    except FileNotFoundError:
+        click.secho(f"No stats found for year {year}", fg="red")
+
+    if song_ids:
+        song_ids = [str(id_) for id_ in song_ids]
+        click.secho(f"No songs found with IDs: {', '.join(song_ids)}", fg="red")
+
+
+@cli.command()
+@click.argument("song", required=True)
+@click.option(
+    "-t",
+    "--title",
+    "title",
+    is_flag=True,
+    help="Treat SONG as a song title instead of an ID.",
+)
+def recommend(song, title):
+    """Recommends songs (possibly explicit) using the YouTube Music API similar
+    to the song with ID SONG to listen to.
+
+    If the `-t` flag is passed, SONG is treated as a song title."""
+    try:
+        from ytmusicapi import YTMusic
+    except ImportError:
+        click.secho(
+            "The `recommend` command requires the `ytmusicapi` package to be installed. Run `pip install ytmusicapi` to install it.",
+            fg="red",
+        )
+        return
+
+    ytmusic = YTMusic()
+
+    if title:
+        results = ytmusic.search(song, filter="songs")
+    else:
+        if not song.isdigit():
+            click.secho(
+                "Song ID must be a number. To get recommendations by title, pass the '-t/--title' flag.",
+                fg="red",
+            )
+            return
+
+        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+            for line in songs_file:
+                details = line.strip().split("|")
+                if details[0] == song:
+                    results = ytmusic.search(
+                        os.path.splitext(details[1])[0], filter="songs"
+                    )
+                    break
+            else:
+                click.secho(f"No song found with ID {song}", fg="red")
+                return
+
+    yt_music_playlist = ytmusic.get_watch_playlist(results[0]["videoId"])
+
+    click.echo("Recommendations for ", nl=False)
+    click.secho(
+        yt_music_playlist["tracks"][0]["title"] + " ",
+        fg="blue",
+        nl=False,
+    )
+    click.secho(
+        f"(https://music.youtube.com/watch?v={yt_music_playlist['tracks'][0]['videoId']})",
+        fg="bright_black",
+        nl=False,
+    )
+    click.echo(":")
+    for track in yt_music_playlist["tracks"][1:]:
+        click.secho(track["title"] + " ", fg="blue", bold=True, nl=False)
+        click.secho(
+            "https://music.youtube.com/watch?v=", fg="bright_black", nl=False
+        )
+        click.secho(track["videoId"], fg="bright_black", bold=True)
+
+
+@cli.command()
+@click.argument("song_ids", required=True, type=int, nargs=-1)
+@click.option("-b", "--bottom", "bottom", is_flag=True)
+def push(song_ids, bottom):
+    """
+    Push the song(s) with ID(s) SONG_IDS to the top of the playlist (as if they
+    were the songs most recently added) in the order they are passed (e.g.
+    `maestro push 1 2 3` will make the most recent song be 3).
+
+    If the `-b` flag is passed, the song(s) will be pushed to the bottom of the
+    list instead.
+    """
+    with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
+        lines = songs_file.readlines()
+
+        for song_id in song_ids:
+            for i in range(len(lines)):
+                if lines[i].startswith(str(song_id)):
+                    break
+            else:
+                click.secho(f"No song found with ID {song_id}", fg="red")
+                return
+
+            if not bottom:
+                lines.append(lines.pop(i))
+            else:
+                lines.insert(0, lines.pop(i))
+
+        songs_file.seek(0)
+        songs_file.write("".join(lines))
+        songs_file.truncate()
+
+
+@cli.command(name="clip")
+@click.argument("song_id", required=True, type=int)
+@click.argument("start", required=True, type=float)
+@click.argument("end", required=False, type=float, default=None)
+def clip_(song_id, start, end):
+    """
+    Sets the clip for the song with ID SONG_ID to the time range START to END
+    (in seconds).
+
+    If END is not passed, the clip will be from START to the end of the song.
+    """
+    if start < 0:
+        click.secho("START must be a positive number.", fg="red")
+        return
+    if end is not None and end < 0:
+        click.secho("END must be a positive number.", fg="red")
+        return
+
+    with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
+        lines = songs_file.readlines()
+
+        for i in range(len(lines)):
+            if lines[i].startswith(str(song_id)):
+                break
+        else:
+            click.secho(f"No song found with ID {song_id}", fg="red")
+            return
+
+        details = lines[i].strip().split("|")
+
+        duration = TinyTag.get(os.path.join(SONGS_DIR, details[1])).duration
+        if end is None:
+            end = duration
+            if start > end:
+                click.secho(
+                    "START must be less than the song duration.", fg="red"
+                )
+                return
+        if start > end:
+            click.secho("START must be less than END.", fg="red")
+            return
+
+        lines[i] = (
+            "|".join(details[:3] + [str(start) + " " + str(end)] + details[5:])
+            + "\n"
+        )
+
+        songs_file.seek(0)
+        songs_file.write("".join(lines))
+        songs_file.truncate()
+
+
+@cli.command()
+@click.argument("song_ids", type=int, nargs=-1, required=False)
+@click.option(
+    "-a",
+    "--all",
+    "all_",
+    is_flag=True,
+    help="Remove clips for all songs. Ignores SONG_IDS.",
+)
+@click.option("-f", "--force", "force", is_flag=True)
+def unclip(song_ids, all_, force):
+    """
+    Removes clip for the song(s) with ID(s) SONG_IDS.
+
+    If the `-a/--all` flag is passed, the clips for all songs will be removed,
+    ignoring SONG_IDS. This prompts for confirmation unless the `-f/--force`
+    flag is passed.
+    """
+    if not all_:
+        if song_ids:
+            song_ids = set(song_ids)
+        else:
+            click.secho(
+                "No song IDs passed. To remove clips for all songs, pass the '-a/--all' flag.",
+                fg="red",
+            )
+            return
+
+    if all_ and not force:
+        click.echo(
+            "Are you sure you want to remove clips for all songs? This cannot be undone. [y/n] ",
+        )
+        if input().lower() != "y":
+            return
+
+    with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
+        lines = songs_file.readlines()
+
+        for i in range(len(lines)):
+            details = lines[i].strip().split("|")
+            if all_ or int(details[0]) in song_ids:
+                lines[i] = "|".join(details[:3] + [""] + details[5:]) + "\n"
+
+        songs_file.seek(0)
+        songs_file.write("".join(lines))
+        songs_file.truncate()
+
+    if all_:
+        click.secho("Removed clips for all songs.", fg="green")
+    else:
+        click.secho(
+            f"Removed clip(s) for song(s) with ID(s) {', '.join(map(str, song_ids))}.",
+            fg="green",
+        )

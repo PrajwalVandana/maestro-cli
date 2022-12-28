@@ -1,19 +1,12 @@
 # BIG thanks to @othalan on StackOverflow for this
 # adapted from https://stackoverflow.com/questions/69965175/pyobjc-accessing-mpnowplayinginfocenter
 
-# import atexit
-# import multiprocessing
-
-# from time import sleep
-
-# from AppKit import NSEventTrackingRunLoopMode
-# from AppKit import NSRunLoop
-# from AppKit import NSThread
 # pylint: disable=no-name-in-module,import-error
 from AppKit import (
     NSImage,
     NSMakeRect,
-    NSCompositingOperationSourceOver,
+    # NSCompositingOperationSourceOver,
+    NSCompositingOperationCopy,
     # NSRunLoop,
     # NSDate,
 )
@@ -196,103 +189,81 @@ class MacNowPlaying:
 
         nowplaying_info = NSMutableDictionary.dictionary()
 
-        try:
-            if not self.artist_queue.empty():
-                while not self.artist_queue.empty():
-                    self.artist = ""
+        if not self.artist_queue.empty():
+            while not self.artist_queue.empty():
+                self.artist = ""
+                c = self.artist_queue.get()
+                while c != "\n":
+                    self.artist += c
                     c = self.artist_queue.get()
-                    while c != "\n":
-                        self.artist += c
-                        c = self.artist_queue.get()
 
-            # Set basic track information
-            if self.title is not None:
-                # print("title: {}".format(self.title), file=open("log.txt", "a"))
-                nowplaying_info[MPMediaItemPropertyTitle] = self.title
-            nowplaying_info[MPMediaItemPropertyArtist] = self.artist
-            # print("artist: {}".format(self.artist), file=open("log.txt", "a"))
-            nowplaying_info[MPMediaItemPropertyPlaybackDuration] = self.length
-            # print("length: {}".format(self.length), file=open("log.txt", "a"))
-            nowplaying_info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.pos
-            # print("pos: {}".format(self.pos), file=open("log.txt", "a"))
+        # Set basic track information
+        if self.title is not None:
+            # print("title: {}".format(self.title), file=open("log.txt", "a"))
+            nowplaying_info[MPMediaItemPropertyTitle] = self.title
+        nowplaying_info[MPMediaItemPropertyArtist] = self.artist
+        # print("artist: {}".format(self.artist), file=open("log.txt", "a"))
+        nowplaying_info[MPMediaItemPropertyPlaybackDuration] = self.length
+        # print("length: {}".format(self.length), file=open("log.txt", "a"))
+        nowplaying_info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.pos
+        # print("pos: {}".format(self.pos), file=open("log.txt", "a"))
 
-            if self.cover is not None:
-                # print("cover len: {}".format(len(self.cover)), file=open("log.txt", "a"))
-                img = NSImage.alloc().initWithData_(self.cover)
+        if self.cover is not None:
+            # print("cover len: {}".format(len(self.cover)), file=open("log.txt", "a"))
+            img = NSImage.alloc().initWithData_(self.cover)
 
-                def resize(size):
-                    new = NSImage.alloc().initWithSize_(size)
-                    new.lockFocus()
-                    img.drawInRect_fromRect_operation_fraction_(
-                        NSMakeRect(0, 0, size.width, size.height),
-                        NSMakeRect(0, 0, img.size().width, img.size().height),
-                        NSCompositingOperationSourceOver,
-                        1.0,
-                    )
-                    new.unlockFocus()
-                    return new
-
-                art = MPMediaItemArtwork.alloc().initWithBoundsSize_requestHandler_(
-                    img.size(), resize
+            def resize(size):
+                new = NSImage.alloc().initWithSize_(size)
+                new.lockFocus()
+                img.drawInRect_fromRect_operation_fraction_(
+                    NSMakeRect(0, 0, size.width, size.height),
+                    NSMakeRect(0, 0, img.size().width, img.size().height),
+                    NSCompositingOperationCopy,
+                    1.0,
                 )
+                new.unlockFocus()
+                return new
 
-                # print("artwork size: {}".format(img.size()))
-                nowplaying_info[MPMediaItemPropertyArtwork] = self._cover = art
-                self.cover = None
-            else:
-                if self._cover is not None:
-                    nowplaying_info[MPMediaItemPropertyArtwork] = self._cover
+            art = MPMediaItemArtwork.alloc().initWithBoundsSize_requestHandler_(
+                img.size(), resize
+            )
 
-            # Set the metadata information for the 'Now Playing' service
-            self.info_center.setNowPlayingInfo_(nowplaying_info)
+            # print("artwork size: {}".format(img.size()))
+            nowplaying_info[MPMediaItemPropertyArtwork] = self._cover = art
+            self.cover = None
+        else:
+            if self._cover is not None:
+                nowplaying_info[MPMediaItemPropertyArtwork] = self._cover
 
-            if self.paused:
-                self.pause()
-            else:
-                self.resume()
+        # Set the metadata information for the 'Now Playing' service
+        self.info_center.setNowPlayingInfo_(nowplaying_info)
 
-            # self.info_center.setObject_for_key_(self.artist, "artist")
-            # self.info_center.setObject_for_key_(self.length, "length")
-            # self.info_center.setObject_for_key_(self.pos, "pos")
+        if self.paused:
+            self.pause()
+        else:
+            self.resume()
 
-            # # self.info_center.title = title
-            # # self.info_center.artist = artist
-            # # self.info_center.length = length
-            # # self.info_center.pos = pos
+        # self.info_center.setObject_for_key_(self.artist, "artist")
+        # self.info_center.setObject_for_key_(self.length, "length")
+        # self.info_center.setObject_for_key_(self.pos, "pos")
 
-            # nowplaying_info = NSMutableDictionary.dictionary()
+        # # self.info_center.title = title
+        # # self.info_center.artist = artist
+        # # self.info_center.length = length
+        # # self.info_center.pos = pos
 
-            # nowplaying_info[MPMediaItemPropertyTitle] = title
-            # nowplaying_info[MPMediaItemPropertyArtist] = artist
-            # nowplaying_info[MPMediaItemPropertyPlaybackDuration] = length
-            # nowplaying_info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = pos
+        # nowplaying_info = NSMutableDictionary.dictionary()
 
-            # # self.info_center.setNowPlayingInfo_(nowplaying_info)
+        # nowplaying_info[MPMediaItemPropertyTitle] = title
+        # nowplaying_info[MPMediaItemPropertyArtist] = artist
+        # nowplaying_info[MPMediaItemPropertyPlaybackDuration] = length
+        # nowplaying_info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = pos
 
-            # if paused:
-            #     self.info_center.setPlaybackState_(MPMusicPlaybackStatePaused)
-            # else:
-            #     self.info_center.setPlaybackState_(MPMusicPlaybackStatePlaying)
+        # # self.info_center.setNowPlayingInfo_(nowplaying_info)
 
-            return 0
-        except AttributeError:
-            pass
+        # if paused:
+        #     self.info_center.setPlaybackState_(MPMusicPlaybackStatePaused)
+        # else:
+        #     self.info_center.setPlaybackState_(MPMusicPlaybackStatePlaying)
 
-
-# def runloop():
-#     """
-#     NOTE: This function can't be called in non-main thread.
-#     """
-#     nowplaying = MacNowPlaying()
-#     nowplaying.play("title", "artist", 100)
-#     print("connected")
-#     NSRunLoop.currentRunLoop().run()
-
-
-# runloop()
-
-# if __name__ == "__main__":
-    # main_process = multiprocessing.Process(target=runloop)
-    # main_process.start()
-    # atexit.register(main_process.terminate)
-    # main_process.join()
+        return 0

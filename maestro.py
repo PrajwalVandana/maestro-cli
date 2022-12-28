@@ -722,10 +722,13 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                     mac_now_playing.pos = round(playback.curr_pos)
 
             progress_bar_width = stdscr.getmaxyx()[1] - 18
-            frame_duration = (
-                1
-                if progress_bar_width < MIN_PROGRESS_BAR_WIDTH
-                else player_output.duration / (progress_bar_width * 8)
+            frame_duration = min(
+                (
+                    1
+                    if progress_bar_width < MIN_PROGRESS_BAR_WIDTH
+                    else player_output.duration / (progress_bar_width * 8)
+                ),
+                1,
             )
             if abs(playback.curr_pos - last_timestamp) > frame_duration:
                 last_timestamp = playback.curr_pos

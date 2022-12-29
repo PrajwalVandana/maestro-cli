@@ -2,14 +2,17 @@
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
 ## Installation
-Download the wheel or tarball (wheel is usually better) from the `dist/` folder, then run
+
+First, make sure you have Python 3 and `pip` installed. Then run
 ```
-pip install PATH_TO_WHEEL
+pip install maestro-music
 ```
+
 Alternatively, you can build `maestro` yourself—download `setup.py`, `maestro.py`, `mac_presence.py`, `helpers.py`, and `icon.py` into the same EMPTY folder, then run
 ```
 pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
 ```
+
 **NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
 
 ### Known Installation Issues

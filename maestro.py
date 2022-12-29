@@ -934,6 +934,8 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
 
                 os.rename(raw_path, sanitized_path)
                 paths.append(sanitized_path)
+            elif fname.endswith(".part"):  # delete incomplete downloads
+                os.remove(os.path.join(MAESTRO_DIR, fname))
 
         move_ = True
 

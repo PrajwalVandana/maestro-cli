@@ -2,11 +2,15 @@ from setuptools import setup
 
 
 setup(
-    name="maestro",
+    name="maestro-music",
     version="1.0.0",
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",
+    long_description=open("README.md").read(),
+    license="MIT",
+    license_files=["LICENSE"],
+    long_description_content_type="text/markdown",
     keywords="music, sound, audio, music-player, cli",
     py_modules=["maestro", "mac_presence", "icon", "helpers"],
     install_requires=[

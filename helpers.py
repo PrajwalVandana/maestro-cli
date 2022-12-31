@@ -210,13 +210,29 @@ class PlayerOutput:
             line_over,
             curses.color_pair(song_display_color + 10) | curses.A_BOLD,
         )
-        volume_line_length_so_far, line_over = addstr_fit_to_width(
+        length_so_far, line_over = addstr_fit_to_width(
             self.stdscr,
-            "%d/%d  " % (self.i + 1, len(self.playlist)),
+            "%d/%d " % (self.i + 1, len(self.playlist)),
             screen_width,
             length_so_far,
             line_over,
             curses.color_pair(12),
+        )
+        length_so_far, line_over = addstr_fit_to_width(
+            self.stdscr,
+            f"{'c' if self.clip_mode else ' '}",
+            screen_width,
+            length_so_far,
+            line_over,
+            curses.color_pair(17),
+        )
+        volume_line_length_so_far, line_over = addstr_fit_to_width(
+            self.stdscr,
+            f"{'l' if self.looping_current_song else ' '}  ",
+            screen_width,
+            length_so_far,
+            line_over,
+            curses.color_pair(15),
         )
         if not line_over:
             addstr_fit_to_width(
@@ -344,6 +360,36 @@ class PlayerOutput:
         self.stdscr.refresh()
 
 
+def init_curses(stdscr):
+    curses.start_color()
+    curses.use_default_colors()
+
+    # region colors
+
+    curses.init_pair(1, curses.COLOR_WHITE, -1)
+    curses.init_pair(2, curses.COLOR_BLACK + 8, -1)  # bright black
+    curses.init_pair(3, curses.COLOR_BLUE, -1)
+    curses.init_pair(4, curses.COLOR_RED, -1)
+    curses.init_pair(5, curses.COLOR_YELLOW, -1)
+    curses.init_pair(6, curses.COLOR_GREEN, -1)
+    curses.init_pair(7, curses.COLOR_MAGENTA, -1)
+    # curses.init_pair(8, curses.COLOR_BLACK, curses.COLOR_GREEN)
+    # curses.init_pair(9, curses.COLOR_BLUE, curses.COLOR_GREEN)
+    # curses.init_pair(10, curses.COLOR_YELLOW, curses.COLOR_GREEN)
+    # curses.init_pair(11, curses.COLOR_GREEN, curses.COLOR_GREEN)
+    curses.init_pair(12, curses.COLOR_BLACK + 8, curses.COLOR_BLACK)
+    curses.init_pair(13, curses.COLOR_BLUE, curses.COLOR_BLACK)
+    curses.init_pair(14, curses.COLOR_RED, curses.COLOR_BLACK)
+    curses.init_pair(15, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    curses.init_pair(16, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    curses.init_pair(17, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    # endregion
+
+    curses.curs_set(False)
+    stdscr.nodelay(True)
+    curses.set_escdelay(25)  # 25 ms
+
+
 def add_song(
     path,
     tags,
@@ -362,7 +408,8 @@ def add_song(
         details = line.split("|")
         if details[1] == song_name:
             click.secho(
-                f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name", fg="yellow"
+                f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name",
+                fg="yellow",
             )
             song_name += " copy"
             return

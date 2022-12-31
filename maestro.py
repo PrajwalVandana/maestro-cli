@@ -135,40 +135,7 @@ def discord_presence_loop(song_name_queue):
 def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
     global can_mac_now_playing  # pylint: disable=global-statement
 
-    # region curses setup
-    curses.start_color()
-    curses.curs_set(False)
-    curses.use_default_colors()
-    stdscr.nodelay(True)
-    curses.set_escdelay(25)  # 25 ms
-
-    # region colors
-    curses.init_pair(1, curses.COLOR_WHITE, -1)
-    if curses.can_change_color():
-        curses.init_pair(2, curses.COLOR_BLACK + 8, -1)  # bright black
-    else:
-        curses.init_pair(2, curses.COLOR_BLACK, -1)
-    curses.init_pair(3, curses.COLOR_BLUE, -1)
-    curses.init_pair(4, curses.COLOR_RED, -1)
-    curses.init_pair(5, curses.COLOR_YELLOW, -1)
-    curses.init_pair(6, curses.COLOR_GREEN, -1)
-    curses.init_pair(7, curses.COLOR_MAGENTA, -1)
-    # curses.init_pair(8, curses.COLOR_BLACK, curses.COLOR_GREEN)
-    # curses.init_pair(9, curses.COLOR_BLUE, curses.COLOR_GREEN)
-    # curses.init_pair(10, curses.COLOR_YELLOW, curses.COLOR_GREEN)
-    # curses.init_pair(11, curses.COLOR_GREEN, curses.COLOR_GREEN)
-    if curses.can_change_color():
-        curses.init_pair(12, curses.COLOR_BLACK + 8, curses.COLOR_BLACK)
-    else:
-        curses.init_pair(12, curses.COLOR_WHITE, curses.COLOR_BLACK)
-    curses.init_pair(13, curses.COLOR_BLUE, curses.COLOR_BLACK)
-    curses.init_pair(14, curses.COLOR_RED, curses.COLOR_BLACK)
-    curses.init_pair(15, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-    curses.init_pair(16, curses.COLOR_GREEN, curses.COLOR_BLACK)
-    curses.init_pair(17, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
-    # endregion
-
-    # endregion
+    init_curses(stdscr)
 
     if loop:
         next_playlist = playlist[:]
@@ -250,6 +217,13 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
         playback = Playback()
         playback.load_file(song_path)
         playback.play()
+        if player_output.clip_mode:
+            start, end = player_output.clip
+            player_output.duration = end - start
+            playback.seek(start)
+            if sys.platform == "darwin" and can_mac_now_playing:
+                mac_now_playing.pos = round(playback.curr_pos)
+            last_timestamp = playback.curr_pos
         start_time = pause_start = time()
         playback.set_volume(player_output.volume)
 
@@ -265,6 +239,18 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             ):
                 next_song = not player_output.looping_current_song
                 break
+
+            # fade in first 2 seconds
+            if (
+                player_output.clip_mode
+                and end - start > 2
+                and playback.curr_pos < start + 2
+            ):
+                playback.set_volume(
+                    player_output.volume * (playback.curr_pos - start) / 2
+                )
+            else:
+                playback.set_volume(player_output.volume)
 
             if sys.platform == "darwin" and can_mac_now_playing:
                 try:
@@ -877,8 +863,10 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
     If the '-u' or '--url' flag is passed, PATH is treated as a YouTube or
     YouTube Music URL instead of a file path.
 
-    Unlike `maestro clip`, you cannot pass only the start time and not the end.
-    To get around this, you can pass -1 as the end time."""
+    The '-c/--clip' flag can be used to add a clip of a song. It takes two
+    arguments, but unlike `maestro clip`, you cannot pass only the start time
+    and not the end. To get around this, you can pass -1 as the end time, e.g.
+    `maestro add -c 30 -1 https://www.youtube.com/watch?v=3VxuMErCd-E -u`."""
 
     paths = None
     if not url and not os.path.exists(path_):
@@ -1175,6 +1163,7 @@ def tag_(song_ids, tags):
     """Add tags to a song (passed as ID). Tags cannot contain the characters
     ',' or '|'."""
     song_ids = set(song_ids)
+    num_songs = len(song_ids)
     tags = set(tags)
     for tag in tags:
         if "," in tag or "|" in tag:
@@ -1185,7 +1174,10 @@ def tag_(song_ids, tags):
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
-            if int(details[0]) in song_ids:
+            song_id = int(details[0])
+            if song_id in song_ids:
+                song_ids.remove(song_id)
+
                 if details[2]:
                     new_tags = details[2].split(",")
                 else:
@@ -1199,8 +1191,15 @@ def tag_(song_ids, tags):
         songs_file.write("\n".join(lines))
         songs_file.close()
 
+        if song_ids:
+            click.secho(
+                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}",
+                fg="red",
+            )
+            if len(song_ids) == num_songs:
+                return
         click.secho(
-            f"Added {len(tags)} tag(s) to {len(song_ids)} song(s)",
+            f"Added {len(tags)} tag(s) to {num_songs - len(song_ids)} song(s)",
             fg="green",
         )
     else:
@@ -1224,13 +1223,17 @@ def untag(song_ids, tags, all_):
     Passing the '-a/--all' flag will remove all tags from the song, unless TAGS
     is passed (in which case the flag is ignored)."""
     song_ids = set(song_ids)
+    num_songs = len(song_ids)
     tags = set(tags)
     if tags:
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
-            if int(details[0]) in song_ids:
+            song_id = int(details[0])
+            if song_id in song_ids:
+                song_ids.remove(song_id)
+
                 tags_to_keep = [
                     tag for tag in details[2].split(",") if tag not in tags
                 ]
@@ -1243,8 +1246,15 @@ def untag(song_ids, tags, all_):
         songs_file.write("\n".join(lines))
         songs_file.close()
 
+        if song_ids:
+            click.secho(
+                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}",
+                fg="red",
+            )
+            if len(song_ids) == num_songs:
+                return
         click.secho(
-            f"Removed {len(tags)} tag(s) from {len(song_ids)} song(s)",
+            f"Removed any occurrences of {len(tags)} tag(s) from {num_songs - len(song_ids)} song(s)",
             fg="green",
         )
     else:
@@ -1371,6 +1381,8 @@ def play(
     progress bar color indicates status:
         \x1b[1;33myellow\x1b[0m   normal
         \x1b[1;35mmagenta\x1b[0m  playing clip
+
+    For the color vision deficient, both modes also have indicators in the status bar.
     """
     playlist = []
 
@@ -1588,13 +1600,11 @@ def search(phrase, searching_for_tags):
             "id",
             "name",
             "n",
-            "listen-time",
-            "listen_time",
-            "l",
+            "secs-listened",
+            "s",
             "duration",
             "d",
             "times-listened",
-            "times_listened",
             "t",
         )
     ),
@@ -1730,11 +1740,11 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             sort_key = lambda t: int(t[0])
         elif sort_ in ("name", "n"):
             sort_key = lambda t: t[1]
-        elif sort_ in ("listen-time", "listen_time", "l"):
+        elif sort_ in ("secs-listened", "s"):
             sort_key = lambda t: float(t[-2])
         elif sort_ in ("duration", "d"):
             sort_key = lambda t: float(t[-1])
-        elif sort_ in ("times-listened", "times_listened", "t"):
+        elif sort_ in ("times-listened", "t"):
             sort_key = lambda t: float(t[-2]) / float(t[-1])
         lines.sort(
             key=sort_key,
@@ -1924,12 +1934,13 @@ def clip_(song_id, start, end):
 
     If END is not passed, the clip will be from START to the end of the song.
     """
-    if start < 0:
-        click.secho("START must be a positive number.", fg="red")
-        return
-    if end is not None and end < 0:
-        click.secho("END must be a positive number.", fg="red")
-        return
+    if start is not None:
+        if start < 0:
+            click.secho("START must be a positive number.", fg="red")
+            return
+        if end is not None and end < 0:
+            click.secho("END must be a positive number.", fg="red")
+            return
 
     with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
@@ -1943,7 +1954,10 @@ def clip_(song_id, start, end):
 
         details = lines[i].strip().split("|")
 
-        duration = TinyTag.get(os.path.join(SONGS_DIR, details[1])).duration
+        song_name = details[1]
+        song_path = os.path.join(SONGS_DIR, song_name)
+        duration = TinyTag.get(song_path).duration
+
         if end is None:
             end = duration
             if start > end:

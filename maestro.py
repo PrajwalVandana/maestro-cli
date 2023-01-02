@@ -55,29 +55,28 @@ if sys.platform == "darwin":
 
 # region utility functions/classes
 
+if sys.platform == "darwin" and can_mac_now_playing:
+    class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
+        def applicationDidFinishLaunching_(self, _aNotification):
+            pass
 
-class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
-    def applicationDidFinishLaunching_(self, _aNotification):
-        pass
+        def sayHello_(self, _sender):
+            pass
 
-    def sayHello_(self, _sender):
-        pass
+    def app_helper_loop():
+        # ns_application = NSApplication.sharedApplication()
+        # logo_ns_image = NSImage.alloc().initByReferencingFile_(
+        #     "./maestro_icon.png"
+        # )
+        # ns_application.setApplicationIconImage_(logo_ns_image)
 
+        # # we must keep a reference to the delegate object ourselves,
+        # # NSApp.setDelegate_() doesn't retain it. A local variable is
+        # # enough here.
+        # delegate = AppDelegate.alloc().init()
+        # NSApp().setDelegate_(delegate)
 
-def app_helper_loop():
-    # ns_application = NSApplication.sharedApplication()
-    # logo_ns_image = NSImage.alloc().initByReferencingFile_(
-    #     "./maestro_icon.png"
-    # )
-    # ns_application.setApplicationIconImage_(logo_ns_image)
-
-    # # we must keep a reference to the delegate object ourselves,
-    # # NSApp.setDelegate_() doesn't retain it. A local variable is
-    # # enough here.
-    # delegate = AppDelegate.alloc().init()
-    # NSApp().setDelegate_(delegate)
-
-    AppHelper.runEventLoop()
+        AppHelper.runEventLoop()
 
 
 def discord_presence_loop(song_name_queue):
@@ -182,7 +181,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
 
     player_output = PlayerOutput(stdscr, playlist, volume, clip_mode)
     while player_output.i in range(len(player_output.playlist)):
-        player_output.paused = mac_now_playing.paused = False
+        player_output.paused = False
 
         song_path = os.path.join(
             SONGS_DIR, player_output.playlist[player_output.i][1]
@@ -200,6 +199,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             player_output.clip = 0, player_output.duration
 
         if sys.platform == "darwin" and can_mac_now_playing:
+            mac_now_playing.paused = False
             mac_now_playing.pos = 0
             mac_now_playing.length = player_output.duration
 
@@ -231,7 +231,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
 
         last_timestamp = playback.curr_pos
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
-        ending = False
+        player_output.ending = False
         while True:
             if not playback.active or (
                 player_output.clip_mode
@@ -291,9 +291,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                     next_song = 0
                     break
                 elif c in "eEqQ":
-                    playback.stop()
-                    ending = True
-                    break
+                    player_output.ending = not player_output.ending
                 elif c == " ":
                     player_output.paused = not player_output.paused
 
@@ -412,9 +410,9 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                                         player_output.duration = full_duration
                                     player_output.output(playback.curr_pos)
                                 elif c in "eEqQ":
-                                    playback.stop()
-                                    ending = True
-                                    break
+                                    player_output.ending = (
+                                        not player_output.ending
+                                    )
                                 elif c in "dD":
                                     selected_song = player_output.scroller.pos
                                     del player_output.playlist[selected_song]
@@ -752,7 +750,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             playlist_file.write("".join(lines))
             playlist_file.truncate()
 
-        if ending:
+        if player_output.ending:
             return
 
         if next_song == -1:
@@ -1356,21 +1354,21 @@ def play(
     your playlist.
 
     \b
-      SPACE  to pause/play
-        b/p  to go (b)ack to (p)revious song
-          r  to (r)eplay song
-        s/n  to (s)kip to (n)ext song
-          l  to (l)oop the current song
-          c  to toggle (c)lip mode
-       LEFT  to rewind 5s
-      RIGHT  to fast forward 5s
-          [  to decrease volume
-          ]  to increase volume
-          m  to (m)ute/unmute
-        e/q  to (e)nd/(q)uit the song player
-    UP/DOWN  to scroll through the playlist (mouse scrolling should also work)
-          d  to delete the selected (not necessarily currently playing!) song from the playlist
-          a  to add a song (by ID) to the end of the playlist
+      \x1b[1mSPACE\x1b[0m  to pause/play
+        \x1b[1mb/p\x1b[0m  to go (b)ack to (p)revious song
+          \x1b[1mr\x1b[0m  to (r)eplay song
+        \x1b[1ms/n\x1b[0m  to (s)kip to (n)ext song
+          \x1b[1ml\x1b[0m  to (l)oop the current song
+          \x1b[1mc\x1b[0m  to toggle (c)lip mode
+       \x1b[1mLEFT\x1b[0m  to rewind 5s
+      \x1b[1mRIGHT\x1b[0m  to fast forward 5s
+          \x1b[1m[\x1b[0m  to decrease volume
+          \x1b[1m]\x1b[0m  to increase volume
+          \x1b[1mm\x1b[0m  to (m)ute/unmute
+        \x1b[1me/q\x1b[0m  to (e)nd/(q)uit the song player after the current song (indicator in status bar, 'e/q' to cancel). Pressing 'n' while in this mode will quit immediately.
+    \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
+          \x1b[1md\x1b[0m  to delete the selected (not necessarily currently playing!) song from the playlist
+          \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
 
     \b
     song color indicates mode:

@@ -108,6 +108,7 @@ class PlayerOutput:
         self.looping_current_song = False
         self.duration = 0
         self.paused = False
+        self.ending = False
         self.adding_song: None | tuple = None
         self.clip_mode = clip_mode
         self.clip = (0, 0)
@@ -228,11 +229,19 @@ class PlayerOutput:
         )
         volume_line_length_so_far, line_over = addstr_fit_to_width(
             self.stdscr,
-            f"{'l' if self.looping_current_song else ' '}  ",
+            f"{'l' if self.looping_current_song else ' '}",
             screen_width,
             length_so_far,
             line_over,
             curses.color_pair(15),
+        )
+        volume_line_length_so_far, line_over = addstr_fit_to_width(
+            self.stdscr,
+            f"{'e' if self.ending else ' '}  ",
+            screen_width,
+            length_so_far,
+            line_over,
+            curses.color_pair(14),
         )
         if not line_over:
             addstr_fit_to_width(

@@ -7,7 +7,7 @@ setup(
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",
-    long_description=open("readme.md").read(),
+    long_description=open("readme.md", encoding="utf-8").read(),
     license="MIT",
     license_files=["LICENSE"],
     long_description_content_type="text/markdown",

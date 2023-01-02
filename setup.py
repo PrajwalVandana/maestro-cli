@@ -2,17 +2,23 @@ from setuptools import setup
 
 
 setup(
-    name="maestro",
+    name="maestro-music",
     version="1.0.0",
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",
+    long_description=open("README.md").read(),
+    license="MIT",
+    license_files=["LICENSE"],
+    long_description_content_type="text/markdown",
     keywords="music, sound, audio, music-player, cli",
-    py_modules=["maestro", "mac_presence"],
+    py_modules=["maestro", "mac_presence", "icon", "helpers"],
     install_requires=[
         "click",
         "just_playback",
         "tinytag",
+        "pypresence",
+        "librosa",
         "windows-curses; sys_platform == 'win32'",
         "pyobjc-core; sys_platform == 'darwin'",
         # "pyobjc-framework-ApplicationServices; sys_platform == 'darwin'",
@@ -23,13 +29,9 @@ setup(
         "pyobjc-framework-MediaPlayer; sys_platform == 'darwin'",
         # "pyobjc-framework-Quartz; sys_platform == 'darwin'"
     ],
-    extras_require={
-        "discord": ["pypresence"],
-    },
     entry_points={
         "console_scripts": [
             "maestro = maestro:cli",
         ],
     },
-    include_package_data=True
 )

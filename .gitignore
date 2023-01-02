@@ -9,4 +9,6 @@ __pycache__
 todo.md
 test_songs/
 convert_to_psv.py
+add_stats.py
 curses_test.py
+ytmusic_test.py

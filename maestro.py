@@ -888,7 +888,7 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                 ],
                 check=True,
             )
-        except subprocess.CalledProcessError:
+        except:
             click.echo(
                 "yt-dlp not found ... trying youtube-dl instead",
             )

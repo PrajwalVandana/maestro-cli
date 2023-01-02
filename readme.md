@@ -63,7 +63,7 @@ Also, playlists don't exist—`maestro` uses **tags**. For example, let's say yo
 
 Add a song (can be a folder of songs too!) given a file path.
 
-Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [yt-dlp](https://github.com/yt-dlp/yt-dlp) or [youtube-dl](https://github.com/ytdl-org/youtube-dl) (`yt-dlp` is way faster).
+Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg).
 
 Pass the `-p` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
 

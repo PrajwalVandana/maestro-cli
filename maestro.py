@@ -56,6 +56,7 @@ if sys.platform == "darwin":
 # region utility functions/classes
 
 if sys.platform == "darwin" and can_mac_now_playing:
+
     class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
         def applicationDidFinishLaunching_(self, _aNotification):
             pass
@@ -181,13 +182,8 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
 
     player_output = PlayerOutput(stdscr, playlist, volume, clip_mode)
     while player_output.i in range(len(player_output.playlist)):
-        player_output.paused = False
-
         song_path = os.path.join(
             SONGS_DIR, player_output.playlist[player_output.i][1]
-        )
-        player_output.duration = full_duration = int(
-            TinyTag.get(song_path).duration
         )
 
         clip_string = player_output.playlist[player_output.i][3]
@@ -197,6 +193,11 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             )
         else:
             player_output.clip = 0, player_output.duration
+
+        player_output.paused = False
+        player_output.duration = full_duration = int(
+            TinyTag.get(song_path).duration
+        )
 
         if sys.platform == "darwin" and can_mac_now_playing:
             mac_now_playing.paused = False
@@ -888,29 +889,13 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                 ],
                 check=True,
             )
-        except subprocess.CalledProcessError:
-            click.echo(
-                "yt-dlp not found ... trying youtube-dl instead",
+        except:  # pylint: disable=bare-except
+            # assuming ffmpeg is not installed
+            click.secho(
+                "Looks like ffmpeg might not be installed. Please install it and try again.",
+                fg="red",
             )
-            try:
-                subprocess.run(
-                    [
-                        "youtube-dl",
-                        path_,
-                        "-x",
-                        "--audio-format",
-                        format_,
-                        "--no-playlist" if not playlist_ else "",
-                        "-o",
-                        os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
-                    ],
-                    check=True,
-                )
-            except subprocess.CalledProcessError:
-                click.secho(
-                    "Neither yt-dlp nor youtube-dl is installed. Please install one of them and try again.",
-                )
-                return
+            return
 
         paths = []
         for fname in os.listdir(MAESTRO_DIR):

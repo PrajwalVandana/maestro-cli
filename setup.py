@@ -18,7 +18,6 @@ setup(
         "just_playback",
         "tinytag",
         "pypresence",
-        "librosa",
         "yt-dlp",
         "windows-curses; sys_platform == 'win32'",
         "pyobjc-core; sys_platform == 'darwin'",

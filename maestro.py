@@ -186,18 +186,19 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             SONGS_DIR, player_output.playlist[player_output.i][1]
         )
 
+        playback = Playback()
+        playback.load_file(song_path)
+
         clip_string = player_output.playlist[player_output.i][3]
         if clip_string:
             player_output.clip = tuple(
                 map(float, player_output.playlist[player_output.i][3].split())
             )
         else:
-            player_output.clip = 0, player_output.duration
+            player_output.clip = 0, playback.duration
 
         player_output.paused = False
-        player_output.duration = full_duration = int(
-            TinyTag.get(song_path).duration
-        )
+        player_output.duration = full_duration = playback.duration
 
         if sys.platform == "darwin" and can_mac_now_playing:
             mac_now_playing.paused = False
@@ -215,9 +216,8 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                 discord_song_name_queue.put(c)
             discord_song_name_queue.put("\n")
 
-        playback = Playback()
-        playback.load_file(song_path)
         playback.play()
+
         if player_output.clip_mode:
             start, end = player_output.clip
             player_output.duration = end - start
@@ -225,6 +225,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             if sys.platform == "darwin" and can_mac_now_playing:
                 mac_now_playing.pos = round(playback.curr_pos)
             last_timestamp = playback.curr_pos
+
         start_time = pause_start = time()
         playback.set_volume(player_output.volume)
 
@@ -410,10 +411,14 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                                     else:
                                         player_output.duration = full_duration
                                     player_output.output(playback.curr_pos)
-                                elif c in "eEqQ":
+                                elif c in "eE":
                                     player_output.ending = (
                                         not player_output.ending
                                     )
+                                    player_output.output(playback.curr_pos)
+                                elif c in "qQ":
+                                    player_output.ending = True
+                                    break
                                 elif c in "dD":
                                     selected_song = player_output.scroller.pos
                                     del player_output.playlist[selected_song]
@@ -880,7 +885,9 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                 [
                     "yt-dlp",
                     path_,
-                    "-x",
+                    "-f",
+                    "'ba'",  # download only audio (quicker than full video)
+                    "-x",  # extract audio (necessary, needs ffmpeg)
                     "--audio-format",
                     format_,
                     "--no-playlist" if not playlist_ else "",
@@ -1350,7 +1357,8 @@ def play(
           \x1b[1m[\x1b[0m  to decrease volume
           \x1b[1m]\x1b[0m  to increase volume
           \x1b[1mm\x1b[0m  to (m)ute/unmute
-        \x1b[1me/q\x1b[0m  to (e)nd/(q)uit the song player after the current song (indicator in status bar, 'e/q' to cancel). Pressing 'n' while in this mode will quit immediately.
+          \x1b[1me\x1b[0m  to (e)nd the song player after the current song (indicator in status bar, 'e' to cancel)
+          \x1b[1mq\x1b[0m  to (q)uit the song player immediately
     \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
           \x1b[1md\x1b[0m  to delete the selected (not necessarily currently playing!) song from the playlist
           \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.

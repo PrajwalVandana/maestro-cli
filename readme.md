@@ -3,19 +3,52 @@
 
 ## Installation
 
-First, make sure you have Python 3 and `pip` installed. Then run
+Make sure you have Python 3 and `pip` installed.
+
+First, run
 ```
 pip install maestro-music
 ```
 
-Alternatively, you can build `maestro` yourself—download `setup.py`, `maestro.py`, `mac_presence.py`, `helpers.py`, and `icon.py` into the same EMPTY folder, then run
+Now, if you want to be able to directly download songs from YouTube, you'll need to install [FFmpeg](https://github.com/FFmpeg/FFmpeg).
+
+### Installing FFmpeg
+
+**EASIEST**: `conda install -c conda-forge ffmpeg`
+
+But if you don't want to get `conda`, here are the instructions for each platform:
+
+#### macOS
+Requires [Homebrew](https://brew.sh/):
 ```
-pip install PATH_TO_FOLDER_THAT_HAS_SETUP_AND_MAESTRO
+brew install ffmpeg
+```
+
+#### Windows
+
+Just check out the [FFmpeg website](https://ffmpeg.org/download.html) and download the latest version of the Windows build. Make sure to add the `bin` folder to your PATH.
+
+Here are some instructions:
+[https://www.geeksforgeeks.org/how-to-install-ffmpeg-on-windows/](https://www.geeksforgeeks.org/how-to-install-ffmpeg-on-windows/)
+
+#### Linux
+```
+sudo apt install ffmpeg
 ```
 
 **NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
 
 ### Known Installation Issues
+
+Before trying the below, make sure you have the latest version of `pip` installed:
+```
+pip install --upgrade pip
+```
+
+Also, if you have `conda`, see if running the following fixes your issue before trying anything below:
+```
+conda install libsndfile ffmpeg cffi
+```
 
 `maestro` uses [just_playback](https://github.com/cheofusi/just_playback) to play sound, which uses a C library called [miniaudio](https://github.com/mackron/miniaudio). Unfortunately, the creators did not provide wheels, so installation of `just_playback` and therefore `maestro` usually fails if there's any (compatibility or otherwise) problems with your C/C++ compiler. Here are platforms where there are known issues:
 
@@ -41,7 +74,12 @@ and *now* installing `maestro` should work. Another option (especially if you're
 
 #### Linux
 
-If you have issues, try `pip install --force-reinstall --no-binary just_playback just_playback` and/or `pip install --upgrade cffi` (I forgot what exactly fixed it 💀).
+If you have issues, try:
+ * upgrading pip: `pip install --upgrade pip`
+ * uninstalling `just_playback`: `pip uninstall just_playback`
+ * reinstalling `just_playback` with the `--no-binary` flag: `pip install just_playback --no-binary just_playback --force-reinstall --upgrade`
+
+Check this out: [https://github.com/cheofusi/just_playback/issues/21](https://github.com/cheofusi/just_playback/issues/21) ... and good luck 💀.
 
 ## Platforms
 
@@ -73,7 +111,7 @@ By default, `maestro add` copies the file to its internal database (`~/.maestro-
 
 Ever been listening to music, and you're skipping every song because you keep getting bored of them? You like the songs, you're just not in the mood to listen to all of them entirely.
 
-Introducing clips, something I've always wished the big companies like Spotify, YT Music would do. Use `maestro clip` to define a clip for any song with a start and end timestamp, then `maestro play -c` to play in "clip mode" (can also be toggled while playing a normal mode session with the 'c' key)—this will play the clips for each song (or the entire song if there's no clip for that song). Now you can listen to the best parts of every song!
+Introducing clips, something I've always wished the big companies like Spotify, YT Music would do. Use `maestro clip` to define a clip for any song with a start and end timestamp, then `maestro play -c` to play in "clip mode" (can also be toggled while playing a normal mode session with the `c` key)—this will play the clips for each song (or the entire song if there's no clip). Now you can listen to only the best parts of your music!
 
 ### `maestro entry`
 
@@ -86,28 +124,29 @@ List songs (or tags) and details. Use `maestro list -h` to see full options (e.g
 ### `maestro play`
 
 Play songs. Use `maestro play -h` to see full options. Has lots of features:
-- pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the '-m' or '--match-all' flag)
-- shuffle playlist with the '-s' or '--shuffle' flag
-- play songs in reverse order with the '-r' or '--reverse' flag
-- loop playlist with the '-l' or '--loop' flag
-- shuffle playlist on loop with the '-r' or '--reshuffle' flag
+- pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the `-m` or `--match-all` flag)
+- shuffle playlist with the `-s` or `--shuffle` flag
+- play songs in reverse order with the `-r` or `--reverse` flag
+- loop playlist with the `-l` or `--loop` flag
+- shuffle playlist on loop with the `-r` or `--reshuffle` flag
 - works with headphone buttons (and the Touch Bar) on Mac using the Now Playing Center!
-- works with Discord status! (pass the '-d' or '--discord' flag)
+- works with Discord status! (pass the `-d` or `--discord` flag)
 
 While playing:
-- like a song and want to play *that specific song* on loop? click 'l' while playing to toggle loop mode (not the same as passing '-l' to `maestro play`!)
+- like a song and want to play *that specific song* on loop? click `l` while playing to toggle loop mode (not the same as passing `-l` to `maestro play`!)
 - seek with left/right arrow keys
 - volume up/down with [ and ]
-- delete selected song (not necessarily the currently playing song) with 'd'
+- delete selected song (not necessarily the currently playing song) with `d`
 - scroll with mouse or up/down arrow keys to scroll the selected song
-- 'c' to toggle clip mode
-- 'm' to mute
-- 'r' to replay a song
-- 'a' to add a song by ID to the end of the playlist
-- 'b' or 'p' to go back to the previous song
-- 's' or 'n' to go to the next song
+- `c` to toggle clip mode
+- `m` to mute
+- `r` to replay a song
+- `a` to add a song by ID to the end of the playlist
+- `b` or `p` to go back to the previous song
+- `s` or `n` to go to the next song
 - space to pause/play
-- 'e' or 'q' to exit (don't just close the window, that'll mess up the accuracy of the listen time tracker)
+- `e` to end after the current song
+- `q` to end immediately (don't just close the window or `CTRL-c`, this messes up the accuracy of the listen time statistics)
 
 ### `maestro push`
 

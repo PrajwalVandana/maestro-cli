@@ -798,11 +798,19 @@ def cli():
     if not os.path.exists(STATS_DIR):
         os.makedirs(STATS_DIR)
     if not os.path.exists(TOTAL_STATS_PATH):
-        with open(TOTAL_STATS_PATH, "x", encoding="utf-8") as _:
-            pass
+        with (
+            open(TOTAL_STATS_PATH, "w", encoding="utf-8") as f,
+            open(SONGS_INFO_PATH, "r", encoding="utf-8") as g,
+        ):
+            for line in g:
+                f.write(f"{line.strip().split('|')[0]}|0\n")
     if not os.path.exists(CUR_YEAR_STATS_PATH):
-        with open(CUR_YEAR_STATS_PATH, "x", encoding="utf-8") as _:
-            pass
+        with (
+            open(CUR_YEAR_STATS_PATH, "w", encoding="utf-8") as f,
+            open(SONGS_INFO_PATH, "r", encoding="utf-8") as g,
+        ):
+            for line in g:
+                f.write(f"{line.strip().split('|')[0]}|0\n")
 
 
 @cli.command()
@@ -1066,16 +1074,8 @@ def remove(args, force, tag):
                 print("Did not delete.")
                 return
 
-        with (
-            open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
-            open(TOTAL_STATS_PATH, "r", encoding="utf-8") as total_stats_file,
-            open(
-                CUR_YEAR_STATS_PATH, "r", encoding="utf-8"
-            ) as cur_year_stats_file,
-        ):
+        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             lines = songs_file.read().splitlines()
-            total_stats_lines = total_stats_file.read().splitlines()
-            cur_year_stats_lines = cur_year_stats_file.read().splitlines()
 
             to_be_deleted = []
             for i in range(len(lines)):
@@ -1094,21 +1094,32 @@ def remove(args, force, tag):
                         fg="green",
                     )
 
-            for i in reversed(to_be_deleted):
-                del lines[i]
-                del total_stats_lines[i]
-                del cur_year_stats_lines[i]
+        for i in reversed(to_be_deleted):
+            del lines[i]
 
-        with (
-            open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file,
-            open(TOTAL_STATS_PATH, "w", encoding="utf-8") as total_stats_file,
-            open(
-                CUR_YEAR_STATS_PATH, "w", encoding="utf-8"
-            ) as cur_year_stats_file,
-        ):
+        with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
             songs_file.write("\n".join(lines))
-            total_stats_file.write("\n".join(total_stats_lines))
-            cur_year_stats_file.write("\n".join(cur_year_stats_lines))
+
+        for stats_file in os.listdir(STATS_DIR):
+            if not stats_file.endswith(".txt"):
+                continue
+
+            stats_path = os.path.join(STATS_DIR, stats_file)
+            with open(stats_path, "r", encoding="utf-8") as stats_file:
+                stats_lines = stats_file.read().splitlines()
+
+                to_be_deleted = []
+                for i in range(len(stats_lines)):
+                    details = stats_lines[i].strip().split("|")
+                    song_id = int(details[0])
+                    if song_id in song_ids:
+                        to_be_deleted.append(i)
+
+            for i in reversed(to_be_deleted):
+                del stats_lines[i]
+
+            with open(stats_path, "w", encoding="utf-8") as stats_file:
+                stats_file.write("\n".join(stats_lines))
     else:
         tags_to_remove = set(args)
         if not force:

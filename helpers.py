@@ -437,27 +437,17 @@ def add_song(
         songs_file.write(f"{clip_start} {clip_end}")
     songs_file.write("\n")
 
-    with (
-        open(TOTAL_STATS_PATH, "r+", encoding="utf-8") as total_stats_file,
-        open(
-            CUR_YEAR_STATS_PATH, "r+", encoding="utf-8"
-        ) as cur_year_stats_file,
-    ):
-        total_stats_file_contents = total_stats_file.read()
-        if (
-            total_stats_file_contents
-            and not total_stats_file_contents.endswith("\n")
-        ):
-            total_stats_file.write("\n")
-        total_stats_file.write(f"{song_id}|0\n")
+    for stats_file in os.listdir(STATS_DIR):
+        if not stats_file.endswith(".txt"):
+            continue
 
-        cur_year_stats_file_contents = cur_year_stats_file.read()
-        if (
-            cur_year_stats_file_contents
-            and not cur_year_stats_file_contents.endswith("\n")
-        ):
-            cur_year_stats_file.write("\n")
-        cur_year_stats_file.write(f"{song_id}|0\n")
+        with open(
+            os.path.join(STATS_DIR, stats_file), "r+", encoding="utf-8"
+        ) as stats_file:
+            stats_file_contents = stats_file.read()
+            if stats_file_contents and not stats_file_contents.endswith("\n"):
+                stats_file.write("\n")
+            stats_file.write(f"{song_id}|0\n")
 
     if not tags:
         tags_string = ""

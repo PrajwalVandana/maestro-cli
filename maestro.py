@@ -219,9 +219,9 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
         playback.play()
 
         if player_output.clip_mode:
-            start, end = player_output.clip
-            player_output.duration = end - start
-            playback.seek(start)
+            clip_start, clip_end = player_output.clip
+            player_output.duration = clip_end - clip_start
+            playback.seek(clip_start)
             if sys.platform == "darwin" and can_mac_now_playing:
                 mac_now_playing.pos = round(playback.curr_pos)
             last_timestamp = playback.curr_pos
@@ -245,11 +245,12 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             # fade in first 2 seconds of clip
             if (
                 player_output.clip_mode
-                and end - start > 5  # if clip is longer than 5 seconds
-                and playback.curr_pos < start + 2
+                and clip_start != 0  # if clip doesn't start at beginning
+                and clip_end - clip_start > 5  # if clip is longer than 5 secs
+                and playback.curr_pos < clip_start + 2
             ):
                 playback.set_volume(
-                    player_output.volume * (playback.curr_pos - start) / 2
+                    player_output.volume * (playback.curr_pos - clip_start) / 2
                 )
             else:
                 playback.set_volume(player_output.volume)
@@ -353,14 +354,6 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                             next_song = 1
                             playback.stop()
                             break
-                        # elif c == curses.KEY_RESIZE:
-                        #     screen_size = stdscr.getmaxyx()
-                        #     player_output.scroller.resize(
-                        #         screen_size[0]
-                        #         - 2
-                        #         - (player_output.adding_song != None)
-                        #     )
-                        #     player_output.output(playback.curr_pos)
                         else:
                             try:
                                 c = chr(c)
@@ -396,13 +389,18 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                                         not player_output.clip_mode
                                     )
                                     if player_output.clip_mode:
-                                        start, end = player_output.clip
-                                        player_output.duration = end - start
+                                        (
+                                            clip_start,
+                                            clip_end,
+                                        ) = player_output.clip
+                                        player_output.duration = (
+                                            clip_end - clip_start
+                                        )
                                         if (
-                                            playback.curr_pos < start
-                                            or playback.curr_pos > end
+                                            playback.curr_pos < clip_start
+                                            or playback.curr_pos > clip_end
                                         ):
-                                            playback.seek(start)
+                                            playback.seek(clip_start)
                                             if (
                                                 sys.platform == "darwin"
                                                 and can_mac_now_playing

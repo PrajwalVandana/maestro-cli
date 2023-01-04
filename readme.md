@@ -93,7 +93,7 @@ Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to g
 
 `maestro` uses the concept of a positive integer **song ID** to uniquely refer to each song.
 
-Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Harry Styles songs together. Instead of adding them all to a playlist, run `maestro -t harry-styles <song IDs for each Harry Styles song>`. Then `maestro play harry-styles`.
+Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro -t jon-bellion <song IDs for each Jon Bellion song>`. Then `maestro play jon-bellion`.
 
 `maestro` also tracks listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. To get the details for this year, run `maestro entry -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
 

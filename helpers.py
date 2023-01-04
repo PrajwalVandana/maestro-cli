@@ -78,7 +78,7 @@ def fit_string_to_width(string, width, length_so_far):
         if remaining_width >= 3:
             string = string[: (remaining_width - 3)].rstrip() + "...\n"
         else:
-            string = "..."[:remaining_width] + "\n"
+            string = "." * remaining_width + "\n"
     length_so_far += len(string)
     return string, length_so_far, line_over
 
@@ -114,6 +114,10 @@ class PlayerOutput:
         self.clip = (0, 0)
 
     def output(self, pos):
+
+        screen_size = self.stdscr.getmaxyx()
+        self.scroller.resize(screen_size[0] - 2 - (self.adding_song != None))
+
         if self.clip_mode:
             pos -= self.clip[0]
 
@@ -213,7 +217,7 @@ class PlayerOutput:
         )
         length_so_far, line_over = addstr_fit_to_width(
             self.stdscr,
-            "%d/%d " % (self.i + 1, len(self.playlist)),
+            "%d/%d  " % (self.i + 1, len(self.playlist)),
             screen_width,
             length_so_far,
             line_over,
@@ -227,7 +231,7 @@ class PlayerOutput:
             line_over,
             curses.color_pair(17),
         )
-        volume_line_length_so_far, line_over = addstr_fit_to_width(
+        length_so_far, line_over = addstr_fit_to_width(
             self.stdscr,
             f"{'l' if self.looping_current_song else ' '}",
             screen_width,
@@ -235,7 +239,7 @@ class PlayerOutput:
             line_over,
             curses.color_pair(15),
         )
-        volume_line_length_so_far, line_over = addstr_fit_to_width(
+        volume_line_length_so_far, volume_line_over = addstr_fit_to_width(
             self.stdscr,
             f"{'e' if self.ending else ' '}  ",
             screen_width,
@@ -243,15 +247,14 @@ class PlayerOutput:
             line_over,
             curses.color_pair(14),
         )
-        if not line_over:
-            addstr_fit_to_width(
-                self.stdscr,
-                " " * (screen_width - length_so_far),
-                screen_width,
-                volume_line_length_so_far,
-                line_over,
-                curses.color_pair(13),
-            )
+        addstr_fit_to_width(
+            self.stdscr,
+            " " * (screen_width - volume_line_length_so_far) + '\n',
+            screen_width,
+            volume_line_length_so_far,
+            volume_line_over,
+            curses.color_pair(16),
+        )
 
         length_so_far, line_over = 0, False
         secs = int(pos)
@@ -296,11 +299,12 @@ class PlayerOutput:
                     screen_width,
                     length_so_far,
                     line_over,
-                    curses.color_pair(13),
+                    curses.color_pair(16),
                 )
 
-        try:
-            # right align volume bar to (progress bar) length_so_far
+        # try:
+        # right align volume bar to (progress bar) length_so_far
+        if not volume_line_over:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0] - 2, volume_line_length_so_far
             )
@@ -326,35 +330,43 @@ class PlayerOutput:
                 bar += "|"
                 bar = bar.rjust(length_so_far - volume_line_length_so_far)
 
-                length_so_far, line_over = addstr_fit_to_width(
-                    self.stdscr,
-                    bar,
-                    length_so_far,
-                    volume_line_length_so_far,
-                    line_over,
-                    curses.color_pair(16),
-                )
+                self.stdscr.addstr(bar, curses.color_pair(16))
+
+                # length_so_far, line_over = addstr_fit_to_width(
+                #     self.stdscr,
+                #     bar,
+                #     length_so_far,
+                #     volume_line_length_so_far,
+                #     line_over,
+                #     curses.color_pair(16),
+                # )
             elif length_so_far - volume_line_length_so_far >= 7:
-                length_so_far, line_over = addstr_fit_to_width(
-                    self.stdscr,
+                self.stdscr.addstr(
                     f"{str(int(self.volume*100)).rjust(3)}/100".rjust(
                         length_so_far - volume_line_length_so_far
                     ),
-                    length_so_far,
-                    volume_line_length_so_far,
-                    line_over,
                     curses.color_pair(16),
                 )
-                addstr_fit_to_width(
-                    self.stdscr,
-                    " " * (screen_width - length_so_far),
-                    screen_width,
-                    length_so_far,
-                    line_over,
-                    curses.color_pair(13),
-                )
-        except curses.error:
-            pass
+                # length_so_far, line_over = addstr_fit_to_width(
+                #     self.stdscr,
+                #     f"{str(int(self.volume*100)).rjust(3)}/100".rjust(
+                #         length_so_far - volume_line_length_so_far
+                #     ),
+                #     length_so_far,
+                #     volume_line_length_so_far,
+                #     line_over,
+                #     curses.color_pair(16),
+                # )
+                # addstr_fit_to_width(
+                #     self.stdscr,
+                #     " " * (screen_width - length_so_far),
+                #     screen_width,
+                #     length_so_far,
+                #     line_over,
+                #     curses.color_pair(13),
+                # )
+        # except curses.error:
+        #     pass
 
         if self.adding_song is not None:
             # adding_song_length-1 b/c 0-indexed

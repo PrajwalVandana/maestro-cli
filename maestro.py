@@ -242,10 +242,10 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                 next_song = not player_output.looping_current_song
                 break
 
-            # fade in first 2 seconds
+            # fade in first 2 seconds of clip
             if (
                 player_output.clip_mode
-                and end - start > 2
+                and end - start > 5  # if clip is longer than 5 seconds
                 and playback.curr_pos < start + 2
             ):
                 playback.set_volume(
@@ -353,10 +353,14 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                             next_song = 1
                             playback.stop()
                             break
-                        elif c == curses.KEY_RESIZE:
-                            screen_size = stdscr.getmaxyx()
-                            player_output.scroller.resize(screen_size[0] - 2)
-                            player_output.output(playback.curr_pos)
+                        # elif c == curses.KEY_RESIZE:
+                        #     screen_size = stdscr.getmaxyx()
+                        #     player_output.scroller.resize(
+                        #         screen_size[0]
+                        #         - 2
+                        #         - (player_output.adding_song != None)
+                        #     )
+                        #     player_output.output(playback.curr_pos)
                         else:
                             try:
                                 c = chr(c)
@@ -888,39 +892,30 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
         )
         return
     elif url:
-        try:
-            subprocess.run(
-                [
-                    "yt-dlp",
-                    path_,
-                    "-f",
-                    "'ba'",  # download only audio (quicker than full video)
-                    "-x",  # extract audio (necessary, needs ffmpeg)
-                    "--audio-format",
-                    format_,
-                    "--no-playlist" if not playlist_ else "",
-                    "-o",
-                    os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
-                ],
-                check=True,
-            )
-        except:  # pylint: disable=bare-except
-            # assuming ffmpeg is not installed
-            click.secho(
-                "Looks like ffmpeg might not be installed. Please install it and try again.",
-                fg="red",
-            )
-            return
+        subprocess.run(
+            [
+                "yt-dlp",
+                path_,
+                "-x",  # extract audio (necessary, needs ffmpeg)
+                "--audio-format",
+                format_,
+                "--no-playlist" if not playlist_ else "",
+                "-o",
+                os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
+            ],
+            check=True,
+        )
 
         paths = []
         for fname in os.listdir(MAESTRO_DIR):
-            if fname.endswith(format_):
-                raw_path = os.path.join(MAESTRO_DIR, fname)
-                sanitized_path = raw_path.replace("|", "-")
+            for f in ["wav", "mp3", "flac", "ogg"]:
+                if fname.endswith(f):
+                    raw_path = os.path.join(MAESTRO_DIR, fname)
+                    sanitized_path = raw_path.replace("|", "-")
 
-                os.rename(raw_path, sanitized_path)
-                paths.append(sanitized_path)
-            elif fname.endswith(".part"):  # delete incomplete downloads
+                    os.rename(raw_path, sanitized_path)
+                    paths.append(sanitized_path)
+            if fname.endswith("part"):  # delete incomplete downloads
                 os.remove(os.path.join(MAESTRO_DIR, fname))
 
         move_ = True

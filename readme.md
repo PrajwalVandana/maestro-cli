@@ -129,7 +129,7 @@ Play songs. Use `maestro play -h` to see full options. Has lots of features:
 - play songs in reverse order with the `-r` or `--reverse` flag
 - loop playlist with the `-l` or `--loop` flag
 - shuffle playlist on loop with the `-r` or `--reshuffle` flag
-- works with headphone buttons (and the Touch Bar) on Mac using the Now Playing Center!
+- works with headphone buttons (and the Touch Bar and Siri!) on Mac using the Now Playing Center!
 - works with Discord status! (pass the `-d` or `--discord` flag)
 
 While playing:

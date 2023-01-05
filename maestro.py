@@ -577,9 +577,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                                                 player_output.playlist.append(
                                                     details
                                                 )
-                                                if (
-                                                    player_output.looping_current_song
-                                                ):
+                                                if loop:
                                                     if reshuffle:
                                                         next_playlist.insert(
                                                             randint(
@@ -642,9 +640,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                                                         player_output.playlist.append(
                                                             details
                                                         )
-                                                        if (
-                                                            player_output.looping_current_song
-                                                        ):
+                                                        if loop:
                                                             if reshuffle:
                                                                 next_playlist.insert(
                                                                     randint(

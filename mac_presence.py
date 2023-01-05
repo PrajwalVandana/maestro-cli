@@ -165,7 +165,7 @@ class MacNowPlaying:
         """
         Call this method to update 'Now Playing' state to stopped
         """
-        self.q.put("e")
+        self.q.put("q")
         return 0
 
     def pause(self):

@@ -1,27 +1,45 @@
+# region imports
 import curses
+import logging
+import warnings
+
+logging.disable(logging.INFO)
+
 import os
+import threading
+
+import click
+import numpy as np
 
 from shutil import copy, move
 from datetime import date
 
-import click
+from numba import jit  # NOTE: I think I'm in love with this decorator
+from numba.core.errors import NumbaWarning
 
+warnings.simplefilter("ignore", category=NumbaWarning)
+# endregion
 
 # region constants
 
 CUR_YEAR = date.today().year
+EXTS = (".mp3", ".wav", ".flac", ".ogg")
 
+# region paths
 MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
+
 SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
+
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
+
 STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
 CUR_YEAR_STATS_PATH = os.path.join(STATS_DIR, f"{CUR_YEAR}.txt")
 TOTAL_STATS_PATH = os.path.join(STATS_DIR, "total.txt")
 
-EXTS = (".mp3", ".wav", ".flac", ".ogg")
+VIS_CACHE_DIR = os.path.join(MAESTRO_DIR, "vis-cache/")
+# endregion
 
-SCRUB_TIME = 5  # in seconds
-VOLUME_STEP = 0.01  # self.volume is 0-1
+# region player
 HORIZONTAL_BLOCKS = {
     1: "▏",
     2: "▎",
@@ -32,8 +50,33 @@ HORIZONTAL_BLOCKS = {
     7: "▉",
     8: "█",
 }
+SCRUB_TIME = 5  # in seconds
+VOLUME_STEP = 0.01  # self.volume is 0-1
 MIN_PROGRESS_BAR_WIDTH = 20
 MIN_VOLUME_BAR_WIDTH, MAX_VOLUME_BAR_WIDTH = 10, 40
+# endregion
+
+# region visualizer
+FPS = 60
+
+STEP_SIZE = 512  # librosa default
+SAMPLE_RATE = STEP_SIZE * FPS
+
+VERTICAL_BLOCKS = {
+    0: " ",
+    1: "▁",
+    2: "▂",
+    3: "▃",
+    4: "▄",
+    5: "▅",
+    6: "▆",
+    7: "▇",
+    8: "█",
+}
+VISUALIZER_HEIGHT = 8  # should divide 80
+
+FLATTEN_FACTOR = 3  # higher = more flattening; 1 = no flattening
+# endregion
 
 # endregion
 
@@ -95,8 +138,111 @@ def addstr_fit_to_width(
     return length_so_far, line_over
 
 
+@jit
+def lerp(start, stop, t):
+    return start + t * (stop - start)
+
+
+@jit
+def bin_average(arr, n, include_remainder=False):
+    remainder = arr.shape[1] % n
+    if remainder == 0:
+        return np.max(arr.reshape(arr.shape[0], -1, n), axis=1)
+
+    avg_head = np.max(arr[:, :-remainder].reshape(arr.shape[0], -1, n), axis=1)
+    if include_remainder:
+        avg_tail = np.max(
+            arr[:, -remainder:].reshape(arr.shape[0], -1, remainder), axis=1
+        )
+        return np.concatenate((avg_head, avg_tail), axis=1)
+
+    return avg_head
+
+
+@jit
+def render(num_bins, freqs, t):
+    freqs = np.round(
+        bin_average(
+            freqs[:, :, t],
+            num_bins,
+            (freqs.shape[-2] % num_bins) > num_bins / 2,
+        )
+        / 80
+        * VISUALIZER_HEIGHT
+        * 8
+    )
+
+    res = ""
+    arr = np.zeros((VISUALIZER_HEIGHT, num_bins))
+    for b in range(num_bins):
+        # NOTE: only l for now
+        bin_height = freqs[0, b]
+        h = 0
+        while bin_height > 8:
+            arr[h, b] = 8
+            bin_height -= 8
+            h += 1
+        arr[h, b] = bin_height
+
+    for h in range(VISUALIZER_HEIGHT - 1, -1, -1):
+        for b in range(num_bins):
+            res += VERTICAL_BLOCKS[arr[h, b]]
+        res += "\n"
+
+    return res.rstrip()
+
+
+class VisualizerData:
+    def __init__(self, song_path=None):
+        if song_path is None:
+            self._data = self.freqs = None
+            self.loaded_song = ""
+            self.loading = False
+            return
+
+        try:
+            self.loading = True
+
+            self._load_freqs(song_path)
+
+            self.freqs = 80 * (self.freqs / 80) ** FLATTEN_FACTOR  # flatten
+
+            self.loaded_song = song_path
+            self.loading = False
+        except:  # pylint: disable=bare-except
+            self._data = self.freqs = self.loaded_song = self.loading = None
+
+    def _load_freqs(self, song_path):
+        vis_cache_path = os.path.join(
+            VIS_CACHE_DIR,
+            os.path.splitext(os.path.basename(song_path))[0] + ".npy",
+        )
+        if not os.path.exists(vis_cache_path):
+            from librosa import (
+                load,
+                stft,
+                amplitude_to_db,
+            )
+
+            self._data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
+
+            if len(self._data.shape) == 1:  # mono -> stereo
+                self._data = np.repeat([self._data], 2, axis=0)
+            elif self._data.shape[0] == 1:  # mono -> stereo
+                self._data = np.repeat(self._data, 2, axis=0)
+            elif self._data.shape[0] == 6:  # 5.1 surround -> stereo
+                self._data = np.delete(self._data, (1, 3, 4, 5), axis=0)
+
+            self.freqs = (
+                amplitude_to_db(np.abs(stft(self._data)), ref=np.max) + 80
+            )
+            np.save(vis_cache_path, self.freqs)
+        else:
+            self.freqs = np.load(vis_cache_path)
+
+
 class PlayerOutput:
-    def __init__(self, stdscr, playlist, volume, clip_mode):
+    def __init__(self, stdscr, playlist, volume, clip_mode, visualize):
         self.stdscr = stdscr
         self.scroller = Scroller(
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
@@ -112,11 +258,39 @@ class PlayerOutput:
         self.adding_song: None | tuple = None
         self.clip_mode = clip_mode
         self.clip = (0, 0)
+        self.visualize = visualize
+        if self.visualize:
+            self.visualizer_data = VisualizerData()
+
+    @property
+    def song_path(self):
+        return os.path.join(SONGS_DIR, self.playlist[self.i][1])
 
     def output(self, pos):
+        visualize_this_frame = (
+            self.visualize and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 2
+        )
 
-        screen_size = self.stdscr.getmaxyx()
-        self.scroller.resize(screen_size[0] - 2 - (self.adding_song != None))
+        if visualize_this_frame:
+            if self.visualizer_data.loaded_song != self.song_path:
+                if self.visualizer_data.loaded_song is None:
+                    self.visualize = False
+                elif not self.visualizer_data.loading:
+                    t = threading.Thread(
+                        target=lambda: self.visualizer_data.__init__(
+                            self.song_path
+                        ),
+                        daemon=True,
+                    )
+                    t.start()
+                visualize_this_frame = False
+
+        self.scroller.resize(
+            self.stdscr.getmaxyx()[0]
+            - 2  # -2 for status bar
+            - (self.adding_song != None)  # -1 for add mode
+            - (VISUALIZER_HEIGHT if visualize_this_frame else 0)  # -visualizer
+        )
 
         if self.clip_mode:
             pos -= self.clip[0]
@@ -249,7 +423,7 @@ class PlayerOutput:
         )
         addstr_fit_to_width(
             self.stdscr,
-            " " * (screen_width - volume_line_length_so_far) + '\n',
+            " " * (screen_width - volume_line_length_so_far) + "\n",
             screen_width,
             volume_line_length_so_far,
             volume_line_over,
@@ -302,11 +476,13 @@ class PlayerOutput:
                     curses.color_pair(16),
                 )
 
-        # try:
         # right align volume bar to (progress bar) length_so_far
         if not volume_line_over:
             self.stdscr.move(
-                self.stdscr.getmaxyx()[0] - 2, volume_line_length_so_far
+                self.stdscr.getmaxyx()[0]
+                - 2
+                - (VISUALIZER_HEIGHT if visualize_this_frame else 0),
+                volume_line_length_so_far,
             )
             if (
                 length_so_far - volume_line_length_so_far
@@ -331,15 +507,6 @@ class PlayerOutput:
                 bar = bar.rjust(length_so_far - volume_line_length_so_far)
 
                 self.stdscr.addstr(bar, curses.color_pair(16))
-
-                # length_so_far, line_over = addstr_fit_to_width(
-                #     self.stdscr,
-                #     bar,
-                #     length_so_far,
-                #     volume_line_length_so_far,
-                #     line_over,
-                #     curses.color_pair(16),
-                # )
             elif length_so_far - volume_line_length_so_far >= 7:
                 self.stdscr.addstr(
                     f"{str(int(self.volume*100)).rjust(3)}/100".rjust(
@@ -347,26 +514,23 @@ class PlayerOutput:
                     ),
                     curses.color_pair(16),
                 )
-                # length_so_far, line_over = addstr_fit_to_width(
-                #     self.stdscr,
-                #     f"{str(int(self.volume*100)).rjust(3)}/100".rjust(
-                #         length_so_far - volume_line_length_so_far
-                #     ),
-                #     length_so_far,
-                #     volume_line_length_so_far,
-                #     line_over,
-                #     curses.color_pair(16),
-                # )
-                # addstr_fit_to_width(
-                #     self.stdscr,
-                #     " " * (screen_width - length_so_far),
-                #     screen_width,
-                #     length_so_far,
-                #     line_over,
-                #     curses.color_pair(13),
-                # )
-        # except curses.error:
-        #     pass
+
+        if visualize_this_frame:
+            if self.clip_mode:
+                pos += self.clip[0]
+
+            self.stdscr.move(
+                self.stdscr.getmaxyx()[0]
+                - (VISUALIZER_HEIGHT if visualize_this_frame else 0),
+                0,
+            )
+            self.stdscr.addstr(
+                render(
+                    self.stdscr.getmaxyx()[1] - 1,
+                    self.visualizer_data.freqs,
+                    round(pos * FPS),
+                )
+            )
 
         if self.adding_song is not None:
             # adding_song_length-1 b/c 0-indexed
@@ -421,15 +585,22 @@ def add_song(
     prepend_newline,
     clip_start,
     clip_end,
+    gen_vis_cache,
 ):
     song_name = os.path.split(path)[1]
+    if "|" in song_name:
+        click.secho(
+            f"The song \"{song_name}\" contains one or more '|' character(s), which is not allowed—all ocurrences have been replaced with '-'.",
+            fg="yellow",
+        )
+        song_name = song_name.replace("|", "-")
     dest_path = os.path.join(SONGS_DIR, song_name)
 
     for line in lines:
         details = line.split("|")
         if details[1] == song_name:
             click.secho(
-                f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name",
+                f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name.",
                 fg="yellow",
             )
             song_name += " copy"
@@ -473,8 +644,15 @@ def add_song(
     else:
         clip_string = ""
 
+    if gen_vis_cache:
+        data = VisualizerData(os.path.join(SONGS_DIR, song_name))
+        if data.loaded_song is None:
+            data = None
+    else:
+        data = None
+
     click.secho(
-        f"Added song '{song_name}' with ID {song_id}"
+        f"Added{' and cached visualization frequencies for' if data is not None else ''} song '{song_name}' with ID {song_id}."
         + tags_string
         + clip_string,
         fg="green",

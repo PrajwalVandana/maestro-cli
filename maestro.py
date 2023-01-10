@@ -132,7 +132,16 @@ def discord_presence_loop(song_name_queue):
                         discord_connected = False
 
 
-def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
+def _play(
+    stdscr,
+    playlist,
+    volume,
+    loop,
+    clip_mode,
+    reshuffle,
+    update_discord,
+    visualize,
+):
     global can_mac_now_playing  # pylint: disable=global-statement
 
     init_curses(stdscr)
@@ -180,7 +189,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
 
     prev_volume = volume
 
-    player_output = PlayerOutput(stdscr, playlist, volume, clip_mode)
+    player_output = PlayerOutput(stdscr, playlist, volume, clip_mode, visualize)
     while player_output.i in range(len(player_output.playlist)):
         song_path = os.path.join(
             SONGS_DIR, player_output.playlist[player_output.i][1]
@@ -455,6 +464,11 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                                     playback.set_volume(player_output.volume)
 
                                     player_output.output(playback.curr_pos)
+                                elif c in "vV":
+                                    player_output.visualize = (
+                                        not player_output.visualize
+                                    )
+                                    player_output.output(playback.curr_pos)
                                 elif c == " ":
                                     player_output.paused = (
                                         not player_output.paused
@@ -716,12 +730,13 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
                     if progress_bar_width < MIN_PROGRESS_BAR_WIDTH
                     else player_output.duration / (progress_bar_width * 8)
                 ),
-                1,
+                1 / FPS if player_output.visualize else 1,
             )
             if abs(playback.curr_pos - last_timestamp) > frame_duration:
                 last_timestamp = playback.curr_pos
                 player_output.output(playback.curr_pos)
 
+        # region stats
         time_listened = time() - start_time
         if player_output.paused:
             time_listened -= time() - pause_start
@@ -753,6 +768,7 @@ def _play(stdscr, playlist, volume, loop, clip_mode, reshuffle, update_discord):
             playlist_file.seek(0)
             playlist_file.write("".join(lines))
             playlist_file.truncate()
+        # endregion
 
         if player_output.ending:
             return
@@ -789,6 +805,7 @@ def cli():
     """A command line interface for playing music."""
     if not os.path.exists(SONGS_DIR):
         os.makedirs(SONGS_DIR)
+
     if not os.path.exists(SONGS_INFO_PATH):
         with open(SONGS_INFO_PATH, "x", encoding="utf-8") as _:
             pass
@@ -809,6 +826,9 @@ def cli():
         ):
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
+
+    if not os.path.exists(VIS_CACHE_DIR):
+        os.makedirs(VIS_CACHE_DIR)
 
 
 @cli.command()
@@ -864,7 +884,13 @@ def cli():
     is_flag=True,
     help="If song URL passed is from a playlist, download all the songs. If the URL points directly to a playlist, this flag is unncessary.",
 )
-def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
+@click.option(
+    "-V",
+    "--visualize",
+    is_flag=True,
+    help="Calculate and cache visualization frequencies for the song. Ignored silently if the required dependencies are not installed.",
+)
+def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if `-r` is passed). The name of each
     song will be the filename. Filenames and tags cannot contain the character
@@ -902,14 +928,14 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
 
         paths = []
         for fname in os.listdir(MAESTRO_DIR):
-            for f in ["wav", "mp3", "flac", "ogg"]:
+            for f in [".wav", ".mp3", ".flac", ".ogg"]:
                 if fname.endswith(f):
                     raw_path = os.path.join(MAESTRO_DIR, fname)
                     sanitized_path = raw_path.replace("|", "-")
 
                     os.rename(raw_path, sanitized_path)
                     paths.append(sanitized_path)
-            if fname.endswith("part"):  # delete incomplete downloads
+            if fname.endswith(".part"):  # delete incomplete downloads
                 os.remove(os.path.join(MAESTRO_DIR, fname))
 
         move_ = True
@@ -923,11 +949,11 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
 
             start, end = clip
             if start < 0:
-                click.secho("Clip start time cannot be negative", fg="red")
+                click.secho("Clip start time cannot be negative.", fg="red")
                 return
             elif start > song_duration:
                 click.secho(
-                    "Clip start time cannot be greater than the song duration",
+                    "Clip start time cannot be greater than the song duration.",
                     fg="red",
                 )
                 return
@@ -936,13 +962,13 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                 end = song_duration
             elif end < start:
                 click.secho(
-                    "Clip end time cannot be less than the clip start time",
+                    "Clip end time cannot be less than the clip start time.",
                     fg="red",
                 )
                 return
             elif end > song_duration:
                 click.secho(
-                    "Clip end time cannot be greater than the song duration",
+                    "Clip end time cannot be greater than the song duration.",
                     fg="red",
                 )
                 return
@@ -951,12 +977,12 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
 
         ext = os.path.splitext(path)[1]
         if not os.path.isdir(path) and ext not in EXTS:
-            click.secho(f"'{ext}' is not supported", fg="red")
+            click.secho(f"'{ext}' is not supported.", fg="red")
             return
 
         for tag in tags:
             if "," in tag or "|" in tag:
-                click.secho("Tags cannot contain ',' or '|'", fg="red")
+                click.secho("Tags cannot contain ',' or '|'.", fg="red")
                 return
 
         with open(SONGS_INFO_PATH, "a+", encoding="utf-8") as songs_file:
@@ -975,11 +1001,6 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                     for dirpath, _, fnames in os.walk(path):
                         for fname in fnames:
                             if os.path.splitext(fname)[1] in EXTS:
-                                if "|" in fname:
-                                    click.echo(
-                                        f"Skipping {fname} because it contains '|'"
-                                    )
-                                    continue
                                 add_song(
                                     os.path.join(dirpath, fname),
                                     tags,
@@ -990,17 +1011,13 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                                     prepend_newline,
                                     start,
                                     end,
+                                    visualize,
                                 )
                                 prepend_newline = False
                                 song_id += 1
                 else:
                     for fname in os.listdir(path):
                         if os.path.splitext(fname)[1] in EXTS:
-                            if "|" in fname:
-                                click.echo(
-                                    f"Skipping {fname} because it contains '|'"
-                                )
-                                continue
                             full_path = os.path.join(path, fname)
                             if os.path.isfile(full_path):
                                 add_song(
@@ -1013,13 +1030,11 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                                     prepend_newline,
                                     start,
                                     end,
+                                    visualize,
                                 )
                                 prepend_newline = False
                                 song_id += 1
             else:
-                if "|" in os.path.basename(path):
-                    click.secho("Filename cannot contain '|'", fg="red")
-                    return
                 add_song(
                     path,
                     tags,
@@ -1030,6 +1045,7 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_):
                     prepend_newline,
                     start,
                     end,
+                    visualize,
                 )
 
 
@@ -1071,15 +1087,23 @@ def remove(args, force, tag):
                 details = lines[i].strip().split("|")
                 song_id = int(details[0])
                 if song_id in song_ids:
+                    song_ids.remove(song_id)
                     to_be_deleted.append(i)
 
                     song_name = details[1]
-                    os.remove(
+                    os.remove(  # remove actual song
                         os.path.join(SONGS_DIR, song_name)
-                    )  # remove actual song
+                    )
+
+                    # remove cached visualization frequencies
+                    vis_cache_path = os.path.join(
+                        VIS_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
+                    )
+                    if os.path.exists(vis_cache_path):
+                        os.remove(vis_cache_path)
 
                     click.secho(
-                        f"Removed song '{song_name}' with ID {song_id}",
+                        f"Removed song '{song_name}' with ID {song_id}.",
                         fg="green",
                     )
 
@@ -1109,6 +1133,12 @@ def remove(args, force, tag):
 
             with open(stats_path, "w", encoding="utf-8") as stats_file:
                 stats_file.write("\n".join(stats_lines))
+
+        if song_ids:
+            click.secho(
+                f"Could not find the following song IDs: {', '.join(map(str, song_ids))}.",
+                fg="yellow",
+            )
     else:
         tags_to_remove = set(args)
         if not force:
@@ -1135,7 +1165,7 @@ def remove(args, force, tag):
             songs_file.write("\n".join(lines))
 
         click.secho(
-            f"Deleted all occurrences of {len(tags_to_remove)} tag(s)",
+            f"Deleted all occurrences of {len(tags_to_remove)} tag(s).",
             fg="green",
         )
 
@@ -1157,7 +1187,7 @@ def tag_(song_ids, tags):
     tags = set(tags)
     for tag in tags:
         if "," in tag or "|" in tag:
-            click.secho("Tags cannot contain ',' or '|'", fg="red")
+            click.secho("Tags cannot contain ',' or '|'.", fg="red")
             return
     if tags:
         songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
@@ -1183,17 +1213,17 @@ def tag_(song_ids, tags):
 
         if song_ids:
             click.secho(
-                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}",
+                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}.",
                 fg="red",
             )
             if len(song_ids) == num_songs:
                 return
         click.secho(
-            f"Added {len(tags)} tag(s) to {num_songs - len(song_ids)} song(s)",
+            f"Added {len(tags)} tag(s) to {num_songs - len(song_ids)} song(s).",
             fg="green",
         )
     else:
-        click.secho("No tags passed", fg="red")
+        click.secho("No tags passed.", fg="red")
 
 
 @cli.command()
@@ -1238,19 +1268,19 @@ def untag(song_ids, tags, all_):
 
         if song_ids:
             click.secho(
-                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}",
+                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}.",
                 fg="red",
             )
             if len(song_ids) == num_songs:
                 return
         click.secho(
-            f"Removed any occurrences of {len(tags)} tag(s) from {num_songs - len(song_ids)} song(s)",
+            f"Removed any occurrences of {len(tags)} tag(s) from {num_songs - len(song_ids)} song(s).",
             fg="green",
         )
     else:
         if not all_:
             click.secho(
-                "No tags passed—to remove all tags, pass the `-a/--all` flag",
+                "No tags passed—to remove all tags, pass the `-a/--all` flag.",
                 fg="red",
             )
         else:
@@ -1268,7 +1298,7 @@ def untag(song_ids, tags, all_):
             songs_file.close()
 
             click.secho(
-                f"Removed {len(tags)} tag(s) from {len(song_ids)} song(s)",
+                f"Removed {len(tags)} tag(s) from {len(song_ids)} song(s).",
                 fg="green",
             )
 
@@ -1305,9 +1335,19 @@ def untag(song_ids, tags, all_):
     default=100,
     show_default=True,
 )
-@click.option("-l", "--loop", "loop", is_flag=True, help="Loop the playlist.")
 @click.option(
-    "-c", "--clips", "clips", is_flag=True, help="Start in clip mode."
+    "-l",
+    "--loop",
+    "loop",
+    is_flag=True,
+    help="Loop the playlist. Can be toggled with 'l'.",
+)
+@click.option(
+    "-c",
+    "--clips",
+    "clips",
+    is_flag=True,
+    help="Start in clip mode. Can be toggled with 'c'.",
 )
 @click.option(
     "-R",
@@ -1330,6 +1370,13 @@ def untag(song_ids, tags, all_):
     is_flag=True,
     help="Play songs that match all tags, not any.",
 )
+@click.option(
+    "-V",
+    "--visualize",
+    "visualize",
+    is_flag=True,
+    help="Visualize the song being played. Ignored if required dependencies are not installed.",
+)
 def play(
     tags,
     shuffle_,
@@ -1341,6 +1388,7 @@ def play(
     reshuffle,
     discord,
     match_all,
+    visualize,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist.
@@ -1387,7 +1435,7 @@ def play(
                     playlist.append(details)
 
         if not playlist:
-            click.secho("No songs found with the given IDs", fg="red")
+            click.secho("No songs found with the given IDs.", fg="red")
             return
     else:
         if not tags:
@@ -1415,7 +1463,7 @@ def play(
         playlist.reverse()
 
     if not playlist:
-        click.secho("No songs found matching tag criteria", fg="red")
+        click.secho("No songs found matching tag criteria.", fg="red")
     else:
         volume /= 100
         curses.wrapper(
@@ -1426,6 +1474,7 @@ def play(
             clips,
             reshuffle,
             discord and can_update_discord,
+            visualize,
         )
 
 
@@ -1451,7 +1500,7 @@ def rename(original, new_name, renaming_tag):
     if not renaming_tag:
         if not original.isnumeric():
             click.secho(
-                "Song ID must be an integer. To rename a tag, pass the '-t/--tag' flag",
+                "Song ID must be an integer. To rename a tag, pass the '-t/--tag' flag.",
                 fg="red",
             )
             return
@@ -1459,8 +1508,8 @@ def rename(original, new_name, renaming_tag):
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
             if int(details[0]) == original:
-                old_name = details[1]
-                details[1] = new_name + os.path.splitext(old_name)[1]
+                old_path = details[1]
+                details[1] = new_name + os.path.splitext(old_path)[1]
 
                 lines[i] = "|".join(details)
                 songs_file.close()
@@ -1468,18 +1517,28 @@ def rename(original, new_name, renaming_tag):
                 songs_file.write("\n".join(lines))
 
                 os.rename(
-                    os.path.join(SONGS_DIR, old_name),
+                    os.path.join(SONGS_DIR, old_path),
                     os.path.join(SONGS_DIR, details[1]),
                 )
 
+                # rename cached visualization frequencies
+                vis_cache_path = os.path.join(
+                    VIS_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
+                )
+                if os.path.exists(vis_cache_path):
+                    os.rename(
+                        vis_cache_path,
+                        os.path.join(VIS_CACHE_DIR, new_name + ".npy"),
+                    )
+
                 click.secho(
-                    f"Renamed song '{old_name}' with ID {original} to '{details[1]}'",
+                    f"Renamed song '{old_path}' with ID {original} to '{details[1]}'.",
                     fg="green",
                 )
 
                 break
         else:
-            click.secho(f"Song with ID {original} not found", fg="red")
+            click.secho(f"Song with ID {original} not found.", fg="red")
             songs_file.close()
     else:
         for i in range(len(lines)):
@@ -1498,7 +1557,7 @@ def rename(original, new_name, renaming_tag):
         songs_file.write("\n".join(lines))
 
         click.secho(
-            f"Replaced all ocurrences of tag '{original}' to '{new_name}'",
+            f"Replaced all ocurrences of tag '{original}' to '{new_name}'.",
             fg="green",
         )
 
@@ -1533,7 +1592,7 @@ def search(phrase, searching_for_tags):
                     results[1].append(song_id)
 
             if not any(results):
-                click.secho("No results found", fg="red")
+                click.secho("No results found.", fg="red")
                 return
 
             songs_file.seek(0)
@@ -1549,7 +1608,8 @@ def search(phrase, searching_for_tags):
                     print_entry(details)
 
             click.secho(
-                f"Found {len(results[0]) + len(results[1])} song(s)", fg="green"
+                f"Found {len(results[0]) + len(results[1])} song(s).",
+                fg="green",
             )
         else:
             results = set(), set()  # starts, contains but does not start
@@ -1566,7 +1626,7 @@ def search(phrase, searching_for_tags):
                             results[1].add(tag)
 
             if not any(results):
-                click.secho("No results found", fg="red")
+                click.secho("No results found.", fg="red")
                 return
 
             for tag in results[0]:
@@ -1576,7 +1636,7 @@ def search(phrase, searching_for_tags):
                 print(tag)
 
             click.secho(
-                f"Found {len(results[0]) + len(results[1])} tag(s)", fg="green"
+                f"Found {len(results[0]) + len(results[1])} tag(s).", fg="green"
             )
 
 
@@ -1645,7 +1705,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
     if top is not None:
         if top < 1:
             click.secho(
-                "The option `--top` must be a positive number", fg="red"
+                "The option `--top` must be a positive number.", fg="red"
             )
             return
 
@@ -1657,7 +1717,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             stats_path = CUR_YEAR_STATS_PATH
         else:
             if not year.isdigit():
-                click.secho("Year must be a number or 'cur'", fg="red")
+                click.secho("Year must be a number or 'cur'.", fg="red")
                 return
             stats_path = os.path.join(STATS_DIR, f"{year}.txt")
 
@@ -1750,7 +1810,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 break
 
     if no_results and search_tags:
-        click.secho("No songs found matching tags", fg="red")
+        click.secho("No songs found matching tags.", fg="red")
     elif no_results:
         click.secho(
             "No songs found. Use `maestro add` to add a song.", fg="red"
@@ -1779,7 +1839,7 @@ def entry(song_ids, year):
             stats_path = CUR_YEAR_STATS_PATH
         else:
             if not year.isdigit():
-                click.secho("Year must be a number", fg="red")
+                click.secho("Year must be a number.", fg="red")
                 return
             stats_path = os.path.join(STATS_DIR, f"{year}.txt")
 
@@ -1804,11 +1864,13 @@ def entry(song_ids, year):
                     )
                     song_ids.remove(int(details[0]))
     except FileNotFoundError:
-        click.secho(f"No stats found for year {year}", fg="red")
+        click.secho(f"No stats found for year {year}.", fg="red")
 
     if song_ids:
         song_ids = [str(id_) for id_ in song_ids]
-        click.secho(f"No songs found with IDs: {', '.join(song_ids)}", fg="red")
+        click.secho(
+            f"No songs found with IDs: {', '.join(song_ids)}.", fg="red"
+        )
 
 
 @cli.command()
@@ -1856,7 +1918,7 @@ def recommend(song, title):
                     )
                     break
             else:
-                click.secho(f"No song found with ID {song}", fg="red")
+                click.secho(f"No song found with ID {song}.", fg="red")
                 return
 
     yt_music_playlist = ytmusic.get_watch_playlist(results[0]["videoId"])
@@ -1876,9 +1938,9 @@ def recommend(song, title):
     for track in yt_music_playlist["tracks"][1:]:
         click.secho(track["title"] + " ", fg="blue", bold=True, nl=False)
         click.secho(
-            "https://music.youtube.com/watch?v=", fg="bright_black", nl=False
+            f"https://music.youtube.com/watch?v={track['videoId']}",
+            fg="bright_black",
         )
-        click.secho(track["videoId"], fg="bright_black", bold=True)
 
 
 @cli.command()
@@ -1901,7 +1963,7 @@ def push(song_ids, bottom):
                 if lines[i].startswith(str(song_id)):
                     break
             else:
-                click.secho(f"No song found with ID {song_id}", fg="red")
+                click.secho(f"No song found with ID {song_id}.", fg="red")
                 return
 
             if not bottom:
@@ -1940,7 +2002,7 @@ def clip_(song_id, start, end):
             if lines[i].startswith(str(song_id)):
                 break
         else:
-            click.secho(f"No song found with ID {song_id}", fg="red")
+            click.secho(f"No song found with ID {song_id}.", fg="red")
             return
 
         details = lines[i].strip().split("|")
@@ -2024,3 +2086,74 @@ def unclip(song_ids, all_, force):
             f"Removed clip(s) for song(s) with ID(s) {', '.join(map(str, song_ids))}.",
             fg="green",
         )
+
+
+@cli.command()
+@click.argument("song_ids", type=int, nargs=-1, required=False)
+@click.option(
+    "-r",
+    "--recache",
+    "recache",
+    is_flag=True,
+    help="Force recalculation of existing visualization frequency caches.",
+)
+@click.option(
+    "-a",
+    "--all",
+    "all_",
+    is_flag=True,
+    help="Calculate visualization frequency caches for all songs. Ignores SONG_IDS.",
+)
+def cache(song_ids, recache, all_):
+    """
+    Calculate and cache visualization frequencies for the song(s) with ID(s)
+    SONG_IDS. If cached data already exists, this command does nothing unless
+    '-r/--recache' is passed.
+
+    To run this command for all songs, pass the '-a/--all' flag (ignores
+    SONG_IDS).
+    """
+    if song_ids:
+        song_ids = set(song_ids)
+    else:
+        if not all_:
+            click.secho(
+                "No song IDs passed. To cache visualization frequency data for all songs, pass the '-a/--all' flag.",
+                fg="red",
+            )
+            return
+        song_ids = set()
+
+    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        lines = songs_file.readlines()
+
+        for i in range(len(lines)):
+            song_id, song_name, *_ = lines[i].strip().split("|")
+            song_id = int(song_id)
+
+            if song_ids and song_id not in song_ids:
+                continue
+
+            vis_cache_path = os.path.join(
+                VIS_CACHE_DIR,
+                os.path.splitext(song_name)[0] + ".npy",
+            )
+            if os.path.exists(vis_cache_path):
+                if not recache:
+                    click.secho(
+                        f"The song {song_name} with ID {song_id} already has cached data. To force recalcualtion, pass the '-r/--recache' flag.",
+                        fg="yellow",
+                    )
+                    continue
+            data = VisualizerData(os.path.join(SONGS_DIR, song_name))
+
+            if data.loaded_song is not None:
+                click.secho(
+                    f"Cached visualization frequency data for song {song_name} with ID {song_id}.",
+                    fg="green",
+                )
+            else:
+                click.secho(
+                    f"Failed to cache frequency data for song {song_name} with ID {song_id}. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
+                    fg="red",
+                )

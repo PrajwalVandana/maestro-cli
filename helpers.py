@@ -258,23 +258,23 @@ class PlayerOutput:
         self.adding_song: None | tuple = None
         self.clip_mode = clip_mode
         self.clip = (0, 0)
-        self.visualize = visualize
-        if self.visualize:
-            self.visualizer_data = VisualizerData()
+        self.can_visualize = self.visualize = visualize
+        self.visualizer_data = VisualizerData()
 
     @property
     def song_path(self):
         return os.path.join(SONGS_DIR, self.playlist[self.i][1])
 
     def output(self, pos):
-        visualize_this_frame = (
-            self.visualize and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 2
+        self.can_visualize = (
+            self.visualize
+            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 2
         )
 
-        if visualize_this_frame:
+        if self.can_visualize:
             if self.visualizer_data.loaded_song != self.song_path:
                 if self.visualizer_data.loaded_song is None:
-                    self.visualize = False
+                    self.can_visualize = False
                 elif not self.visualizer_data.loading:
                     t = threading.Thread(
                         target=lambda: self.visualizer_data.__init__(
@@ -283,13 +283,12 @@ class PlayerOutput:
                         daemon=True,
                     )
                     t.start()
-                visualize_this_frame = False
 
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
             - 2  # -2 for status bar
             - (self.adding_song != None)  # -1 for add mode
-            - (VISUALIZER_HEIGHT if visualize_this_frame else 0)  # -visualizer
+            - (VISUALIZER_HEIGHT if self.can_visualize else 0)  # -visualizer
         )
 
         if self.clip_mode:
@@ -481,7 +480,7 @@ class PlayerOutput:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
                 - 2
-                - (VISUALIZER_HEIGHT if visualize_this_frame else 0),
+                - (VISUALIZER_HEIGHT if self.can_visualize else 0),
                 volume_line_length_so_far,
             )
             if (
@@ -515,22 +514,31 @@ class PlayerOutput:
                     curses.color_pair(16),
                 )
 
-        if visualize_this_frame:
+        if self.can_visualize:
             if self.clip_mode:
                 pos += self.clip[0]
 
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
-                - (VISUALIZER_HEIGHT if visualize_this_frame else 0),
+                - (VISUALIZER_HEIGHT if self.can_visualize else 0),
                 0,
             )
-            self.stdscr.addstr(
-                render(
-                    self.stdscr.getmaxyx()[1] - 1,
-                    self.visualizer_data.freqs,
-                    round(pos * FPS),
+            if not self.visualizer_data.loading:
+                self.stdscr.addstr(
+                    render(
+                        self.stdscr.getmaxyx()[1] - 1,
+                        self.visualizer_data.freqs,
+                        round(pos * FPS),
+                    )
                 )
-            )
+            else:
+                # pass
+                self.stdscr.addstr(
+                    (
+                        (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
+                        * VISUALIZER_HEIGHT
+                    ).rstrip()
+                )
 
         if self.adding_song is not None:
             # adding_song_length-1 b/c 0-indexed

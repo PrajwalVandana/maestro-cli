@@ -1,6 +1,15 @@
 # maestro
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
+## Features
+
+- cross-platform!
+- audio visualization directly in the terminal!
+- Discord integration!
+- [clips!](#maestro-clip)
+- shuffle! (along with precise control over the behavior of shuffling when looping)
+- filter by [tags](#usage)!
+
 ## Installation
 
 Make sure you have Python 3 and `pip` installed.
@@ -93,7 +102,7 @@ Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to g
 
 `maestro` uses the concept of a positive integer **song ID** to uniquely refer to each song.
 
-Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro -t jon-bellion <song IDs for each Jon Bellion song>`. Then `maestro play jon-bellion`.
+Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro -t jon-bellion <song IDs for each Jon Bellion song>`. Then `maestro play jon-bellion`. If song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`.
 
 `maestro` also tracks listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. To get the details for this year, run `maestro entry -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
 
@@ -106,6 +115,11 @@ Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL in
 Pass the `-p` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
 
 By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-m` or `--move` flag to move the file instead.
+
+### `maestro cache`
+Calculate (or recalculate with the `-r/--recache` flag) visualization frequency data (see [`maestro play`](#maestro-play)) for songs passed by ID (or all songs with the `-a/--all` flag.
+
+If you ever go into the song database (located at `~/.maestro-files`) and manually edit a song, e.g. trimming (not recommended but should be fine as long as you don't mess with the name of the file), you should run `maestro cache --recache <SONG_ID>` to readjust the visualization.
 
 ### `maestro clip`
 
@@ -129,16 +143,19 @@ Play songs. Use `maestro play -h` to see full options. Has lots of features:
 - play songs in reverse order with the `-r` or `--reverse` flag
 - loop playlist with the `-l` or `--loop` flag
 - shuffle playlist on loop with the `-r` or `--reshuffle` flag
+- show an audio visualization with the `-V` or `--visualize` flag
+  - you may notice some wait time for the visualization to properly load the first time a song is visualized (~7 seconds), but after that the visualization is cached and should load quickly
 - works with headphone buttons (and the Touch Bar and Siri!) on Mac using the Now Playing Center!
 - works with Discord status! (pass the `-d` or `--discord` flag)
 
 While playing:
 - like a song and want to play *that specific song* on loop? click `l` while playing to toggle loop mode (not the same as passing `-l` to `maestro play`!)
 - seek with left/right arrow keys
-- volume up/down with [ and ]
-- delete selected song (not necessarily the currently playing song) with `d`
+- volume up/down with `[` and `]`
+- remove selected song (not necessarily the currently playing song) from current playlist with `d`
 - scroll with mouse or up/down arrow keys to scroll the selected song
 - `c` to toggle clip mode
+- `v` to toggle visualization mode
 - `m` to mute
 - `r` to replay a song
 - `a` to add a song by ID to the end of the playlist

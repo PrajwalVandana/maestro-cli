@@ -892,7 +892,7 @@ def cli():
 )
 def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
-    in PATH (including files in subfolders if `-r` is passed). The name of each
+    in PATH (including files in subfolders if '-r' is passed). The name of each
     song will be the filename. Filenames and tags cannot contain the character
     '|', and tags cannot contain ','.
 
@@ -900,9 +900,9 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
     YouTube Music URL instead of a file path.
 
     The '-c/--clip' flag can be used to add a clip of a song. It takes two
-    arguments, but unlike `maestro clip`, you cannot pass only the start time
+    arguments, but unlike 'maestro clip', you cannot pass only the start time
     and not the end. To get around this, you can pass -1 as the end time, e.g.
-    `maestro add -c 30 -1 https://www.youtube.com/watch?v=3VxuMErCd-E -u`."""
+    'maestro add -c 30 -1 https://www.youtube.com/watch?v=3VxuMErCd-E -u'."""
 
     paths = None
     if not url and not os.path.exists(path_):
@@ -1280,7 +1280,7 @@ def untag(song_ids, tags, all_):
     else:
         if not all_:
             click.secho(
-                "No tags passed—to remove all tags, pass the `-a/--all` flag.",
+                "No tags passed—to remove all tags, pass the '-a/--all' flag.",
                 fg="red",
             )
         else:
@@ -1391,7 +1391,8 @@ def play(
     visualize,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
-    your playlist.
+    your playlist, unless the '-m/--match-all' flag is passed, in which case
+    every tag must be matched.
 
     \b
       \x1b[1mSPACE\x1b[0m  to pause/play
@@ -1492,7 +1493,7 @@ def rename(original, new_name, renaming_tag):
     """Renames the song with the ID ORIGINAL to NEW_NAME. The extension of the
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
 
-    If the `-t/--tag` flag is passed, treats ORIGINAL as a tag, renaming all
+    If the '-t/--tag' flag is passed, treats ORIGINAL as a tag, renaming all
     ocurrences of it to NEW_NAME.
     """
     songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
@@ -1576,7 +1577,7 @@ def search(phrase, searching_for_tags):
     will appear before songs containing but not starting with PHRASE. This
     search is case-insensitive.
 
-    If the `-t` flag is passed, searches for tags instead of song names."""
+    If the '-t' flag is passed, searches for tags instead of song names."""
     phrase = phrase.lower()
     with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
@@ -1696,16 +1697,18 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
 
-    If the `-t` flag is passed, tags will be listed instead of songs.
+    If the '-t' flag is passed, tags will be listed instead of songs.
 
     Output format: tag, duration, listen time, times listened
 
-    If TAGS are passed, any tag/song matching any tag in TAGS will be listed.
+    If TAGS are passed, any tag/song matching any tag in TAGS will be listed,
+    unless the '-m/--match-all' flag is passed, in which case every tag must
+    be matched (ignored if listing tags).
     """
     if top is not None:
         if top < 1:
             click.secho(
-                "The option `--top` must be a positive number.", fg="red"
+                "The option '-T/--top' must be a positive number.", fg="red"
             )
             return
 
@@ -1813,7 +1816,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
         click.secho("No songs found matching tags.", fg="red")
     elif no_results:
         click.secho(
-            "No songs found. Use `maestro add` to add a song.", fg="red"
+            "No songs found. Use 'maestro add' to add a song.", fg="red"
         )
 
 
@@ -1886,13 +1889,13 @@ def recommend(song, title):
     """Recommends songs (possibly explicit) using the YouTube Music API similar
     to the song with ID SONG to listen to.
 
-    If the `-t` flag is passed, SONG is treated as a song title to search for
+    If the '-t' flag is passed, SONG is treated as a song title to search for
     on YouTube Music."""
     try:
         from ytmusicapi import YTMusic
     except ImportError:
         click.secho(
-            "The `recommend` command requires the `ytmusicapi` package to be installed. Run `pip install ytmusicapi` to install it.",
+            "The 'recommend' command requires the 'ytmusicapi' package to be installed. Run 'pip install ytmusicapi' to install it.",
             fg="red",
         )
         return
@@ -1950,9 +1953,9 @@ def push(song_ids, bottom):
     """
     Push the song(s) with ID(s) SONG_IDS to the top of the playlist (as if they
     were the songs most recently added) in the order they are passed (e.g.
-    `maestro push 1 2 3` will make the most recent song be 3).
+    'maestro push 1 2 3' will make the most recent song be 3).
 
-    If the `-b` flag is passed, the song(s) will be pushed to the bottom of the
+    If the '-b' flag is passed, the song(s) will be pushed to the bottom of the
     list instead.
     """
     with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
@@ -2046,8 +2049,8 @@ def unclip(song_ids, all_, force):
     """
     Removes clip for the song(s) with ID(s) SONG_IDS.
 
-    If the `-a/--all` flag is passed, the clips for all songs will be removed,
-    ignoring SONG_IDS. This prompts for confirmation unless the `-f/--force`
+    If the '-a/--all' flag is passed, the clips for all songs will be removed,
+    ignoring SONG_IDS. This prompts for confirmation unless the '-f/--force'
     flag is passed.
     """
     if not all_:

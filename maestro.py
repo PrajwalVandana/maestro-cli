@@ -80,13 +80,13 @@ if sys.platform == "darwin" and can_mac_now_playing:
         AppHelper.runEventLoop()
 
 
-def discord_presence_loop(song_name_queue):
+def discord_presence_loop(song_name_queue, discord_connected):
     try:
-        discord_rpc = pypresence.Presence(client_id=1039038199881810040)
+        discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
         discord_rpc.connect()
-        discord_connected = True
+        discord_connected.value = 1
     except:  # pylint: disable=bare-except
-        discord_connected = False
+        discord_connected.value = 0
 
     while True:
         song_name = ""
@@ -98,7 +98,7 @@ def discord_presence_loop(song_name_queue):
                     song_name += c
                     c = song_name_queue.get()
 
-            if discord_connected:
+            if discord_connected.value:
                 try:
                     discord_rpc.update(
                         details="Listening to",
@@ -108,18 +108,18 @@ def discord_presence_loop(song_name_queue):
                     song_name = ""
                     sleep(15)
                 except:  # pylint: disable=bare-except
-                    discord_connected = False
+                    discord_connected.value = 0
             else:
                 try:
                     discord_rpc = pypresence.Presence(
-                        client_id=1039038199881810040
+                        client_id=DISCORD_ID
                     )
                     discord_rpc.connect()
-                    discord_connected = True
+                    discord_connected.value = 1
                 except:  # pylint: disable=bare-except
                     pass
 
-                if discord_connected:
+                if discord_connected.value:
                     try:
                         discord_rpc.update(
                             details="Listening to",
@@ -129,7 +129,17 @@ def discord_presence_loop(song_name_queue):
                         song_name = ""
                         sleep(15)
                     except:  # pylint: disable=bare-except
-                        discord_connected = False
+                        discord_connected.value = 0
+        else:
+            if not discord_connected.value:
+                try:
+                    discord_rpc = pypresence.Presence(
+                        client_id=DISCORD_ID
+                    )
+                    discord_rpc.connect()
+                    discord_connected.value = 1
+                except:  # pylint: disable=bare-except
+                    pass
 
 
 def _play(
@@ -153,12 +163,16 @@ def _play(
     else:
         next_playlist = None
 
-    if update_discord:
+    player_output = PlayerOutput(
+        stdscr, playlist, volume, clip_mode, update_discord, visualize
+    )
+
+    if player_output.update_discord:
         discord_song_name_queue = multiprocessing.SimpleQueue()
         discord_presence_process = multiprocessing.Process(
             daemon=True,
             target=discord_presence_loop,
-            args=(discord_song_name_queue,),
+            args=(discord_song_name_queue, player_output.discord_connected),
         )
         discord_presence_process.start()
 
@@ -188,8 +202,6 @@ def _play(
         app_helper_process.start()
 
     prev_volume = volume
-
-    player_output = PlayerOutput(stdscr, playlist, volume, clip_mode, visualize)
     while player_output.i in range(len(player_output.playlist)):
         song_path = os.path.join(
             SONGS_DIR, player_output.playlist[player_output.i][1]
@@ -220,7 +232,7 @@ def _play(
 
             update_now_playing = True
 
-        if update_discord:
+        if player_output.update_discord:
             for c in player_output.playlist[player_output.i][1]:
                 discord_song_name_queue.put(c)
             discord_song_name_queue.put("\n")
@@ -363,6 +375,22 @@ def _play(
                             next_song = 1
                             playback.stop()
                             break
+                        elif c == curses.KEY_DC:
+                            selected_song = player_output.scroller.pos
+                            del player_output.playlist[selected_song]
+                            player_output.scroller.num_lines -= 1
+                            if (
+                                selected_song == player_output.i
+                            ):  # deleted current song
+                                next_song = 1
+                                # will be incremented to i
+                                player_output.scroller.pos = player_output.i - 1
+                                player_output.i -= 1
+                                playback.stop()
+                                break
+                            # deleted song before current
+                            if selected_song < player_output.i:
+                                player_output.i -= 1
                         else:
                             try:
                                 c = chr(c)
@@ -431,23 +459,35 @@ def _play(
                                     player_output.ending = True
                                     break
                                 elif c in "dD":
-                                    selected_song = player_output.scroller.pos
-                                    del player_output.playlist[selected_song]
-                                    player_output.scroller.num_lines -= 1
-                                    if (
-                                        selected_song == player_output.i
-                                    ):  # deleted current song
-                                        next_song = 1
-                                        # will be incremented to i
-                                        player_output.scroller.pos = (
-                                            player_output.i - 1
+                                    if player_output.update_discord:
+                                        player_output.update_discord = False
+                                        discord_presence_process.terminate()
+                                    else:
+                                        player_output.update_discord = True
+
+                                        discord_song_name_queue = (
+                                            multiprocessing.SimpleQueue()
                                         )
-                                        player_output.i -= 1
-                                        playback.stop()
-                                        break
-                                    # deleted song before current
-                                    if selected_song < player_output.i:
-                                        player_output.i -= 1
+                                        for c in player_output.playlist[
+                                            player_output.i
+                                        ][1]:
+                                            discord_song_name_queue.put(c)
+                                        discord_song_name_queue.put("\n")
+
+                                        player_output.discord_connected = (
+                                            multiprocessing.Value("i", 2)
+                                        )
+
+                                        # start new process
+                                        discord_presence_process = multiprocessing.Process(
+                                            daemon=True,
+                                            target=discord_presence_loop,
+                                            args=(
+                                                discord_song_name_queue,
+                                                player_output.discord_connected,
+                                            ),
+                                        )
+                                        discord_presence_process.start()
                                 elif c in "aA":
                                     player_output.adding_song = "", 0
                                     curses.curs_set(True)
@@ -520,6 +560,24 @@ def _play(
                                     next_song = 1
                                     playback.stop()
                                     break
+                                elif c in "\b\x7f":
+                                    selected_song = player_output.scroller.pos
+                                    del player_output.playlist[selected_song]
+                                    player_output.scroller.num_lines -= 1
+                                    if (
+                                        selected_song == player_output.i
+                                    ):  # deleted current song
+                                        next_song = 1
+                                        # will be incremented to i
+                                        player_output.scroller.pos = (
+                                            player_output.i - 1
+                                        )
+                                        player_output.i -= 1
+                                        playback.stop()
+                                        break
+                                    # deleted song before current
+                                    if selected_song < player_output.i:
+                                        player_output.i -= 1
                             except (ValueError, OverflowError):
                                 pass
                     else:
@@ -1063,6 +1121,7 @@ def remove(args, force, tag):
     if not tag:
         try:
             song_ids = {int(song_id) for song_id in args}
+            remaining_song_ids = {n for n in song_ids}
         except ValueError:
             click.secho(
                 "Song IDs must be integers. To delete tags, pass the '-t/--tag' flag.",
@@ -1086,8 +1145,8 @@ def remove(args, force, tag):
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")
                 song_id = int(details[0])
-                if song_id in song_ids:
-                    song_ids.remove(song_id)
+                if song_id in remaining_song_ids:
+                    remaining_song_ids.remove(song_id)
                     to_be_deleted.append(i)
 
                     song_name = details[1]
@@ -1134,10 +1193,10 @@ def remove(args, force, tag):
             with open(stats_path, "w", encoding="utf-8") as stats_file:
                 stats_file.write("\n".join(stats_lines))
 
-        if song_ids:
+        if remaining_song_ids:
             click.secho(
-                f"Could not find the following song IDs: {', '.join(map(str, song_ids))}.",
-                fg="yellow",
+                f"Could not find the following song IDs: {', '.join(map(str, remaining_song_ids))}.",
+                fg="red",
             )
     else:
         tags_to_remove = set(args)
@@ -1395,22 +1454,24 @@ def play(
     every tag must be matched.
 
     \b
-      \x1b[1mSPACE\x1b[0m  to pause/play
-        \x1b[1mb/p\x1b[0m  to go (b)ack to (p)revious song
-          \x1b[1mr\x1b[0m  to (r)eplay song
-        \x1b[1ms/n\x1b[0m  to (s)kip to (n)ext song
-          \x1b[1ml\x1b[0m  to (l)oop the current song
-          \x1b[1mc\x1b[0m  to toggle (c)lip mode
-       \x1b[1mLEFT\x1b[0m  to rewind 5s
-      \x1b[1mRIGHT\x1b[0m  to fast forward 5s
-          \x1b[1m[\x1b[0m  to decrease volume
-          \x1b[1m]\x1b[0m  to increase volume
-          \x1b[1mm\x1b[0m  to (m)ute/unmute
-          \x1b[1me\x1b[0m  to (e)nd the song player after the current song (indicator in status bar, 'e' to cancel)
-          \x1b[1mq\x1b[0m  to (q)uit the song player immediately
+    \x1b[1mSPACE\x1b[0m  to pause/play
+    \x1b[1mb/p\x1b[0m  to go [b]ack to [p]revious song
+    \x1b[1mr\x1b[0m  to [r]eplay song
+    \x1b[1ms/n\x1b[0m  to [s]kip to [n]ext song
+    \x1b[1ml\x1b[0m  to [l]oop the current song
+    \x1b[1mc\x1b[0m  to toggle [c]lip mode
+    \x1b[1mv\x1b[0m  to toggle [v]isualization
+    \x1b[1mLEFT\x1b[0m  to rewind 5s
+    \x1b[1mRIGHT\x1b[0m  to fast forward 5s
+    \x1b[1m[\x1b[0m  to decrease volume
+    \x1b[1m]\x1b[0m  to increase volume
+    \x1b[1mm\x1b[0m  to [m]ute/unmute
+    \x1b[1me\x1b[0m  to [e]nd the song player after the current song (indicator in status bar, 'e' to cancel)
+    \x1b[1mq\x1b[0m  to [q]uit the song player immediately
     \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
-          \x1b[1md\x1b[0m  to delete the selected (not necessarily currently playing!) song from the playlist
-          \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
+    \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the playlist
+    \x1b[1md\x1b[0m  to toggle [D]iscord rich presence
+    \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
 
     \b
     song color indicates mode:

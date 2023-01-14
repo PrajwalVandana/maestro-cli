@@ -4,6 +4,7 @@
 ## Features
 
 - cross-platform!
+- add songs directly from YouTube!
 - audio visualization directly in the terminal!
 - Discord integration!
 - [clips!](#maestro-clip)
@@ -19,7 +20,9 @@ First, run
 pip install maestro-music
 ```
 
-Now, if you want to be able to directly download songs from YouTube, you'll need to install [FFmpeg](https://github.com/FFmpeg/FFmpeg).
+**NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
+
+Now, if you want to be able to directly download songs from YouTube, you'll need to install [FFmpeg](https://github.com/FFmpeg/FFmpeg). You can also download the songs yourself and pass the path to the downloaded file to `maestro add`.
 
 ### Installing FFmpeg
 
@@ -45,11 +48,9 @@ Here are some instructions:
 sudo apt install ffmpeg
 ```
 
-**NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
-
 ### Known Installation Issues
 
-Before trying the below, make sure you have the latest version of `pip` installed:
+If you have any issues, before trying the below fixes, make sure you have the latest version of `pip` installed:
 ```
 pip install --upgrade pip
 ```
@@ -104,7 +105,7 @@ Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to g
 
 Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro -t jon-bellion <song IDs for each Jon Bellion song>`. Then `maestro play jon-bellion`. If song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`.
 
-`maestro` also tracks listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. To get the details for this year, run `maestro entry -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
+`maestro` also tracks your listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. For example, to see your top 10 listened songs (by number of times listened; note that this is NOT the number of times the song was played but rather the total listen time for that song divided by the duration), run `maestro list -s times_listened -T 10 -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
 
 ### `maestro add`
 
@@ -152,10 +153,11 @@ While playing:
 - like a song and want to play *that specific song* on loop? click `l` while playing to toggle loop mode (not the same as passing `-l` to `maestro play`!)
 - seek with left/right arrow keys
 - volume up/down with `[` and `]`
-- remove selected song (not necessarily the currently playing song) from current playlist with `d`
+- remove selected song (not necessarily the currently playing song) from current playlist with `backspace/delete`
 - scroll with mouse or up/down arrow keys to scroll the selected song
 - `c` to toggle clip mode
 - `v` to toggle visualization mode
+- `d` to toggle Discord status
 - `m` to mute
 - `r` to replay a song
 - `a` to add a song by ID to the end of the playlist

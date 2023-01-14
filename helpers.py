@@ -1,12 +1,12 @@
 # region imports
 import curses
 import logging
+import multiprocessing
+import os
+import threading
 import warnings
 
 logging.disable(logging.INFO)
-
-import os
-import threading
 
 import click
 import numpy as np
@@ -21,6 +21,8 @@ warnings.simplefilter("ignore", category=NumbaWarning)
 # endregion
 
 # region constants
+
+DISCORD_ID = 1039038199881810040
 
 CUR_YEAR = date.today().year
 EXTS = (".mp3", ".wav", ".flac", ".ogg")
@@ -114,14 +116,13 @@ class Scroller:
 
 
 def fit_string_to_width(string, width, length_so_far):
-    line_over = False
+    line_over = length_so_far + len(string) >= width
     if length_so_far + len(string) > width:
-        line_over = True
         remaining_width = width - length_so_far
         if remaining_width >= 3:
-            string = string[: (remaining_width - 3)].rstrip() + "...\n"
+            string = string[: (remaining_width - 3)] + "..."
         else:
-            string = "." * remaining_width + "\n"
+            string = "." * remaining_width
     length_so_far += len(string)
     return string, length_so_far, line_over
 
@@ -159,8 +160,25 @@ def bin_average(arr, n, include_remainder=False):
     return avg_head
 
 
-@jit
-def render(num_bins, freqs, t):
+# @jit
+def render(num_bins, freqs, t, mono=None):
+    """
+    mono:
+        True:  forces one-channel visualization
+        False: forces two-channel visualization
+        None:  if freqs[0] == freqs[1], one-channel, else two
+    """
+    if mono is None:
+        mono = np.array_equal(freqs[0], freqs[1])
+
+    if not mono:
+        gap_bins = 1 if num_bins % 2 else 2
+        num_bins = (num_bins - 1) // 2
+
+    if mono:
+        freqs[0, :, t] = (freqs[0, :, t] + freqs[1, :, t]) / 2
+
+    num_vertical_block_sizes = len(VERTICAL_BLOCKS) - 1
     freqs = np.round(
         bin_average(
             freqs[:, :, t],
@@ -169,24 +187,36 @@ def render(num_bins, freqs, t):
         )
         / 80
         * VISUALIZER_HEIGHT
-        * 8
+        * num_vertical_block_sizes
     )
 
     res = ""
-    arr = np.zeros((VISUALIZER_HEIGHT, num_bins))
+    arr = np.zeros((int(not mono) + 1, VISUALIZER_HEIGHT, num_bins))
     for b in range(num_bins):
         # NOTE: only l for now
         bin_height = freqs[0, b]
         h = 0
-        while bin_height > 8:
-            arr[h, b] = 8
-            bin_height -= 8
+        while bin_height > num_vertical_block_sizes:
+            arr[0, h, b] = num_vertical_block_sizes
+            bin_height -= num_vertical_block_sizes
             h += 1
-        arr[h, b] = bin_height
+        arr[0, h, b] = bin_height
+        if not mono:
+            bin_height = freqs[1, b]
+            h = 0
+            while bin_height > num_vertical_block_sizes:
+                arr[1, h, b] = num_vertical_block_sizes
+                bin_height -= num_vertical_block_sizes
+                h += 1
+            arr[1, h, b] = bin_height
 
     for h in range(VISUALIZER_HEIGHT - 1, -1, -1):
         for b in range(num_bins):
-            res += VERTICAL_BLOCKS[arr[h, b]]
+            res += VERTICAL_BLOCKS[arr[0, h, b]]
+        if not mono:
+            res += " " * gap_bins
+            for b in range(num_bins):
+                res += VERTICAL_BLOCKS[arr[1, h, b]]
         res += "\n"
 
     return res.rstrip()
@@ -226,10 +256,10 @@ class VisualizerData:
 
             self._data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
 
-            if len(self._data.shape) == 1:  # mono -> stereo
+            if (
+                len(self._data.shape) == 1 or self._data.shape[0] == 1
+            ):  # mono -> stereo
                 self._data = np.repeat([self._data], 2, axis=0)
-            elif self._data.shape[0] == 1:  # mono -> stereo
-                self._data = np.repeat(self._data, 2, axis=0)
             elif self._data.shape[0] == 6:  # 5.1 surround -> stereo
                 self._data = np.delete(self._data, (1, 3, 4, 5), axis=0)
 
@@ -242,13 +272,18 @@ class VisualizerData:
 
 
 class PlayerOutput:
-    def __init__(self, stdscr, playlist, volume, clip_mode, visualize):
+    def __init__(
+        self, stdscr, playlist, volume, clip_mode, update_discord, visualize
+    ):
         self.stdscr = stdscr
         self.scroller = Scroller(
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
         )
         self.playlist = playlist
         self.volume = volume
+        self.clip_mode = clip_mode
+        self.update_discord = update_discord
+        self.can_visualize = self.visualize = visualize
 
         self.i = 0
         self.looping_current_song = False
@@ -256,9 +291,8 @@ class PlayerOutput:
         self.paused = False
         self.ending = False
         self.adding_song: None | tuple = None
-        self.clip_mode = clip_mode
         self.clip = (0, 0)
-        self.can_visualize = self.visualize = visualize
+        self.discord_connected = multiprocessing.Value("i", 2)
         self.visualizer_data = VisualizerData()
 
     @property
@@ -267,8 +301,7 @@ class PlayerOutput:
 
     def output(self, pos):
         self.can_visualize = (
-            self.visualize
-            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 2
+            self.visualize and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 3
         )
 
         if self.can_visualize:
@@ -287,6 +320,7 @@ class PlayerOutput:
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
             - 2  # -2 for status bar
+            - 1  # -1 for header
             - (self.adding_song != None)  # -1 for add mode
             - (VISUALIZER_HEIGHT if self.can_visualize else 0)  # -visualizer
         )
@@ -295,9 +329,61 @@ class PlayerOutput:
             pos -= self.clip[0]
 
         self.stdscr.clear()
-        # NOTE: terminal prints newline for some reason if len(string) == width, so
-        # NOTE:   we subtract 1
-        screen_width = self.stdscr.getmaxyx()[1] - 1
+
+        screen_width = self.stdscr.getmaxyx()[1]
+
+        length_so_far, line_over = 0, False
+        if self.update_discord:
+            if self.discord_connected.value == 2:
+                length_so_far, line_over = addstr_fit_to_width(
+                    self.stdscr,
+                    "Connecting to Discord ... ",
+                    screen_width,
+                    length_so_far,
+                    line_over,
+                    curses.color_pair(12),
+                )
+            elif self.discord_connected.value == 1:
+                length_so_far, line_over = addstr_fit_to_width(
+                    self.stdscr,
+                    "Discord connected! ",
+                    screen_width,
+                    length_so_far,
+                    line_over,
+                    curses.color_pair(17),
+                )
+            else:
+                length_so_far, line_over = addstr_fit_to_width(
+                    self.stdscr,
+                    "Failed to connect to Discord. ",
+                    screen_width,
+                    length_so_far,
+                    line_over,
+                    curses.color_pair(14),
+                )
+
+        visualize_message = ""
+        visualize_color = 12
+        if self.visualize:
+            if self.can_visualize:
+                if self.visualizer_data.loading:
+                    visualize_message = "Loading visualization..."
+            else:
+                if self.stdscr.getmaxyx()[0] <= VISUALIZER_HEIGHT + 3:
+                    visualize_message = "Window too small for visualization."
+                else:
+                    visualize_message = "Failed to load visualization."
+                visualize_color = 14
+        length_so_far, line_over = addstr_fit_to_width(
+            self.stdscr,
+            " " * (screen_width - length_so_far - len(visualize_message))
+            + visualize_message,
+            screen_width,
+            length_so_far,
+            line_over,
+            curses.color_pair(visualize_color),
+        )
+        self.stdscr.move(1, 0)
 
         song_display_color = 5 if self.looping_current_song else 3
         progress_bar_display_color = 17 if self.clip_mode else 15
@@ -305,9 +391,7 @@ class PlayerOutput:
         for j in range(
             self.scroller.top, self.scroller.top + self.scroller.win_size
         ):
-            if j > len(self.playlist) - 1:
-                self.stdscr.addstr("\n")
-            else:
+            if j <= len(self.playlist) - 1:
                 length_so_far, line_over = 0, False
 
                 length_so_far, line_over = addstr_fit_to_width(
@@ -350,25 +434,25 @@ class PlayerOutput:
                     )
                 length_so_far, line_over = addstr_fit_to_width(
                     self.stdscr,
-                    f"{', '.join(self.playlist[j][2].split(','))}\n",
+                    f"{', '.join(self.playlist[j][2].split(','))}",
                     screen_width,
                     length_so_far,
                     line_over,
                     curses.color_pair(2),
                 )
+            self.stdscr.move(j + 2, 0)
 
         if self.adding_song is not None:
             # pylint: disable=unsubscriptable-object
             adding_song_length, line_over = addstr_fit_to_width(
                 self.stdscr,
-                "Add song (by ID): " + self.adding_song[0] + "\n",
+                "Add song (by ID): " + self.adding_song[0],
                 screen_width,
                 0,
                 False,
                 curses.color_pair(1),
             )
-            if line_over:
-                adding_song_length -= 1  # newline doesn't count
+            self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
         length_so_far, line_over = 0, False
 
@@ -422,11 +506,21 @@ class PlayerOutput:
         )
         addstr_fit_to_width(
             self.stdscr,
-            " " * (screen_width - volume_line_length_so_far) + "\n",
+            " " * (screen_width - volume_line_length_so_far - 1),
             screen_width,
             volume_line_length_so_far,
             volume_line_over,
             curses.color_pair(16),
+        )
+        self.stdscr.insstr(  # hacky fix for curses bug
+            " ",
+            curses.color_pair(16),
+        )
+        self.stdscr.move(
+            self.stdscr.getmaxyx()[0]
+            - 1
+            - (VISUALIZER_HEIGHT if self.can_visualize else 0),
+            0,
         )
 
         length_so_far, line_over = 0, False
@@ -455,27 +549,23 @@ class PlayerOutput:
                         progress_block_width = 0
                     else:
                         bar += " "
-                bar += "|"
 
-                length_so_far, line_over = addstr_fit_to_width(
-                    self.stdscr,
-                    bar,
-                    screen_width,
-                    length_so_far,
-                    line_over,
-                    curses.color_pair(progress_bar_display_color),
+                self.stdscr.addstr(
+                    bar, curses.color_pair(progress_bar_display_color)
+                )
+                self.stdscr.insstr(  # hacky fix for curses bug
+                    "|", curses.color_pair(progress_bar_display_color)
                 )
             else:
-                length_so_far, line_over = addstr_fit_to_width(
-                    self.stdscr,
-                    " " * (screen_width - length_so_far),
-                    screen_width,
-                    length_so_far,
-                    line_over,
+                self.stdscr.addstr(
+                    " " * (screen_width - length_so_far - 1),
                     curses.color_pair(16),
                 )
+                self.stdscr.insstr(  # hacky fix for curses bug
+                    " ", curses.color_pair(16)
+                )
 
-        # right align volume bar to (progress bar) length_so_far
+        # right align volume bar
         if not volume_line_over:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
@@ -484,14 +574,14 @@ class PlayerOutput:
                 volume_line_length_so_far,
             )
             if (
-                length_so_far - volume_line_length_so_far
+                screen_width - volume_line_length_so_far
                 >= MIN_VOLUME_BAR_WIDTH + 10
             ):
+                bar = f"{str(int(self.volume*100)).rjust(3)}/100 |"
                 volume_bar_width = min(
-                    length_so_far - volume_line_length_so_far - 10,
+                    screen_width - volume_line_length_so_far - (len(bar) + 1),
                     MAX_VOLUME_BAR_WIDTH,
                 )
-                bar = f"{str(int(self.volume*100)).rjust(3)}/100 |"
                 block_width = int(volume_bar_width * 8 * self.volume)
                 for _ in range(volume_bar_width):
                     if block_width > 8:
@@ -503,13 +593,13 @@ class PlayerOutput:
                     else:
                         bar += " "
                 bar += "|"
-                bar = bar.rjust(length_so_far - volume_line_length_so_far)
+                bar = bar.rjust(screen_width - volume_line_length_so_far)
 
                 self.stdscr.addstr(bar, curses.color_pair(16))
-            elif length_so_far - volume_line_length_so_far >= 7:
+            elif screen_width - volume_line_length_so_far >= 7:
                 self.stdscr.addstr(
                     f"{str(int(self.volume*100)).rjust(3)}/100".rjust(
-                        length_so_far - volume_line_length_so_far
+                        screen_width - volume_line_length_so_far
                     ),
                     curses.color_pair(16),
                 )
@@ -523,30 +613,32 @@ class PlayerOutput:
                 - (VISUALIZER_HEIGHT if self.can_visualize else 0),
                 0,
             )
-            if not self.visualizer_data.loading:
-                self.stdscr.addstr(
-                    render(
-                        self.stdscr.getmaxyx()[1] - 1,
-                        self.visualizer_data.freqs,
-                        round(pos * FPS),
-                    )
-                )
-            else:
-                # pass
+            if self.visualizer_data.loading in (True, None):
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
                         * VISUALIZER_HEIGHT
                     ).rstrip()
                 )
+            else:
+                self.stdscr.addstr(
+                    render(
+                        self.stdscr.getmaxyx()[1] - 1,
+                        self.visualizer_data.freqs,
+                        min(
+                            round(pos * FPS),
+                            self.visualizer_data.freqs.shape[2] - 1,
+                        ),
+                    )
+                )
 
         if self.adding_song is not None:
-            # adding_song_length-1 b/c 0-indexed
             # pylint: disable=unsubscriptable-object
             self.stdscr.move(
-                self.stdscr.getmaxyx()[0] - 3,
+                self.stdscr.getmaxyx()[0]
+                - (VISUALIZER_HEIGHT if self.can_visualize else 0)
+                - 3,  # 3 lines for progress bar, status bar, and adding entry
                 adding_song_length
-                - 1
                 + (self.adding_song[1] - len(self.adding_song[0])),
             )
 
@@ -602,7 +694,6 @@ def add_song(
             fg="yellow",
         )
         song_name = song_name.replace("|", "-")
-    dest_path = os.path.join(SONGS_DIR, song_name)
 
     for line in lines:
         details = line.split("|")
@@ -611,8 +702,10 @@ def add_song(
                 f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name.",
                 fg="yellow",
             )
-            song_name += " copy"
-            return
+            song_basename, song_ext = os.path.splitext(song_name)
+            song_name = song_basename + " copy" + song_ext
+            break
+    dest_path = os.path.join(SONGS_DIR, song_name)
 
     if move_:
         move(path, dest_path)

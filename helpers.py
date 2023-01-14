@@ -440,7 +440,7 @@ class PlayerOutput:
                     line_over,
                     curses.color_pair(2),
                 )
-            self.stdscr.move(j + 2, 0)
+            self.stdscr.move((j - self.scroller.top) + 2, 0)
 
         if self.adding_song is not None:
             # pylint: disable=unsubscriptable-object

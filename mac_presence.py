@@ -89,6 +89,7 @@ class MacNowPlaying:
         self.cmd_center.skipBackwardCommand().addTargetWithHandler_(
             self.seek_backward_handler
         )
+        # self.cmd_center.stopCommand().addTargetWithHandler_(self.stop)
 
         self.title = None
         self.artist_queue = MockQueue()

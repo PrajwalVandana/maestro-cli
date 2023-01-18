@@ -2,6 +2,7 @@
 import curses
 import multiprocessing
 import os
+from shutil import move
 import subprocess
 import sys
 
@@ -111,9 +112,7 @@ def discord_presence_loop(song_name_queue, discord_connected):
                     discord_connected.value = 0
             else:
                 try:
-                    discord_rpc = pypresence.Presence(
-                        client_id=DISCORD_ID
-                    )
+                    discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
                     discord_rpc.connect()
                     discord_connected.value = 1
                 except:  # pylint: disable=bare-except
@@ -133,9 +132,7 @@ def discord_presence_loop(song_name_queue, discord_connected):
         else:
             if not discord_connected.value:
                 try:
-                    discord_rpc = pypresence.Presence(
-                        client_id=DISCORD_ID
-                    )
+                    discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
                     discord_rpc.connect()
                     discord_connected.value = 1
                 except:  # pylint: disable=bare-except
@@ -581,11 +578,7 @@ def _play(
                             except (ValueError, OverflowError):
                                 pass
                     else:
-                        if c == curses.KEY_RESIZE:
-                            screen_size = stdscr.getmaxyx()
-                            player_output.scroller.resize(screen_size[0] - 3)
-                            player_output.output(playback.curr_pos)
-                        elif c == curses.KEY_LEFT:
+                        if c == curses.KEY_LEFT:
                             # pylint: disable=unsubscriptable-object
                             player_output.adding_song = (
                                 player_output.adding_song[0],
@@ -885,8 +878,10 @@ def cli():
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
 
-    if not os.path.exists(VIS_CACHE_DIR):
-        os.makedirs(VIS_CACHE_DIR)
+    if not os.path.exists(FREQ_CACHE_DIR):
+        os.makedirs(FREQ_CACHE_DIR)
+    if not os.path.exists(DATA_CACHE_DIR):
+        os.makedirs(DATA_CACHE_DIR)
 
 
 @cli.command()
@@ -900,6 +895,12 @@ def cli():
     help="Move file from PATH to maestro's internal song database instead of copying.",
 )
 @click.option(
+    "-n",
+    "--name",
+    type=str,
+    help="What to name the song, if you don't want to use the title from Youtube/Spotify or filename. Do not include an extension (e.g. '.wav'). Ignored if adding multiple songs.",
+)
+@click.option(
     "-r",
     "--recursive",
     "recurse",
@@ -907,25 +908,24 @@ def cli():
     help="If PATH is a folder, add songs in subfolders.",
 )
 @click.option(
-    "-u",
-    "--url",
+    "-y",
+    "--youtube",
     is_flag=True,
     help="Add a song from a YouTube or YouTube Music URL.",
+)
+@click.option(
+    "-s",
+    "--spotify",
+    is_flag=True,
+    help="Add a song from Spotify (track URL, album URL, playlist URL, artist URL, or search query).",
 )
 @click.option(
     "-f",
     "--format",
     "format_",
-    type=click.Choice(
-        [
-            "wav",
-            "mp3",
-            "flac",
-            "ogg",
-        ]
-    ),
-    help="Specify the format of the song if downloading.",
-    default="wav",
+    type=click.Choice(["wav", "mp3", "flac", "ogg"]),
+    help="Specify the format of the song if downloading from a YouTube or YouTube Music URL.",
+    default="flac",
     show_default=True,
 )
 @click.option(
@@ -933,7 +933,7 @@ def cli():
     "--clip",
     nargs=2,
     type=float,
-    help="Add a clip.",
+    help="Add a clip. Ignored if adding multiple songs.",
 )
 @click.option(
     "-p",
@@ -946,43 +946,102 @@ def cli():
     "-V",
     "--visualize",
     is_flag=True,
-    help="Calculate and cache visualization frequencies for the song. Ignored silently if the required dependencies are not installed.",
+    help="Calculate and cache visualization frequencies for the song. Ignored if the required dependencies are not installed.",
 )
-def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
+def add(
+    path_,
+    tags,
+    move_,
+    name,
+    recurse,
+    youtube,
+    spotify,
+    format_,
+    clip,
+    playlist_,
+    visualize,
+):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if '-r' is passed). The name of each
-    song will be the filename. Filenames and tags cannot contain the character
-    '|', and tags cannot contain ','.
+    song will be the filename (unless '-n' is passed). Filenames and tags cannot
+    contain the character '|', and tags cannot contain ','.
 
-    If the '-u' or '--url' flag is passed, PATH is treated as a YouTube or
+    If the '-y' or '--youtube' flag is passed, PATH is treated as a YouTube or
     YouTube Music URL instead of a file path.
 
-    The '-c/--clip' flag can be used to add a clip of a song. It takes two
+    If the '-s' or '--spotify' flag is passed, PATH is treated as a Spotify
+    track URL, album URL, playlist URL, artist URL, or search query instead of
+    a file path.
+
+    The '-c/--clip' option can be used to add a clip for the song. It takes two
     arguments, but unlike 'maestro clip', you cannot pass only the start time
     and not the end. To get around this, you can pass -1 as the end time, e.g.
-    'maestro add -c 30 -1 https://www.youtube.com/watch?v=3VxuMErCd-E -u'."""
+    'maestro add -c 30 -1 https://www.youtube.com/watch?v=3VxuMErCd-E -y'. If
+    adding multiple songs, this option cannot be used.
+    """
 
     paths = None
-    if not url and not os.path.exists(path_):
+    if not (youtube or spotify) and not os.path.exists(path_):
         click.secho(
             f"The path '{path_}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-u/--url' flag.",
             fg="red",
         )
         return
-    elif url:
-        subprocess.run(
-            [
-                "yt-dlp",
-                path_,
-                "-x",  # extract audio (necessary, needs ffmpeg)
-                "--audio-format",
-                format_,
-                "--no-playlist" if not playlist_ else "",
-                "-o",
-                os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
-            ],
-            check=True,
-        )
+    elif youtube or spotify:
+        if youtube and spotify:
+            click.secho(
+                "Cannot pass both '-y/--youtube' and '-s/--spotify' flags.",
+                fg="red",
+            )
+            return
+
+        if youtube:
+            if format_ == "ogg":
+                click.secho(
+                    "Cannot download songs from YouTube as '.ogg'. Please choose a different format.",
+                    fg="red",
+                )
+                return
+            subprocess.run(
+                [
+                    "yt-dlp",
+                    path_,
+                    "-x",  # extract audio (necessary, needs ffmpeg)
+                    "--audio-format",
+                    format_,
+                    "--no-playlist" if not playlist_ else "",
+                    "-o",
+                    os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
+                ],
+                check=True,
+            )
+        else:  # FIXME: subprocess causes exit
+            if format_ == "wav":
+                click.secho(
+                    "Cannot download songs from Spotify as '.wav'. Please choose a different format.",
+                    fg="red",
+                )
+                return
+
+            cwd = os.getcwd()
+            os.chdir(MAESTRO_DIR)
+            try:
+                subprocess.run(
+                    [
+                        "spotdl",
+                        "download",
+                        path_,
+                        "--output",
+                        "{title}.{output-ext}",
+                        "--format",
+                        format_,
+                        "--headless",
+                    ],
+                    check=True,
+                )
+            except Exception as err:
+                os.chdir(cwd)
+                raise err
 
         paths = []
         for fname in os.listdir(MAESTRO_DIR):
@@ -992,6 +1051,7 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
                     sanitized_path = raw_path.replace("|", "-")
 
                     os.rename(raw_path, sanitized_path)
+
                     paths.append(sanitized_path)
             if fname.endswith(".part"):  # delete incomplete downloads
                 os.remove(os.path.join(MAESTRO_DIR, fname))
@@ -999,10 +1059,52 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
         move_ = True
 
     if paths is None:
-        paths = [path_]
+        if os.path.isdir(path_):
+            paths = []
+            if recurse:
+                for dirpath, _, fnames in os.walk(path_):
+                    for fname in fnames:
+                        if os.path.splitext(fname)[1] in EXTS:
+                            paths.append(os.path.join(dirpath, fname))
+            else:
+                for fname in os.listdir(path_):
+                    if os.path.splitext(fname)[1] in EXTS:
+                        full_path = os.path.join(path_, fname)
+                        if os.path.isfile(full_path):
+                            paths.append(full_path)
+            if len(paths) == 0:
+                click.secho(
+                    f"No songs found in '{path_}'.",
+                    fg="red",
+                )
+                return
+        else:
+            paths = [path_]
+
+    if len(paths) > 1:
+        if clip is not None:
+            click.secho(
+                "Cannot pass '-c/--clip' option when adding multiple songs.",
+                fg="red",
+            )
+            return
+
+        if name is not None:
+            click.secho(
+                "Cannot pass '-n/--name' option when adding multiple songs.",
+                fg="red",
+            )
+            return
+
+    if len(paths) == 1 and name is not None:
+        new_path = os.path.join(
+            MAESTRO_DIR, name + os.path.splitext(paths[0])[1]
+        )
+        move(paths[0], new_path)
+        paths = [new_path]
 
     for path in paths:
-        if clip is not None:
+        if clip is not None and len(paths) == 1:
             song_duration = TinyTag.get(path).duration
 
             start, end = clip
@@ -1054,57 +1156,18 @@ def add(path_, tags, move_, recurse, url, format_, clip, playlist_, visualize):
 
             prepend_newline = lines and lines[-1][-1] != "\n"
 
-            if os.path.isdir(path):
-                if recurse:
-                    for dirpath, _, fnames in os.walk(path):
-                        for fname in fnames:
-                            if os.path.splitext(fname)[1] in EXTS:
-                                add_song(
-                                    os.path.join(dirpath, fname),
-                                    tags,
-                                    move_,
-                                    songs_file,
-                                    lines,
-                                    song_id,
-                                    prepend_newline,
-                                    start,
-                                    end,
-                                    visualize,
-                                )
-                                prepend_newline = False
-                                song_id += 1
-                else:
-                    for fname in os.listdir(path):
-                        if os.path.splitext(fname)[1] in EXTS:
-                            full_path = os.path.join(path, fname)
-                            if os.path.isfile(full_path):
-                                add_song(
-                                    full_path,
-                                    tags,
-                                    move_,
-                                    songs_file,
-                                    lines,
-                                    song_id,
-                                    prepend_newline,
-                                    start,
-                                    end,
-                                    visualize,
-                                )
-                                prepend_newline = False
-                                song_id += 1
-            else:
-                add_song(
-                    path,
-                    tags,
-                    move_,
-                    songs_file,
-                    lines,
-                    song_id,
-                    prepend_newline,
-                    start,
-                    end,
-                    visualize,
-                )
+            add_song(
+                path,
+                tags,
+                move_,
+                songs_file,
+                lines,
+                song_id,
+                prepend_newline,
+                start,
+                end,
+                visualize,
+            )
 
 
 @cli.command()
@@ -1156,7 +1219,7 @@ def remove(args, force, tag):
 
                     # remove cached visualization frequencies
                     vis_cache_path = os.path.join(
-                        VIS_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
+                        FREQ_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
                     )
                     if os.path.exists(vis_cache_path):
                         os.remove(vis_cache_path)
@@ -1469,7 +1532,7 @@ def play(
     \x1b[1me\x1b[0m  to [e]nd the song player after the current song (indicator in status bar, 'e' to cancel)
     \x1b[1mq\x1b[0m  to [q]uit the song player immediately
     \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
-    \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the playlist
+    \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the queue
     \x1b[1md\x1b[0m  to toggle [D]iscord rich presence
     \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
 
@@ -1555,7 +1618,8 @@ def rename(original, new_name, renaming_tag):
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
 
     If the '-t/--tag' flag is passed, treats ORIGINAL as a tag, renaming all
-    ocurrences of it to NEW_NAME.
+    ocurrences of it to NEW_NAME—doesn't check if the tag NEW_NAME already,
+    exists, so be careful!
     """
     songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
     lines = songs_file.read().splitlines()
@@ -1566,6 +1630,16 @@ def rename(original, new_name, renaming_tag):
                 fg="red",
             )
             return
+
+        for i in range(len(lines)):
+            details = lines[i].strip().split("|")
+            if details[1].startswith(new_name):
+                click.secho(
+                    f"A song with the name '{new_name}' already exists. Please choose another name.",
+                    fg="red",
+                )
+                return
+
         original = int(original)
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
@@ -1585,12 +1659,12 @@ def rename(original, new_name, renaming_tag):
 
                 # rename cached visualization frequencies
                 vis_cache_path = os.path.join(
-                    VIS_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
+                    FREQ_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
                 )
                 if os.path.exists(vis_cache_path):
                     os.rename(
                         vis_cache_path,
-                        os.path.join(VIS_CACHE_DIR, new_name + ".npy"),
+                        os.path.join(FREQ_CACHE_DIR, new_name + ".npy"),
                     )
 
                 click.secho(
@@ -1947,7 +2021,10 @@ def entry(song_ids, year):
     help="Treat SONG as a song title instead of an ID.",
 )
 def recommend(song, title):
-    """Recommends songs (possibly explicit) using the YouTube Music API similar
+    """
+    Note: this feature is experimental.
+
+    Recommends songs (possibly explicit) using the YouTube Music API similar
     to the song with ID SONG to listen to.
 
     If the '-t' flag is passed, SONG is treated as a song title to search for
@@ -2199,7 +2276,7 @@ def cache(song_ids, recache, all_):
                 continue
 
             vis_cache_path = os.path.join(
-                VIS_CACHE_DIR,
+                FREQ_CACHE_DIR,
                 os.path.splitext(song_name)[0] + ".npy",
             )
             if os.path.exists(vis_cache_path):
@@ -2209,7 +2286,9 @@ def cache(song_ids, recache, all_):
                         fg="yellow",
                     )
                     continue
-            data = VisualizerData(os.path.join(SONGS_DIR, song_name))
+                else:
+                    os.remove(vis_cache_path)
+            data = AudioData(os.path.join(SONGS_DIR, song_name))
 
             if data.loaded_song is not None:
                 click.secho(

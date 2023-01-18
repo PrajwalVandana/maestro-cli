@@ -4,7 +4,7 @@
 ## Features
 
 - cross-platform!
-- add songs directly from YouTube!
+- add songs directly from YouTube, YouTube Music, or Spotify!
 - audio visualization directly in the terminal!
 - Discord integration!
 - [clips!](#maestro-clip)
@@ -22,7 +22,7 @@ pip install maestro-music
 
 **NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
 
-Now, if you want to be able to directly download songs from YouTube, you'll need to install [FFmpeg](https://github.com/FFmpeg/FFmpeg). You can also download the songs yourself and pass the path to the downloaded file to `maestro add`.
+Now, if you want to be able to directly download songs from YouTube or Spotify, you'll need to install [FFmpeg](https://github.com/FFmpeg/FFmpeg). You can also download the songs yourself and pass the path to the downloaded file to `maestro add`.
 
 ### Installing FFmpeg
 
@@ -95,7 +95,7 @@ Check this out: [https://github.com/cheofusi/just_playback/issues/21](https://gi
 
 Tested heavily on macOS Monterey, barely at all on Windows and Linux. `maestro` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!).
 
-Supports `.mp3`, `.wav`, `.flac`, and `.ogg`.
+Supports `.mp3`, `.wav`, `.flac`, and `.ogg` (Ogg Vorbis).
 
 ## Usage
 
@@ -111,7 +111,9 @@ Also, playlists don't exist—`maestro` uses **tags**. For example, let's say yo
 
 Add a song (can be a folder of songs too!) given a file path.
 
-Pass the `-u` or `--url` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg).
+Pass the `-y` or `--youtube` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg).
+
+Pass the `-s` or `--spotify` flag to download from a Spotify URL instead of a file path. This also requires installing FFmpeg.
 
 Pass the `-p` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
 

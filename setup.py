@@ -19,6 +19,7 @@ setup(
         "tinytag",
         "pypresence",
         "yt-dlp",
+        "spotdl",
         "ytmusicapi",
         "librosa",
         "numba",

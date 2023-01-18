@@ -38,7 +38,8 @@ STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
 CUR_YEAR_STATS_PATH = os.path.join(STATS_DIR, f"{CUR_YEAR}.txt")
 TOTAL_STATS_PATH = os.path.join(STATS_DIR, "total.txt")
 
-VIS_CACHE_DIR = os.path.join(MAESTRO_DIR, "vis-cache/")
+FREQ_CACHE_DIR = os.path.join(MAESTRO_DIR, "cache/freqs/")
+DATA_CACHE_DIR = os.path.join(MAESTRO_DIR, "cache/data")
 # endregion
 
 # region player
@@ -116,7 +117,6 @@ class Scroller:
 
 
 def fit_string_to_width(string, width, length_so_far):
-    line_over = length_so_far + len(string) >= width
     if length_so_far + len(string) > width:
         remaining_width = width - length_so_far
         if remaining_width >= 3:
@@ -124,19 +124,14 @@ def fit_string_to_width(string, width, length_so_far):
         else:
             string = "." * remaining_width
     length_so_far += len(string)
-    return string, length_so_far, line_over
+    return string, length_so_far
 
 
-def addstr_fit_to_width(
-    stdscr, string, width, length_so_far, line_over, *args, **kwargs
-):
-    if not line_over:
-        string, length_so_far, line_over = fit_string_to_width(
-            string, width, length_so_far
-        )
-        if string:
-            stdscr.addstr(string, *args, **kwargs)
-    return length_so_far, line_over
+def addstr_fit_to_width(stdscr, string, width, length_so_far, *args, **kwargs):
+    string, length_so_far = fit_string_to_width(string, width, length_so_far)
+    if string:
+        stdscr.addstr(string, *args, **kwargs)
+    return length_so_far
 
 
 @jit
@@ -222,10 +217,10 @@ def render(num_bins, freqs, t, mono=None):
     return res.rstrip()
 
 
-class VisualizerData:
-    def __init__(self, song_path=None):
+class AudioData:
+    def __init__(self, song_path=None, freqs=True, data=True):
         if song_path is None:
-            self._data = self.freqs = None
+            self.data = self.freqs = None
             self.loaded_song = ""
             self.loading = False
             return
@@ -233,42 +228,56 @@ class VisualizerData:
         try:
             self.loading = True
 
-            self._load_freqs(song_path)
+            if data:
+                self.load_data(song_path)
 
-            self.freqs = 80 * (self.freqs / 80) ** FLATTEN_FACTOR  # flatten
+            if freqs:
+                self.load_freqs(song_path)
+                self.freqs = 80 * (self.freqs / 80) ** FLATTEN_FACTOR  # flatten
 
             self.loaded_song = song_path
             self.loading = False
         except:  # pylint: disable=bare-except
-            self._data = self.freqs = self.loaded_song = self.loading = None
+            self.data = self.freqs = self.loaded_song = self.loading = None
 
-    def _load_freqs(self, song_path):
-        vis_cache_path = os.path.join(
-            VIS_CACHE_DIR,
+    def load_data(self, song_path):
+        data_cache_path = os.path.join(
+            DATA_CACHE_DIR,
             os.path.splitext(os.path.basename(song_path))[0] + ".npy",
         )
-        if not os.path.exists(vis_cache_path):
-            from librosa import (
-                load,
-                stft,
-                amplitude_to_db,
-            )
 
-            self._data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
+        if not os.path.exists(data_cache_path):
+            from librosa import load
 
-            if (
-                len(self._data.shape) == 1 or self._data.shape[0] == 1
-            ):  # mono -> stereo
-                self._data = np.repeat([self._data], 2, axis=0)
-            elif self._data.shape[0] == 6:  # 5.1 surround -> stereo
-                self._data = np.delete(self._data, (1, 3, 4, 5), axis=0)
+            self.data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
+
+            if len(self.data.shape) == 1:  # mono -> stereo
+                self.data = np.repeat([self.data], 2, axis=0)
+            elif self.data.shape[0] == 1:  # mono -> stereo
+                self.data = np.repeat(self.data, 2, axis=0)
+            elif self.data.shape[0] == 6:  # 5.1 surround -> stereo
+                self.data = np.delete(self.data, (1, 3, 4, 5), axis=0)
+            np.save(data_cache_path, self.data)
+        else:
+            self.data = np.load(data_cache_path)
+
+    def load_freqs(self, song_path):
+        freq_cache_path = os.path.join(
+            FREQ_CACHE_DIR,
+            os.path.splitext(os.path.basename(song_path))[0] + ".npy",
+        )
+
+        if not os.path.exists(freq_cache_path):
+            from librosa import stft, amplitude_to_db
+
+            self.load_data(song_path)
 
             self.freqs = (
-                amplitude_to_db(np.abs(stft(self._data)), ref=np.max) + 80
-            )
-            np.save(vis_cache_path, self.freqs)
+                amplitude_to_db(np.abs(stft(self.data)), ref=np.max) + 80
+            )  # [-80, 0] -> [0, 80]
+            np.save(freq_cache_path, self.freqs)
         else:
-            self.freqs = np.load(vis_cache_path)
+            self.freqs = np.load(freq_cache_path)
 
 
 class PlayerOutput:
@@ -293,7 +302,7 @@ class PlayerOutput:
         self.adding_song: None | tuple = None
         self.clip = (0, 0)
         self.discord_connected = multiprocessing.Value("i", 2)
-        self.visualizer_data = VisualizerData()
+        self.visualizer_data = AudioData()
 
     @property
     def song_path(self):
@@ -332,33 +341,30 @@ class PlayerOutput:
 
         screen_width = self.stdscr.getmaxyx()[1]
 
-        length_so_far, line_over = 0, False
+        length_so_far = 0
         if self.update_discord:
             if self.discord_connected.value == 2:
-                length_so_far, line_over = addstr_fit_to_width(
+                length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     "Connecting to Discord ... ",
                     screen_width,
                     length_so_far,
-                    line_over,
                     curses.color_pair(12),
                 )
             elif self.discord_connected.value == 1:
-                length_so_far, line_over = addstr_fit_to_width(
+                length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     "Discord connected! ",
                     screen_width,
                     length_so_far,
-                    line_over,
                     curses.color_pair(17),
                 )
             else:
-                length_so_far, line_over = addstr_fit_to_width(
+                length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     "Failed to connect to Discord. ",
                     screen_width,
                     length_so_far,
-                    line_over,
                     curses.color_pair(14),
                 )
 
@@ -374,13 +380,12 @@ class PlayerOutput:
                 else:
                     visualize_message = "Failed to load visualization."
                 visualize_color = 14
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             " " * (screen_width - length_so_far - len(visualize_message))
             + visualize_message,
             screen_width,
             length_so_far,
-            line_over,
             curses.color_pair(visualize_color),
         )
         self.stdscr.move(1, 0)
@@ -392,59 +397,54 @@ class PlayerOutput:
             self.scroller.top, self.scroller.top + self.scroller.win_size
         ):
             if j <= len(self.playlist) - 1:
-                length_so_far, line_over = 0, False
+                length_so_far = 0
 
-                length_so_far, line_over = addstr_fit_to_width(
+                length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     f"{j + 1} ",
                     screen_width,
                     length_so_far,
-                    line_over,
                     curses.color_pair(2),
                 )
                 if j == self.i:
-                    length_so_far, line_over = addstr_fit_to_width(
+                    length_so_far = addstr_fit_to_width(
                         self.stdscr,
                         f"{self.playlist[j][1]} ",
                         screen_width,
                         length_so_far,
-                        line_over,
                         curses.color_pair(song_display_color) | curses.A_BOLD,
                     )
-                    length_so_far, line_over = addstr_fit_to_width(
+                    length_so_far = addstr_fit_to_width(
                         self.stdscr,
                         f"({self.playlist[j][0]}) ",
                         screen_width,
                         length_so_far,
-                        line_over,
                         curses.color_pair(song_display_color) | curses.A_BOLD,
                     )
                 else:
-                    length_so_far, line_over = addstr_fit_to_width(
+                    length_so_far = addstr_fit_to_width(
                         self.stdscr,
                         f"{self.playlist[j][1]} ({self.playlist[j][0]}) ",
                         screen_width,
                         length_so_far,
-                        line_over,
                         (
                             curses.color_pair(4)
                             if (j == self.scroller.pos)
                             else curses.color_pair(1)
                         ),
                     )
-                length_so_far, line_over = addstr_fit_to_width(
+                length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     f"{', '.join(self.playlist[j][2].split(','))}",
                     screen_width,
                     length_so_far,
-                    line_over,
                     curses.color_pair(2),
                 )
             self.stdscr.move((j - self.scroller.top) + 2, 0)
 
         if self.adding_song is not None:
             # pylint: disable=unsubscriptable-object
-            adding_song_length, line_over = addstr_fit_to_width(
+            adding_song_length = addstr_fit_to_width(
                 self.stdscr,
                 "Add song (by ID): " + self.adding_song[0],
                 screen_width,
@@ -454,62 +454,55 @@ class PlayerOutput:
             )
             self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
-        length_so_far, line_over = 0, False
+        length_so_far = 0
 
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             ("| " if self.paused else "> ") + f"({self.playlist[self.i][0]}) ",
             screen_width,
             length_so_far,
-            line_over,
             curses.color_pair(song_display_color + 10) | curses.A_BOLD,
         )
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             f"{self.playlist[self.i][1]} ",
             screen_width,
             length_so_far,
-            line_over,
             curses.color_pair(song_display_color + 10) | curses.A_BOLD,
         )
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             "%d/%d  " % (self.i + 1, len(self.playlist)),
             screen_width,
             length_so_far,
-            line_over,
             curses.color_pair(12),
         )
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             f"{'c' if self.clip_mode else ' '}",
             screen_width,
             length_so_far,
-            line_over,
-            curses.color_pair(17),
+            curses.color_pair(17) | curses.A_BOLD,
         )
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             f"{'l' if self.looping_current_song else ' '}",
             screen_width,
             length_so_far,
-            line_over,
-            curses.color_pair(15),
+            curses.color_pair(15) | curses.A_BOLD,
         )
-        volume_line_length_so_far, volume_line_over = addstr_fit_to_width(
+        volume_line_length_so_far = addstr_fit_to_width(
             self.stdscr,
             f"{'e' if self.ending else ' '}  ",
             screen_width,
             length_so_far,
-            line_over,
-            curses.color_pair(14),
+            curses.color_pair(14) | curses.A_BOLD,
         )
         addstr_fit_to_width(
             self.stdscr,
             " " * (screen_width - volume_line_length_so_far - 1),
             screen_width,
             volume_line_length_so_far,
-            volume_line_over,
             curses.color_pair(16),
         )
         self.stdscr.insstr(  # hacky fix for curses bug
@@ -523,17 +516,16 @@ class PlayerOutput:
             0,
         )
 
-        length_so_far, line_over = 0, False
+        length_so_far = 0
         secs = int(pos)
-        length_so_far, line_over = addstr_fit_to_width(
+        length_so_far = addstr_fit_to_width(
             self.stdscr,
             f"{format_seconds(secs)} / {format_seconds(self.duration)}  ",
             screen_width,
             length_so_far,
-            line_over,
             curses.color_pair(progress_bar_display_color),
         )
-        if not line_over:
+        if not length_so_far >= screen_width:
             if screen_width - length_so_far >= MIN_PROGRESS_BAR_WIDTH + 2:
                 progress_bar_width = screen_width - length_so_far - 2
                 bar = "|"
@@ -566,7 +558,7 @@ class PlayerOutput:
                 )
 
         # right align volume bar
-        if not volume_line_over:
+        if not volume_line_length_so_far >= screen_width:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
                 - 2
@@ -746,16 +738,17 @@ def add_song(
         clip_string = ""
 
     if gen_vis_cache:
-        data = VisualizerData(os.path.join(SONGS_DIR, song_name))
+        data = AudioData(os.path.join(SONGS_DIR, song_name), data=False)
         if data.loaded_song is None:
             data = None
     else:
         data = None
 
     click.secho(
-        f"Added{' and cached visualization frequencies for' if data is not None else ''} song '{song_name}' with ID {song_id}."
+        f"Added{' and cached visualization frequencies for' if data is not None else ''} song '{song_name}' with ID {song_id}"
         + tags_string
-        + clip_string,
+        + clip_string
+        + ".",
         fg="green",
     )
 

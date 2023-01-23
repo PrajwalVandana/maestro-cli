@@ -14,6 +14,7 @@ import numpy as np
 from shutil import copy, move
 from datetime import date
 
+from just_playback import Playback
 from numba import jit  # NOTE: I think I'm in love with this decorator
 from numba.core.errors import NumbaWarning
 
@@ -77,8 +78,10 @@ VERTICAL_BLOCKS = {
     8: "█",
 }
 VISUALIZER_HEIGHT = 8  # should divide 80
+WAVEFORM_HEIGHT = 6  # should also divide 80
 
-FLATTEN_FACTOR = 3  # higher = more flattening; 1 = no flattening
+VIS_FLATTEN_FACTOR = 3  # higher = more flattening; 1 = no flattening
+WAVEFORM_FLATTEN_FACTOR = 20
 # endregion
 
 # endregion
@@ -140,14 +143,14 @@ def lerp(start, stop, t):
 
 
 @jit
-def bin_average(arr, n, include_remainder=False):
+def bin_average(arr, n, include_remainder=False, func=np.max):
     remainder = arr.shape[1] % n
     if remainder == 0:
-        return np.max(arr.reshape(arr.shape[0], -1, n), axis=1)
+        return func(arr.reshape(arr.shape[0], -1, n), axis=1)
 
-    avg_head = np.max(arr[:, :-remainder].reshape(arr.shape[0], -1, n), axis=1)
+    avg_head = func(arr[:, :-remainder].reshape(arr.shape[0], -1, n), axis=1)
     if include_remainder:
-        avg_tail = np.max(
+        avg_tail = func(
             arr[:, -remainder:].reshape(arr.shape[0], -1, remainder), axis=1
         )
         return np.concatenate((avg_head, avg_tail), axis=1)
@@ -155,8 +158,16 @@ def bin_average(arr, n, include_remainder=False):
     return avg_head
 
 
-# @jit
-def render(num_bins, freqs, t, mono=None):
+@jit
+def render(
+    num_bins,
+    freqs,
+    t,
+    visualizer_height,
+    mono=None,
+    include_remainder=None,
+    func=np.max,
+):
     """
     mono:
         True:  forces one-channel visualization
@@ -169,8 +180,8 @@ def render(num_bins, freqs, t, mono=None):
     if not mono:
         gap_bins = 1 if num_bins % 2 else 2
         num_bins = (num_bins - 1) // 2
-
-    if mono:
+    else:
+        gap_bins = 0
         freqs[0, :, t] = (freqs[0, :, t] + freqs[1, :, t]) / 2
 
     num_vertical_block_sizes = len(VERTICAL_BLOCKS) - 1
@@ -178,15 +189,17 @@ def render(num_bins, freqs, t, mono=None):
         bin_average(
             freqs[:, :, t],
             num_bins,
-            (freqs.shape[-2] % num_bins) > num_bins / 2,
+            (freqs.shape[-2] % num_bins) > num_bins / 2
+            if include_remainder is None
+            else include_remainder,
+            func=func,
         )
         / 80
-        * VISUALIZER_HEIGHT
+        * visualizer_height
         * num_vertical_block_sizes
     )
 
-    res = ""
-    arr = np.zeros((int(not mono) + 1, VISUALIZER_HEIGHT, num_bins))
+    arr = np.zeros((int(not mono) + 1, visualizer_height, num_bins))
     for b in range(num_bins):
         # NOTE: only l for now
         bin_height = freqs[0, b]
@@ -205,16 +218,18 @@ def render(num_bins, freqs, t, mono=None):
                 h += 1
             arr[1, h, b] = bin_height
 
-    for h in range(VISUALIZER_HEIGHT - 1, -1, -1):
+    res = []
+    for h in range(visualizer_height - 1, -1, -1):
+        s = ""
         for b in range(num_bins):
-            res += VERTICAL_BLOCKS[arr[0, h, b]]
+            s += VERTICAL_BLOCKS[arr[0, h, b]]
         if not mono:
-            res += " " * gap_bins
+            s += " " * gap_bins
             for b in range(num_bins):
-                res += VERTICAL_BLOCKS[arr[1, h, b]]
-        res += "\n"
+                s += VERTICAL_BLOCKS[arr[1, h, b]]
+        res.append(s)
 
-    return res.rstrip()
+    return res
 
 
 class AudioData:
@@ -233,7 +248,9 @@ class AudioData:
 
             if freqs:
                 self.load_freqs(song_path)
-                self.freqs = 80 * (self.freqs / 80) ** FLATTEN_FACTOR  # flatten
+                self.freqs = (
+                    80 * (self.freqs / 80) ** VIS_FLATTEN_FACTOR
+                )  # flatten
 
             self.loaded_song = song_path
             self.loading = False
@@ -461,7 +478,7 @@ class PlayerOutput:
             ("| " if self.paused else "> ") + f"({self.playlist[self.i][0]}) ",
             screen_width,
             length_so_far,
-            curses.color_pair(song_display_color + 10) | curses.A_BOLD,
+            curses.color_pair(song_display_color + 10),
         )
         length_so_far = addstr_fit_to_width(
             self.stdscr,
@@ -613,16 +630,20 @@ class PlayerOutput:
                     ).rstrip()
                 )
             else:
-                self.stdscr.addstr(
-                    render(
-                        self.stdscr.getmaxyx()[1] - 1,
-                        self.visualizer_data.freqs,
-                        min(
-                            round(pos * FPS),
-                            self.visualizer_data.freqs.shape[2] - 1,
-                        ),
-                    )
+                rendered_lines = render(
+                    self.stdscr.getmaxyx()[1],
+                    self.visualizer_data.freqs,
+                    min(
+                        round(pos * FPS),
+                        self.visualizer_data.freqs.shape[2] - 1,
+                    ),
+                    VISUALIZER_HEIGHT,
                 )
+                for i in range(len(rendered_lines)):
+                    self.stdscr.addstr(rendered_lines[i][:-1])
+                    self.stdscr.insstr(rendered_lines[i][-1])
+                    if i < len(rendered_lines) - 1:
+                        self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
         if self.adding_song is not None:
             # pylint: disable=unsubscriptable-object
@@ -650,10 +671,7 @@ def init_curses(stdscr):
     curses.init_pair(5, curses.COLOR_YELLOW, -1)
     curses.init_pair(6, curses.COLOR_GREEN, -1)
     curses.init_pair(7, curses.COLOR_MAGENTA, -1)
-    # curses.init_pair(8, curses.COLOR_BLACK, curses.COLOR_GREEN)
-    # curses.init_pair(9, curses.COLOR_BLUE, curses.COLOR_GREEN)
-    # curses.init_pair(10, curses.COLOR_YELLOW, curses.COLOR_GREEN)
-    # curses.init_pair(11, curses.COLOR_GREEN, curses.COLOR_GREEN)
+
     curses.init_pair(12, curses.COLOR_BLACK + 8, curses.COLOR_BLACK)
     curses.init_pair(13, curses.COLOR_BLUE, curses.COLOR_BLACK)
     curses.init_pair(14, curses.COLOR_RED, curses.COLOR_BLACK)
@@ -753,6 +771,286 @@ def add_song(
     )
 
 
+def clip_editor(stdscr, details):
+    song_name = details[1]
+    song_path = os.path.join(SONGS_DIR, song_name)
+
+    audio_data = AudioData(song_path, freqs=False)
+
+    if audio_data.loaded_song is None:
+        click.secho(
+            f"Song '{song_name}' could not be loaded. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
+            fg="red",
+        )
+        return
+
+    init_curses(stdscr)
+
+    audio_data.data /= np.max(np.abs(audio_data.data))
+    audio_data.data = (
+        80
+        * ((np.reshape(audio_data.data, audio_data.data.shape + (1,)) + 1) / 2)
+        ** WAVEFORM_FLATTEN_FACTOR
+    )
+
+    playback = Playback()
+    playback.load_file(song_path)
+
+    clip_start, clip_end = 0, playback.duration
+    editing_start = True
+    change_output = True
+    playback.play()
+    playback.pause()
+    last_timestamp = playback.curr_pos
+    while True:
+        if playback.curr_pos >= clip_end:
+            playback.pause()
+
+        change_output = change_output or (
+            (playback.curr_pos - last_timestamp)
+            >= (playback.duration / (8 * (stdscr.getmaxyx()[1] - 2)))
+        )
+
+        if change_output:
+            clip_editor_output(
+                stdscr,
+                audio_data,
+                details,
+                playback.curr_pos,
+                playback.paused,
+                playback.duration,
+                clip_start,
+                clip_end,
+                editing_start,
+            )
+
+        c = stdscr.getch()
+        next_c = stdscr.getch()
+        while next_c != -1:
+            c, next_c = next_c, stdscr.getch()
+
+        if c == -1:
+            continue
+
+        change_output = False
+        if editing_start:
+            if c == curses.KEY_LEFT:
+                change_output = True
+                playback.pause()
+                clip_start = max(0, clip_start - 0.1)
+                playback.seek(clip_start)
+            elif c == curses.KEY_SLEFT:
+                change_output = True
+                playback.pause()
+                clip_start = max(0, clip_start - 1)
+                playback.seek(clip_start)
+            elif c == curses.KEY_RIGHT:
+                change_output = True
+                playback.pause()
+                clip_start = min(clip_start + 0.1, clip_end)
+                playback.seek(clip_start)
+            elif c == curses.KEY_SRIGHT:
+                change_output = True
+                playback.pause()
+                clip_start = min(clip_start + 1, clip_end)
+                playback.seek(clip_start)
+            elif c == curses.KEY_ENTER:
+                break
+            else:
+                c = chr(c)
+                if c == " ":  # space
+                    change_output = True
+                    if playback.playing:
+                        playback.pause()
+                    else:
+                        playback.resume()
+                elif c in "tT":
+                    change_output = True
+                    playback.pause()
+                    playback.seek(clip_end - 1)
+                    editing_start = False
+                elif c in "qQ":
+                    return (None, None)
+                elif c in "\r\n":
+                    break
+        else:
+            if c == curses.KEY_LEFT:
+                change_output = True
+                playback.pause()
+                clip_end = max(clip_end - 0.1, clip_start)
+                playback.seek(clip_end - 1)
+            elif c == curses.KEY_SLEFT:
+                change_output = True
+                playback.pause()
+                clip_end = max(clip_end - 1, clip_start)
+                playback.seek(clip_end - 1)
+            elif c == curses.KEY_RIGHT:
+                change_output = True
+                playback.pause()
+                clip_end = min(clip_end + 0.1, playback.duration)
+                playback.seek(clip_end - 0.1)
+            elif c == curses.KEY_SRIGHT:
+                change_output = True
+                playback.pause()
+                clip_end = min(clip_end + 1, playback.duration)
+                playback.seek(clip_end - 1)
+            elif c == curses.KEY_ENTER:
+                break
+            else:
+                c = chr(c)
+                if c == " ":
+                    change_output = True
+                    if playback.playing:
+                        playback.pause()
+                    else:
+                        playback.resume()
+                elif c in "tT":
+                    change_output = True
+                    playback.pause()
+                    playback.seek(clip_start)
+                    editing_start = True
+                elif c in "qQ":
+                    return (None, None)
+                elif c in "\r\n":
+                    break
+
+    return clip_start, clip_end
+
+
+def clip_editor_output(
+    stdscr,
+    audio_data,
+    details,
+    pos,
+    paused,
+    duration,
+    clip_start,
+    clip_end,
+    editing_start,
+):
+    stdscr.clear()
+
+    if stdscr.getmaxyx()[0] < 3:
+        stdscr.addstr("Window too small.", curses.color_pair(4))
+        stdscr.refresh()
+        return
+
+    screen_width = stdscr.getmaxyx()[1]
+
+    show_waveform = stdscr.getmaxyx()[0] >= 4 + WAVEFORM_HEIGHT
+    print_to_logfile(show_waveform, stdscr.getmaxyx()[1])
+    if show_waveform:
+        rendered_lines = render(
+            screen_width - 2,
+            audio_data.data,
+            0,
+            WAVEFORM_HEIGHT,
+            mono=True,
+            include_remainder=True,
+            func=np.max,
+        )
+
+    stdscr.insstr(
+        f"{format_seconds(clip_start, show_decimal=True)}"
+        + (" <" if editing_start else ""),
+        curses.color_pair(7),
+    )
+
+    end_str = (
+        "> " if not editing_start else ""
+    ) + f"{format_seconds(clip_end, show_decimal=True)}"
+    stdscr.move(0, screen_width - len(end_str))
+    stdscr.insstr(end_str, curses.color_pair(7))
+
+    stdscr.move(1, 0)
+    if show_waveform:
+        for i in range(len(rendered_lines)):
+            stdscr.addstr(" " + rendered_lines[i])
+            stdscr.move(stdscr.getyx()[0] + 1, 0)
+
+    clip_bar_width = screen_width - 2
+    if clip_bar_width > 0:
+        bar = "|"
+        before_clip_block_width = round(
+            (clip_bar_width * 8 * clip_start) / duration
+        )
+        clip_block_width = round(
+            clip_bar_width * 8 * (clip_end - clip_start) / duration
+        )
+        num_chars_added = 0
+        stdscr.addstr("|", curses.color_pair(7))
+        while before_clip_block_width:
+            if before_clip_block_width >= 8:
+                stdscr.addstr(" ", curses.color_pair(7))
+                before_clip_block_width -= 8
+            else:
+                stdscr.addstr(
+                    HORIZONTAL_BLOCKS[before_clip_block_width],
+                    curses.color_pair(7) | curses.A_REVERSE,
+                )
+                clip_block_width -= 8 - before_clip_block_width
+                before_clip_block_width = 0
+            num_chars_added += 1
+
+        while num_chars_added < clip_bar_width:
+            if clip_block_width >= 8:
+                stdscr.addstr(HORIZONTAL_BLOCKS[8], curses.color_pair(7))
+                clip_block_width -= 8
+            elif clip_block_width > 0:
+                stdscr.addstr(
+                    HORIZONTAL_BLOCKS[clip_block_width], curses.color_pair(7)
+                )
+                clip_block_width = 0
+            else:
+                stdscr.addstr(" ", curses.color_pair(7))
+            num_chars_added += 1
+        stdscr.insstr("|", curses.color_pair(7))
+        stdscr.move(stdscr.getyx()[0] + 1, 0)
+
+    progress_bar_width = screen_width - 2
+    if progress_bar_width > 0:
+        bar = "|"
+        progress_block_width = (progress_bar_width * 8 * pos) // duration
+        for _ in range(progress_bar_width):
+            if progress_block_width > 8:
+                bar += HORIZONTAL_BLOCKS[8]
+                progress_block_width -= 8
+            elif progress_block_width > 0:
+                bar += HORIZONTAL_BLOCKS[progress_block_width]
+                progress_block_width = 0
+            else:
+                bar += " "
+
+        stdscr.addstr(bar, curses.color_pair(5))
+        stdscr.insstr("|", curses.color_pair(5))  # hacky fix for curses bug
+        stdscr.move(stdscr.getyx()[0] + 1, 0)
+
+    length_so_far = 0
+    length_so_far = addstr_fit_to_width(
+        stdscr,
+        ("| " if paused else "> ") + f"({details[0]}) ",
+        screen_width,
+        length_so_far,
+        curses.color_pair(3),
+    )
+    length_so_far = addstr_fit_to_width(
+        stdscr,
+        f"{details[1]} ",
+        screen_width,
+        length_so_far,
+        curses.color_pair(3) | curses.A_BOLD,
+    )
+    length_so_far = addstr_fit_to_width(
+        stdscr,
+        f"{', '.join(details[2].split(','))} ",
+        screen_width,
+        length_so_far,
+        curses.color_pair(2),
+    )
+
+    stdscr.refresh()
+
+
 def format_seconds(secs, show_decimal=False):
     """Format seconds into a string."""
     return f"{int(secs//60):02}:{int(secs%60):02}" + (
@@ -809,3 +1107,9 @@ def print_entry(entry_list):
         click.secho(", ".join(entry_list[2].split(",")), fg="bright_black")
     else:
         click.echo()  # newline
+
+
+def print_to_logfile(*args, **kwargs):
+    if "file" in kwargs:
+        raise ValueError("file kwarg is not allowed for 'print_to_logfile'")
+    print(*args, **kwargs, file=open("log.txt", "a", encoding="utf-8"))

@@ -1015,7 +1015,7 @@ def add(
                 ],
                 check=True,
             )
-        else:  # FIXME: subprocess causes exit
+        else:
             if format_ == "wav":
                 click.secho(
                     "Cannot download songs from Spotify as '.wav'. Please choose a different format.",
@@ -2119,7 +2119,7 @@ def push(song_ids, bottom):
 
 @cli.command(name="clip")
 @click.argument("song_id", required=True, type=int)
-@click.argument("start", required=True, type=float)
+@click.argument("start", required=False, type=float, default=None)
 @click.argument("end", required=False, type=float, default=None)
 def clip_(song_id, start, end):
     """
@@ -2140,13 +2140,17 @@ def clip_(song_id, start, end):
         lines = songs_file.readlines()
 
         for i in range(len(lines)):
-            if lines[i].startswith(str(song_id)):
+            details = lines[i].strip().split("|")
+            if int(details[0]) == song_id:
                 break
         else:
             click.secho(f"No song found with ID {song_id}.", fg="red")
             return
 
-        details = lines[i].strip().split("|")
+        if start is None:  # clip editor
+            start, end = curses.wrapper(clip_editor, details)
+            if start is None:
+                return
 
         song_name = details[1]
         song_path = os.path.join(SONGS_DIR, song_name)
@@ -2154,13 +2158,19 @@ def clip_(song_id, start, end):
 
         if end is None:
             end = duration
-            if start > end:
-                click.secho(
-                    "START must be less than the song duration.", fg="red"
-                )
-                return
+
+        if start > duration:
+            click.secho(
+                "START must not be more than the song duration.", fg="red"
+            )
+            return
+        if end > duration:
+            click.secho(
+                "END must not be more than the song duration.", fg="red"
+            )
+            return
         if start > end:
-            click.secho("START must be less than END.", fg="red")
+            click.secho("START must not be more than END.", fg="red")
             return
 
         lines[i] = (
@@ -2171,6 +2181,11 @@ def clip_(song_id, start, end):
         songs_file.seek(0)
         songs_file.write("".join(lines))
         songs_file.truncate()
+
+        click.secho(
+            f"Clipped {song_name} from {start} to {end}.",
+            fg="green"
+        )
 
 
 @cli.command()
@@ -2247,9 +2262,9 @@ def unclip(song_ids, all_, force):
 )
 def cache(song_ids, recache, all_):
     """
-    Calculate and cache visualization frequencies for the song(s) with ID(s)
-    SONG_IDS. If cached data already exists, this command does nothing unless
-    '-r/--recache' is passed.
+    Calculate and cache audio data and visualization frequencies for the song(s)
+    with ID(s) SONG_IDS. If any cached data of either kind already exists, this
+    command does nothing unless '-r/--recache' is passed.
 
     To run this command for all songs, pass the '-a/--all' flag (ignores
     SONG_IDS).
@@ -2259,7 +2274,7 @@ def cache(song_ids, recache, all_):
     else:
         if not all_:
             click.secho(
-                "No song IDs passed. To cache visualization frequency data for all songs, pass the '-a/--all' flag.",
+                "No song IDs passed. To cache data for all songs, pass the '-a/--all' flag.",
                 fg="red",
             )
             return
@@ -2279,7 +2294,13 @@ def cache(song_ids, recache, all_):
                 FREQ_CACHE_DIR,
                 os.path.splitext(song_name)[0] + ".npy",
             )
-            if os.path.exists(vis_cache_path):
+            data_cache_path = os.path.join(
+                DATA_CACHE_DIR,
+                os.path.splitext(song_name)[0] + ".npy",
+            )
+            if os.path.exists(vis_cache_path) or os.path.exists(
+                data_cache_path
+            ):
                 if not recache:
                     click.secho(
                         f"The song {song_name} with ID {song_id} already has cached data. To force recalcualtion, pass the '-r/--recache' flag.",
@@ -2287,16 +2308,20 @@ def cache(song_ids, recache, all_):
                     )
                     continue
                 else:
-                    os.remove(vis_cache_path)
+                    if os.path.exists(vis_cache_path):
+                        os.remove(vis_cache_path)
+                    if os.path.exists(data_cache_path):
+                        os.remove(data_cache_path)
+
             data = AudioData(os.path.join(SONGS_DIR, song_name))
 
             if data.loaded_song is not None:
                 click.secho(
-                    f"Cached visualization frequency data for song {song_name} with ID {song_id}.",
+                    f"Cached data for song {song_name} with ID {song_id}.",
                     fg="green",
                 )
             else:
                 click.secho(
-                    f"Failed to cache frequency data for song {song_name} with ID {song_id}. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
+                    f"Failed to cache data for song {song_name} with ID {song_id}. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
                     fg="red",
                 )

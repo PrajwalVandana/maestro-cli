@@ -11,3 +11,4 @@ test_songs/
 convert_to_psv.py
 add_stats.py
 *_test.py
+*_ref.txt

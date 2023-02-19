@@ -247,8 +247,6 @@ def _play(
         start_time = pause_start = time()
         playback.set_volume(player_output.volume)
 
-        player_output.output(playback.curr_pos)
-
         last_timestamp = playback.curr_pos
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
         player_output.ending = False
@@ -1218,11 +1216,16 @@ def remove(args, force, tag):
                     )
 
                     # remove cached visualization frequencies
-                    vis_cache_path = os.path.join(
+                    freq_cache_path = os.path.join(
                         FREQ_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
                     )
-                    if os.path.exists(vis_cache_path):
-                        os.remove(vis_cache_path)
+                    if os.path.exists(freq_cache_path):
+                        os.remove(freq_cache_path)
+                    data_cache_path = os.path.join(
+                        DATA_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
+                    )
+                    if os.path.exists(data_cache_path):
+                        os.remove(data_cache_path)
 
                     click.secho(
                         f"Removed song '{song_name}' with ID {song_id}.",
@@ -1543,7 +1546,7 @@ def play(
 
     \b
     progress bar color indicates status:
-        \x1b[1;33myellow\x1b[0m   normal
+        \x1b[1;33myellow\x1b[0m   normal (or current song doesn't have a clip)
         \x1b[1;35mmagenta\x1b[0m  playing clip
 
     For the color vision deficient, both modes also have indicators in the status bar.
@@ -1633,7 +1636,7 @@ def rename(original, new_name, renaming_tag):
 
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
-            if details[1].startswith(new_name):
+            if os.path.splitext(details[1])[0] == new_name:
                 click.secho(
                     f"A song with the name '{new_name}' already exists. Please choose another name.",
                     fg="red",
@@ -1858,6 +1861,9 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 click.secho("Year must be a number or 'cur'.", fg="red")
                 return
             stats_path = os.path.join(STATS_DIR, f"{year}.txt")
+            if not os.path.exists(stats_path):
+                click.secho(f"No stats found for year {year}.", fg="red")
+                return
 
     if search_tags:
         search_tags = set(search_tags)
@@ -2099,18 +2105,22 @@ def push(song_ids, bottom):
     with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
-        for song_id in song_ids:
-            for i in range(len(lines)):
-                if lines[i].startswith(str(song_id)):
-                    break
-            else:
-                click.secho(f"No song found with ID {song_id}.", fg="red")
-                return
+        lines_to_move = []
+        for i in range(len(lines)):
+            if int(lines[i].split("|")[0]) in song_ids:
+                lines_to_move.append((i, lines[i]))
 
-            if not bottom:
-                lines.append(lines.pop(i))
-            else:
-                lines.insert(0, lines.pop(i))
+        lines_to_move.sort(key=lambda x: x[0], reverse=True)
+
+        for i, _ in reversed(lines_to_move):
+            lines.pop(i)
+
+        lines_to_move.reverse()
+
+        if not bottom:
+            lines += [line for _, line in lines_to_move]
+        else:
+            lines = [line for _, line in lines_to_move] + lines
 
         songs_file.seek(0)
         songs_file.write("".join(lines))
@@ -2127,6 +2137,21 @@ def clip_(song_id, start, end):
     (in seconds).
 
     If END is not passed, the clip will be from START to the end of the song.
+
+    If neither START nor END are passed, a clip editor will be opened, in which
+    you can move the start and end of the clip around using the arrow keys while
+    listening to the song (also shows waveform).
+
+    \b
+    The editor starts out editing the start of the clip.
+    \x1b[1mt\x1b[0m to toggle between editing the start and end of the clip.
+    \x1b[1mSHIFT+LEFT/RIGHT\x1b[0m will move whichever clip end you are editing
+        by 0.1 seconds, snap the current playback to that clip end (to exactly
+        the clip start if editing start, end-1 if editing end), and pause.
+    \x1b[1mLEFT/RIGHT\x1b[0m will move whichever clip end you are editing by 1
+        second, snap the current playback to that clip end, and pause.
+    \x1b[1mENTER\x1b[0m will exit the editor and save the clip.
+    \x1b[1mq\x1b[0m will exit the editor without saving the clip.
     """
     if start is not None:
         if start < 0:
@@ -2182,10 +2207,7 @@ def clip_(song_id, start, end):
         songs_file.write("".join(lines))
         songs_file.truncate()
 
-        click.secho(
-            f"Clipped {song_name} from {start} to {end}.",
-            fg="green"
-        )
+        click.secho(f"Clipped {song_name} from {start} to {end}.", fg="green")
 
 
 @cli.command()

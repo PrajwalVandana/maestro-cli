@@ -128,7 +128,7 @@ If you ever go into the song database (located at `~/.maestro-files`) and manual
 
 Ever been listening to music, and you're skipping every song because you keep getting bored of them? You like the songs, you're just not in the mood to listen to all of them entirely.
 
-Introducing clips, something I've always wished the big companies like Spotify, YT Music would do. Use `maestro clip` to define a clip for any song with a start and end timestamp, then `maestro play -c` to play in "clip mode" (can also be toggled while playing a normal mode session with the `c` key)—this will play the clips for each song (or the entire song if there's no clip). Now you can listen to only the best parts of your music!
+Introducing clips, something I've always wished the big companies like Spotify, YT Music would do. Use `maestro clip ID START END` to define a clip for any song with a start and end timestamp (or use the clip editor for fine-grained control with `maestro clip ID`), then `maestro play -c` to play in "clip mode" (can also be toggled while playing a normal mode session with the `c` key)—this will play the clips for each song (or the entire song if there's no clip). Now you can listen to only the best parts of your music!
 
 ### `maestro entry`
 

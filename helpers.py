@@ -354,7 +354,7 @@ class PlayerOutput:
         if self.clip_mode:
             pos -= self.clip[0]
 
-        self.stdscr.clear()
+        self.stdscr.erase()
 
         screen_width = self.stdscr.getmaxyx()[1]
 
@@ -408,7 +408,9 @@ class PlayerOutput:
         self.stdscr.move(1, 0)
 
         song_display_color = 5 if self.looping_current_song else 3
-        progress_bar_display_color = 17 if self.clip_mode else 15
+        progress_bar_display_color = (
+            17 if (self.clip_mode and self.clip != (0, self.duration)) else 15
+        )
 
         for j in range(
             self.scroller.top, self.scroller.top + self.scroller.win_size
@@ -466,7 +468,6 @@ class PlayerOutput:
                 "Add song (by ID): " + self.adding_song[0],
                 screen_width,
                 0,
-                False,
                 curses.color_pair(1),
             )
             self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
@@ -775,28 +776,31 @@ def clip_editor(stdscr, details):
     song_name = details[1]
     song_path = os.path.join(SONGS_DIR, song_name)
 
+    show_waveform = True
     audio_data = AudioData(song_path, freqs=False)
-
     if audio_data.loaded_song is None:
-        click.secho(
-            f"Song '{song_name}' could not be loaded. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
-            fg="red",
-        )
-        return
+        show_waveform = False
 
     init_curses(stdscr)
 
-    audio_data.data /= np.max(np.abs(audio_data.data))
-    audio_data.data = (
-        80
-        * ((np.reshape(audio_data.data, audio_data.data.shape + (1,)) + 1) / 2)
-        ** WAVEFORM_FLATTEN_FACTOR
-    )
+    if show_waveform:
+        audio_data.data /= np.max(np.abs(audio_data.data))
+        audio_data.data = (
+            80
+            * (
+                (np.reshape(audio_data.data, audio_data.data.shape + (1,)) + 1)
+                / 2
+            )
+            ** WAVEFORM_FLATTEN_FACTOR
+        )
 
     playback = Playback()
     playback.load_file(song_path)
 
-    clip_start, clip_end = 0, playback.duration
+    if details[3]:
+        clip_start, clip_end = [float(x) for x in details[3].split()]
+    else:
+        clip_start, clip_end = 0, playback.duration
     editing_start = True
     change_output = True
     playback.play()
@@ -822,6 +826,7 @@ def clip_editor(stdscr, details):
                 clip_start,
                 clip_end,
                 editing_start,
+                show_waveform,
             )
 
         c = stdscr.getch()
@@ -927,8 +932,9 @@ def clip_editor_output(
     clip_start,
     clip_end,
     editing_start,
+    show_waveform,
 ):
-    stdscr.clear()
+    stdscr.erase()
 
     if stdscr.getmaxyx()[0] < 3:
         stdscr.addstr("Window too small.", curses.color_pair(4))
@@ -937,8 +943,9 @@ def clip_editor_output(
 
     screen_width = stdscr.getmaxyx()[1]
 
-    show_waveform = stdscr.getmaxyx()[0] >= 4 + WAVEFORM_HEIGHT
-    print_to_logfile(show_waveform, stdscr.getmaxyx()[1])
+    show_waveform = (
+        show_waveform and stdscr.getmaxyx()[0] >= 4 + WAVEFORM_HEIGHT
+    )
     if show_waveform:
         rendered_lines = render(
             screen_width - 2,

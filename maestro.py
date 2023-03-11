@@ -886,10 +886,10 @@ def cli():
 @click.argument("path_", metavar="PATH_OR_URL")
 @click.argument("tags", nargs=-1)
 @click.option(
-    "-m",
-    "--move",
+    "-M/-nM",
+    "--move/--no-move",
     "move_",
-    is_flag=True,
+    default=False,
     help="Move file from PATH to maestro's internal song database instead of copying.",
 )
 @click.option(
@@ -899,22 +899,22 @@ def cli():
     help="What to name the song, if you don't want to use the title from Youtube/Spotify or filename. Do not include an extension (e.g. '.wav'). Ignored if adding multiple songs.",
 )
 @click.option(
-    "-r",
-    "--recursive",
+    "-R, -nR",
+    "--recursive/--no-recursive",
     "recurse",
-    is_flag=True,
+    default=False,
     help="If PATH is a folder, add songs in subfolders.",
 )
 @click.option(
-    "-y",
-    "--youtube",
-    is_flag=True,
+    "-Y/-nY",
+    "--youtube/--no-youtube",
+    default=False,
     help="Add a song from a YouTube or YouTube Music URL.",
 )
 @click.option(
-    "-s",
-    "--spotify",
-    is_flag=True,
+    "-S/-nS",
+    "--spotify/--no-spotify",
+    default=False,
     help="Add a song from Spotify (track URL, album URL, playlist URL, artist URL, or search query).",
 )
 @click.option(
@@ -934,16 +934,16 @@ def cli():
     help="Add a clip. Ignored if adding multiple songs.",
 )
 @click.option(
-    "-p",
-    "--playlist",
+    "-P/-nP",
+    "--playlist/--no-playlist",
     "playlist_",
-    is_flag=True,
-    help="If song URL passed is from a playlist, download all the songs. If the URL points directly to a playlist, this flag is unncessary.",
+    default=False,
+    help="If song URL passed is from a YouTube playlist, download all the songs. If the URL points directly to a playlist, this flag is unncessary.",
 )
 @click.option(
-    "-V",
-    "--visualize",
-    is_flag=True,
+    "-V/-nV",
+    "--visualize/--no-visualize",
+    default=False,
     help="Calculate and cache visualization frequencies for the song. Ignored if the required dependencies are not installed.",
 )
 def add(
@@ -964,10 +964,10 @@ def add(
     song will be the filename (unless '-n' is passed). Filenames and tags cannot
     contain the character '|', and tags cannot contain ','.
 
-    If the '-y' or '--youtube' flag is passed, PATH is treated as a YouTube or
+    If the '-Y' or '--youtube' flag is passed, PATH is treated as a YouTube or
     YouTube Music URL instead of a file path.
 
-    If the '-s' or '--spotify' flag is passed, PATH is treated as a Spotify
+    If the '-S' or '--spotify' flag is passed, PATH is treated as a Spotify
     track URL, album URL, playlist URL, artist URL, or search query instead of
     a file path.
 
@@ -981,7 +981,7 @@ def add(
     paths = None
     if not (youtube or spotify) and not os.path.exists(path_):
         click.secho(
-            f"The path '{path_}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-u/--url' flag.",
+            f"The path '{path_}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-Y/--youtube' flag. To download from a Spotify URl, pass the '-S/--spotify' flag.",
             fg="red",
         )
         return
@@ -1170,11 +1170,13 @@ def add(
 
 @cli.command()
 @click.argument("ARGS", required=True, nargs=-1)
-@click.option("-f", "--force", is_flag=True, help="Force deletion.")
 @click.option(
-    "-t",
-    "--tag",
-    is_flag=True,
+    "-F/-nF", "--force/--no-force", default=False, help="Force deletion."
+)
+@click.option(
+    "-T/-nT",
+    "--tag/--no-tag",
+    default=False,
     help="If passed, treat all arguments as tags, deleting every ocurrence of each tag.",
 )
 def remove(args, force, tag):
@@ -1185,7 +1187,7 @@ def remove(args, force, tag):
             remaining_song_ids = {n for n in song_ids}
         except ValueError:
             click.secho(
-                "Song IDs must be integers. To delete tags, pass the '-t/--tag' flag.",
+                "Song IDs must be integers. To delete tags, pass the '-T/--tag' flag.",
                 fg="red",
             )
             return
@@ -1360,12 +1362,12 @@ def tag_(song_ids, tags):
     help="Tags to remove.",
     multiple=True,
 )
-@click.option("-a", "--all", "all_", is_flag=True)
+@click.option("-A/-nA", "--all/--no-all", "all_", default=False)
 def untag(song_ids, tags, all_):
     """Remove tags from a specific song (passed as ID). Tags that the song
     doesn't have will be ignored.
 
-    Passing the '-a/--all' flag will remove all tags from the song, unless TAGS
+    Passing the '-A/--all' flag will remove all tags from the song, unless TAGS
     is passed (in which case the flag is ignored)."""
     song_ids = set(song_ids)
     num_songs = len(song_ids)
@@ -1405,7 +1407,7 @@ def untag(song_ids, tags, all_):
     else:
         if not all_:
             click.secho(
-                "No tags passed—to remove all tags, pass the '-a/--all' flag.",
+                "No tags passed—to remove all tags, pass the '-A/--all' flag.",
                 fg="red",
             )
         else:
@@ -1434,14 +1436,15 @@ def untag(song_ids, tags, all_):
     "-s",
     "--shuffle",
     "shuffle_",
-    is_flag=True,
-    help="Randomize order of songs when played (if --loop is passed, only shuffles once, unless --reshuffle is also passed).",
+    type=click.Choice([-1, 0, 1]),
+    default=0,
+    help="Default 0 (no shuffle). Pass 1 to randomize order of songs when played. If -1 is passed, the songs will reshuffle on every loop.",
 )
 @click.option(
-    "-r",
-    "--reverse",
+    "-R/-nR",
+    "--reverse/--no-reverse",
     "reverse",
-    is_flag=True,
+    default=False,
     help="Play songs in reverse (most recently added first).",
 )
 @click.option(
@@ -1461,45 +1464,38 @@ def untag(song_ids, tags, all_):
     show_default=True,
 )
 @click.option(
-    "-l",
-    "--loop",
+    "-L/-nL",
+    "--loop/--no-loop",
     "loop",
-    is_flag=True,
+    default=False,
     help="Loop the playlist. Can be toggled with 'l'.",
 )
 @click.option(
-    "-c",
-    "--clips",
+    "-C/-nC",
+    "--clips/--no-clips",
     "clips",
-    is_flag=True,
+    default=False,
     help="Start in clip mode. Can be toggled with 'c'.",
 )
 @click.option(
-    "-R",
-    "--reshuffle",
-    "reshuffle",
-    is_flag=True,
-    help="If --loop is passed, reshuffle the playlist once the last song of the first run-through has been played.",
-)
-@click.option(
-    "-d",
-    "--discord",
+    "-D/-nD",
+    "--discord/--no-discord",
     "discord",
-    is_flag=True,
+    default=False,
     help="Discord rich presence. Ignored if required dependencies are not installed. Will fail silently and retry every time the song changes if Discord connection fails (e.g. Discord not open).",
 )
 @click.option(
-    "-m",
-    "--match-all",
+    "-M/-nM",
+    "--match-all/--no-match-all",
     "match_all",
-    is_flag=True,
+    default=False,
     help="Play songs that match all tags, not any.",
 )
 @click.option(
-    "-V",
-    "--visualize",
+    "-V/-nV",
+    "--visualize/--no-visualize",
     "visualize",
-    is_flag=True,
+    default=False,
     help="Visualize the song being played. Ignored if required dependencies are not installed.",
 )
 def play(
@@ -1510,13 +1506,12 @@ def play(
     volume,
     loop,
     clips,
-    reshuffle,
     discord,
     match_all,
     visualize,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
-    your playlist, unless the '-m/--match-all' flag is passed, in which case
+    your playlist, unless the '-M/--match-all' flag is passed, in which case
     every tag must be matched.
 
     \b
@@ -1585,6 +1580,18 @@ def play(
                         if tags <= song_tags:  # subset
                             playlist.append(details)
 
+    if shuffle_ == 0:
+        shuffle_ = False
+        reshuffle = False
+    elif shuffle_ == 1:
+        shuffle_ = True
+        reshuffle = False
+    elif shuffle_ == -1:
+        shuffle_ = True
+        reshuffle = True
+    else:
+        raise ValueError("Invalid shuffle value.")
+
     if shuffle_:
         shuffle(playlist)
     elif reverse:
@@ -1608,11 +1615,11 @@ def play(
 
 @cli.command()
 @click.option(
-    "-t",
-    "--tag",
+    "-T/-nT",
+    "--tag/--no-tag",
     "renaming_tag",
-    is_flag=True,
-    help="If passed, rename tag instead of song.",
+    default=False,
+    help="If passed, rename tag instead of song (treat the arguments as tags).",
 )
 @click.argument("original")
 @click.argument("new_name")
@@ -1620,7 +1627,7 @@ def rename(original, new_name, renaming_tag):
     """Renames the song with the ID ORIGINAL to NEW_NAME. The extension of the
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
 
-    If the '-t/--tag' flag is passed, treats ORIGINAL as a tag, renaming all
+    If the '-T/--tag' flag is passed, treats ORIGINAL as a tag, renaming all
     ocurrences of it to NEW_NAME—doesn't check if the tag NEW_NAME already,
     exists, so be careful!
     """
@@ -1629,7 +1636,7 @@ def rename(original, new_name, renaming_tag):
     if not renaming_tag:
         if not original.isnumeric():
             click.secho(
-                "Song ID must be an integer. To rename a tag, pass the '-t/--tag' flag.",
+                "Song ID must be an integer. To rename a tag, pass the '-T/--tag' flag.",
                 fg="red",
             )
             return
@@ -1704,10 +1711,10 @@ def rename(original, new_name, renaming_tag):
 @cli.command()
 @click.argument("phrase")
 @click.option(
-    "-t",
-    "--tag",
+    "-T/-nT",
+    "--tag/--no-tag",
     "searching_for_tags",
-    is_flag=True,
+    default=False,
     help="Searches for matching tags instead of song names.",
 )
 def search(phrase, searching_for_tags):
@@ -1715,7 +1722,7 @@ def search(phrase, searching_for_tags):
     will appear before songs containing but not starting with PHRASE. This
     search is case-insensitive.
 
-    If the '-t' flag is passed, searches for tags instead of song names."""
+    If the '-T' flag is passed, searches for tags instead of song names."""
     phrase = phrase.lower()
     with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
@@ -1803,18 +1810,18 @@ def search(phrase, searching_for_tags):
     show_default=True,
 )
 @click.option(
-    "-r",
-    "--reverse",
+    "-R/-nR",
+    "--reverse/--no-reverse",
     "reverse_",
-    is_flag=True,
+    default=False,
     help="Reverse the sorting order (greatest first).",
 )
 @click.option(
-    "-t",
-    "--tag",
+    "-T/-nT",
+    "--tag/--no-tag",
     "listing_tags",
-    is_flag=True,
-    help="List tags matching TAGS.",
+    default=False,
+    help="List tags matching TAGS instead of songs.",
 )
 @click.option(
     "-y",
@@ -1822,12 +1829,12 @@ def search(phrase, searching_for_tags):
     "year",
     help="Show time listened for a specific year, instead of the total. Passing 'cur' will show the time listened for the current year.",
 )
-@click.option("-T", "--top", "top", type=int, help="Show the top n songs/tags.")
+@click.option("-t", "--top", "top", type=int, help="Show the top n songs/tags.")
 @click.option(
-    "-m",
-    "--match-all",
+    "-M/-nM",
+    "--match-all/--no-match-all",
     "match_all",
-    is_flag=True,
+    default=False,
     help="Shows songs that match all tags instead of any tag. Ignored if '-t/--tag' is passed.",
 )
 def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
@@ -1835,18 +1842,18 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
 
-    If the '-t' flag is passed, tags will be listed instead of songs.
+    If the '-T' flag is passed, tags will be listed instead of songs.
 
     Output format: tag, duration, listen time, times listened
 
     If TAGS are passed, any tag/song matching any tag in TAGS will be listed,
-    unless the '-m/--match-all' flag is passed, in which case every tag must
+    unless the '-M/--match-all' flag is passed, in which case every tag must
     be matched (ignored if listing tags).
     """
     if top is not None:
         if top < 1:
             click.secho(
-                "The option '-T/--top' must be a positive number.", fg="red"
+                "The option '-t/--top' must be a positive number.", fg="red"
             )
             return
 
@@ -2020,11 +2027,11 @@ def entry(song_ids, year):
 @cli.command()
 @click.argument("song", required=True)
 @click.option(
-    "-t",
-    "--title",
+    "-N/-nN",
+    "--name/--no-name",
     "title",
-    is_flag=True,
-    help="Treat SONG as a song title instead of an ID.",
+    default=False,
+    help="Treat SONG as a song name instead of an ID.",
 )
 def recommend(song, title):
     """
@@ -2033,7 +2040,7 @@ def recommend(song, title):
     Recommends songs (possibly explicit) using the YouTube Music API similar
     to the song with ID SONG to listen to.
 
-    If the '-t' flag is passed, SONG is treated as a song title to search for
+    If the '-N' flag is passed, SONG is treated as a song name to search for
     on YouTube Music."""
     try:
         from ytmusicapi import YTMusic
@@ -2051,7 +2058,7 @@ def recommend(song, title):
     else:
         if not song.isdigit():
             click.secho(
-                "Song ID must be a number. To get recommendations by title, pass the '-t/--title' flag.",
+                "Song ID must be a number. To get recommendations by name, pass the '-N/--name' flag.",
                 fg="red",
             )
             return
@@ -2092,14 +2099,14 @@ def recommend(song, title):
 
 @cli.command()
 @click.argument("song_ids", required=True, type=int, nargs=-1)
-@click.option("-b", "--bottom", "bottom", is_flag=True)
+@click.option("-B/-nB", "--bottom/--no-bottom", "bottom", default=False)
 def push(song_ids, bottom):
     """
     Push the song(s) with ID(s) SONG_IDS to the top of the playlist (as if they
     were the songs most recently added) in the order they are passed (e.g.
     'maestro push 1 2 3' will make the most recent song be 3).
 
-    If the '-b' flag is passed, the song(s) will be pushed to the bottom of the
+    If the '-B' flag is passed, the song(s) will be pushed to the bottom of the
     list instead.
     """
     with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
@@ -2213,19 +2220,19 @@ def clip_(song_id, start, end):
 @cli.command()
 @click.argument("song_ids", type=int, nargs=-1, required=False)
 @click.option(
-    "-a",
-    "--all",
+    "-A/-nA",
+    "--all/--no-all",
     "all_",
-    is_flag=True,
+    default=False,
     help="Remove clips for all songs. Ignores SONG_IDS.",
 )
-@click.option("-f", "--force", "force", is_flag=True)
+@click.option("-F/-nF", "--force/--no-force", "force", default=False)
 def unclip(song_ids, all_, force):
     """
     Removes clip for the song(s) with ID(s) SONG_IDS.
 
-    If the '-a/--all' flag is passed, the clips for all songs will be removed,
-    ignoring SONG_IDS. This prompts for confirmation unless the '-f/--force'
+    If the '-A/--all' flag is passed, the clips for all songs will be removed,
+    ignoring SONG_IDS. This prompts for confirmation unless the '-F/--force'
     flag is passed.
     """
     if not all_:
@@ -2233,7 +2240,7 @@ def unclip(song_ids, all_, force):
             song_ids = set(song_ids)
         else:
             click.secho(
-                "No song IDs passed. To remove clips for all songs, pass the '-a/--all' flag.",
+                "No song IDs passed. To remove clips for all songs, pass the '-A/--all' flag.",
                 fg="red",
             )
             return
@@ -2269,17 +2276,17 @@ def unclip(song_ids, all_, force):
 @cli.command()
 @click.argument("song_ids", type=int, nargs=-1, required=False)
 @click.option(
-    "-r",
-    "--recache",
+    "-F/-nF",
+    "--force/--no-force",
     "recache",
-    is_flag=True,
+    default=False,
     help="Force recalculation of existing visualization frequency caches.",
 )
 @click.option(
-    "-a",
-    "--all",
+    "-A/-nA",
+    "--all/--no-all",
     "all_",
-    is_flag=True,
+    default=False,
     help="Calculate visualization frequency caches for all songs. Ignores SONG_IDS.",
 )
 def cache(song_ids, recache, all_):
@@ -2288,7 +2295,7 @@ def cache(song_ids, recache, all_):
     with ID(s) SONG_IDS. If any cached data of either kind already exists, this
     command does nothing unless '-r/--recache' is passed.
 
-    To run this command for all songs, pass the '-a/--all' flag (ignores
+    To run this command for all songs, pass the '-A/--all' flag (ignores
     SONG_IDS).
     """
     if song_ids:
@@ -2296,7 +2303,7 @@ def cache(song_ids, recache, all_):
     else:
         if not all_:
             click.secho(
-                "No song IDs passed. To cache data for all songs, pass the '-a/--all' flag.",
+                "No song IDs passed. To cache data for all songs, pass the '-A/--all' flag.",
                 fg="red",
             )
             return
@@ -2325,7 +2332,7 @@ def cache(song_ids, recache, all_):
             ):
                 if not recache:
                     click.secho(
-                        f"The song {song_name} with ID {song_id} already has cached data. To force recalcualtion, pass the '-r/--recache' flag.",
+                        f"The song {song_name} with ID {song_id} already has cached data. To force recalculation, pass the '-F/--force' flag.",
                         fg="yellow",
                     )
                     continue

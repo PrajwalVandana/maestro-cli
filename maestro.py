@@ -483,8 +483,16 @@ def _play(
                                             ),
                                         )
                                         discord_presence_process.start()
+                                elif c in "iI":
+                                    player_output.adding_song = "", 0, True
+                                    curses.curs_set(True)
+                                    screen_size = stdscr.getmaxyx()
+                                    player_output.scroller.resize(
+                                        screen_size[0] - 3
+                                    )
+                                    player_output.output(playback.curr_pos)
                                 elif c in "aA":
-                                    player_output.adding_song = "", 0
+                                    player_output.adding_song = "", 0, False
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
                                     player_output.scroller.resize(
@@ -581,6 +589,7 @@ def _play(
                             player_output.adding_song = (
                                 player_output.adding_song[0],
                                 max(player_output.adding_song[1] - 1, 0),
+                                player_output.adding_song[2],
                             )
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_RIGHT:
@@ -591,6 +600,7 @@ def _play(
                                     player_output.adding_song[1] + 1,
                                     len(player_output.adding_song[0]),
                                 ),
+                                player_output.adding_song[2],
                             )
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_UP:
@@ -615,6 +625,7 @@ def _play(
                                         player_output.adding_song[1] :
                                     ],
                                     player_output.adding_song[1] - 1,
+                                    player_output.adding_song[2],
                                 )
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_ENTER:
@@ -637,9 +648,15 @@ def _play(
                                             if song_id == int(
                                                 player_output.adding_song[0]
                                             ):
-                                                player_output.playlist.append(
-                                                    details
-                                                )
+                                                if player_output.adding_song[2]:
+                                                    player_output.playlist.insert(
+                                                        player_output.i + 1,
+                                                        details,
+                                                    )
+                                                else:
+                                                    player_output.playlist.append(
+                                                        details
+                                                    )
                                                 if loop:
                                                     if reshuffle:
                                                         next_playlist.insert(
@@ -653,9 +670,18 @@ def _play(
                                                             details,
                                                         )
                                                     else:
-                                                        next_playlist.append(
-                                                            details
-                                                        )
+                                                        if player_output.adding_song[
+                                                            2
+                                                        ]:
+                                                            next_playlist.insert(
+                                                                player_output.i
+                                                                + 1,
+                                                                details,
+                                                            )
+                                                        else:
+                                                            next_playlist.append(
+                                                                details
+                                                            )
                                                 player_output.scroller.num_lines += (
                                                     1
                                                 )
@@ -700,9 +726,18 @@ def _play(
                                                             0
                                                         ]
                                                     ):
-                                                        player_output.playlist.append(
-                                                            details
-                                                        )
+                                                        if player_output.adding_song[
+                                                            2
+                                                        ]:
+                                                            player_output.playlist.insert(
+                                                                player_output.i
+                                                                + 1,
+                                                                details,
+                                                            )
+                                                        else:
+                                                            player_output.playlist.append(
+                                                                details
+                                                            )
                                                         if loop:
                                                             if reshuffle:
                                                                 next_playlist.insert(
@@ -716,9 +751,18 @@ def _play(
                                                                     details,
                                                                 )
                                                             else:
-                                                                next_playlist.append(
-                                                                    details
-                                                                )
+                                                                if player_output.adding_song[
+                                                                    2
+                                                                ]:
+                                                                    next_playlist.insert(
+                                                                        player_output.i
+                                                                        + 1,
+                                                                        details,
+                                                                    )
+                                                                else:
+                                                                    next_playlist.append(
+                                                                        details
+                                                                    )
                                                         player_output.scroller.num_lines += (
                                                             1
                                                         )
@@ -745,6 +789,7 @@ def _play(
                                                 player_output.adding_song[1] :
                                             ],
                                             player_output.adding_song[1] - 1,
+                                            player_output.adding_song[2],
                                         )
                                     player_output.output(playback.curr_pos)
                                 else:
@@ -758,6 +803,7 @@ def _play(
                                             player_output.adding_song[1] :
                                         ],
                                         player_output.adding_song[1] + 1,
+                                        player_output.adding_song[2],
                                     )
                                     player_output.output(playback.curr_pos)
                             except (ValueError, OverflowError):
@@ -1533,6 +1579,7 @@ def play(
     \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the queue
     \x1b[1md\x1b[0m  to toggle [D]iscord rich presence
     \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
+    \x1b[1mi\x1b[0m  to insert a song (by ID) in the playlist after the current song. Opens a prompt like 'a'.
 
     \b
     song color indicates mode:

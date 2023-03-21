@@ -163,6 +163,7 @@ While playing:
 - `m` to mute
 - `r` to replay a song
 - `a` to add a song by ID to the end of the playlist
+- `i` to insert a song by ID after the currently playing song
 - `b` or `p` to go back to the previous song
 - `s` or `n` to go to the next song
 - space to pause/play

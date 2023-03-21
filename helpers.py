@@ -465,7 +465,9 @@ class PlayerOutput:
             # pylint: disable=unsubscriptable-object
             adding_song_length = addstr_fit_to_width(
                 self.stdscr,
-                "Add song (by ID): " + self.adding_song[0],
+                ("Insert" if self.adding_song[2] else "Append")
+                + " song (by ID): "
+                + self.adding_song[0],
                 screen_width,
                 0,
                 curses.color_pair(1),

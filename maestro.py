@@ -1008,6 +1008,7 @@ def add(
                     "--audio-format",
                     format_,
                     "--no-playlist" if not playlist_ else "",
+                    "--embed-metadata",
                     "-o",
                     os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
                 ],
@@ -1436,9 +1437,8 @@ def untag(song_ids, tags, all_):
     "-s",
     "--shuffle",
     "shuffle_",
-    type=click.Choice([-1, 0, 1]),
-    default=0,
-    help="Default 0 (no shuffle). Pass 1 to randomize order of songs when played. If -1 is passed, the songs will reshuffle on every loop.",
+    type=click.IntRange(0, 2),
+    help="0: shuffle once, 1: shuffle every loop, 2: shuffle every loop except for the first one.",
 )
 @click.option(
     "-R/-nR",
@@ -1581,16 +1581,17 @@ def play(
                             playlist.append(details)
 
     if shuffle_ == 0:
-        shuffle_ = False
+        shuffle_ = True
         reshuffle = False
     elif shuffle_ == 1:
         shuffle_ = True
-        reshuffle = False
-    elif shuffle_ == -1:
-        shuffle_ = True
         reshuffle = True
-    else:
-        raise ValueError("Invalid shuffle value.")
+    elif shuffle_ == -1:
+        shuffle_ = False
+        reshuffle = True
+    else:  # shuffle_ = None
+        shuffle_ = False
+        reshuffle = False
 
     if shuffle_:
         shuffle(playlist)
@@ -1794,7 +1795,7 @@ def search(phrase, searching_for_tags):
     "sort_",
     type=click.Choice(
         (
-            "id",
+            "none",
             "name",
             "n",
             "secs-listened",
@@ -1805,8 +1806,8 @@ def search(phrase, searching_for_tags):
             "t",
         )
     ),
-    help="Sort by ID, name, seconds listened, or times listened (seconds/song duration). Greatest first.",
-    default="id",
+    help="Sort by name, seconds listened, or times listened (seconds/song duration). Greatest first.",
+    default="none",
     show_default=True,
 )
 @click.option(
@@ -1938,20 +1939,22 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
         lines = [line for line in lines if line]
 
-        if sort_ == "id":
-            sort_key = lambda t: int(t[0])
-        elif sort_ in ("name", "n"):
-            sort_key = lambda t: t[1]
-        elif sort_ in ("secs-listened", "s"):
-            sort_key = lambda t: float(t[-2])
-        elif sort_ in ("duration", "d"):
-            sort_key = lambda t: float(t[-1])
-        elif sort_ in ("times-listened", "t"):
-            sort_key = lambda t: float(t[-2]) / float(t[-1])
-        lines.sort(
-            key=sort_key,
-            reverse=not reverse_,
-        )
+        if sort_ != "none":
+            if sort_ in ("name", "n"):
+                sort_key = lambda t: t[1]
+            elif sort_ in ("secs-listened", "s"):
+                sort_key = lambda t: float(t[-2])
+            elif sort_ in ("duration", "d"):
+                sort_key = lambda t: float(t[-1])
+            elif sort_ in ("times-listened", "t"):
+                sort_key = lambda t: float(t[-2]) / float(t[-1])
+            lines.sort(
+                key=sort_key,
+                reverse=not reverse_,
+            )
+        else:
+            if not reverse_:
+                lines.reverse()
 
         for details in lines:
             print_entry(details)
@@ -2117,17 +2120,25 @@ def push(song_ids, bottom):
             if int(lines[i].split("|")[0]) in song_ids:
                 lines_to_move.append((i, lines[i]))
 
-        lines_to_move.sort(key=lambda x: x[0], reverse=True)
-
         for i, _ in reversed(lines_to_move):
             lines.pop(i)
 
-        lines_to_move.reverse()
+        song_ids_with_order = dict(
+            map(lambda x: (x[1], x[0]), enumerate(song_ids))
+        )
+
+        for i in range(len(lines_to_move)):
+            lines_to_move[i] = (
+                song_ids_with_order[int(lines_to_move[i][1].split("|")[0])],
+                *lines_to_move[i],
+            )
+
+        lines_to_move.sort(key=lambda x: x[0], reverse=bottom)
 
         if not bottom:
-            lines += [line for _, line in lines_to_move]
+            lines += [t[2] for t in lines_to_move]
         else:
-            lines = [line for _, line in lines_to_move] + lines
+            lines = [t[2] for t in lines_to_move] + lines
 
         songs_file.seek(0)
         songs_file.write("".join(lines))

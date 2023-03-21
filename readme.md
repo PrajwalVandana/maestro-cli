@@ -111,7 +111,7 @@ Also, playlists don't exist—`maestro` uses **tags**. For example, let's say yo
 
 Add a song (can be a folder of songs too!) given a file path.
 
-Pass the `-y` or `--youtube` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg).
+Pass the `-y` or `--youtube` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg). Passing a YouTube Music **song** URL (not "Video") is recommended, as passing "Video"s (i.e. just normal YouTube videos) can sometimes mess up the artist/album data.
 
 Pass the `-s` or `--spotify` flag to download from a Spotify URL instead of a file path. This also requires installing FFmpeg.
 

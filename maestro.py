@@ -373,6 +373,14 @@ def _play(
                         elif c == curses.KEY_DC:
                             selected_song = player_output.scroller.pos
                             del player_output.playlist[selected_song]
+
+                            if loop:
+                                if reshuffle:
+                                    next_playlist = playlist[:]
+                                    shuffle(next_playlist)
+                                else:
+                                    del next_playlist[selected_song]
+
                             player_output.scroller.num_lines -= 1
                             if (
                                 selected_song == player_output.i
@@ -566,6 +574,14 @@ def _play(
                                 elif c in "\b\x7f":
                                     selected_song = player_output.scroller.pos
                                     del player_output.playlist[selected_song]
+
+                                    if loop:
+                                        if reshuffle:
+                                            next_playlist = playlist[:]
+                                            shuffle(next_playlist)
+                                        else:
+                                            del next_playlist[selected_song]
+
                                     player_output.scroller.num_lines -= 1
                                     if (
                                         selected_song == player_output.i
@@ -1194,10 +1210,10 @@ def add(
             songs_file.seek(0)  # start reading from beginning
 
             lines = songs_file.readlines()
-            if not lines:
-                song_id = 1
-            else:
-                song_id = int(lines[-1].split("|")[0]) + 1
+
+            song_id = 1
+            for line in lines:
+                song_id = max(song_id, int(line.split("|")[0]) + 1)
 
             prepend_newline = lines and lines[-1][-1] != "\n"
 

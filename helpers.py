@@ -420,7 +420,7 @@ class PlayerOutput:
 
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
-                    f"{j + 1} ",
+                    f"{self.playlist[j][0]} ",
                     screen_width,
                     length_so_far,
                     curses.color_pair(2),
@@ -433,17 +433,10 @@ class PlayerOutput:
                         length_so_far,
                         curses.color_pair(song_display_color) | curses.A_BOLD,
                     )
-                    length_so_far = addstr_fit_to_width(
-                        self.stdscr,
-                        f"({self.playlist[j][0]}) ",
-                        screen_width,
-                        length_so_far,
-                        curses.color_pair(song_display_color) | curses.A_BOLD,
-                    )
                 else:
                     length_so_far = addstr_fit_to_width(
                         self.stdscr,
-                        f"{self.playlist[j][1]} ({self.playlist[j][0]}) ",
+                        f"{self.playlist[j][1]} ",
                         screen_width,
                         length_so_far,
                         (
@@ -702,11 +695,11 @@ def add_song(
 ):
     song_name = os.path.split(path)[1]
     if "|" in song_name:
+        song_name = song_name.replace("|", "-")
         click.secho(
             f"The song \"{song_name}\" contains one or more '|' character(s), which is not allowed—all ocurrences have been replaced with '-'.",
             fg="yellow",
         )
-        song_name = song_name.replace("|", "-")
 
     for line in lines:
         details = line.split("|")

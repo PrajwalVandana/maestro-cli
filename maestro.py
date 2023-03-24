@@ -1649,7 +1649,7 @@ def play(
     elif shuffle_ == 1:
         shuffle_ = True
         reshuffle = True
-    elif shuffle_ == -1:
+    elif shuffle_ == 2:
         shuffle_ = False
         reshuffle = True
     else:  # shuffle_ = None

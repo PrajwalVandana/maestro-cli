@@ -2412,7 +2412,7 @@ def cache(song_ids, recache, all_):
     """
     Calculate and cache audio data and visualization frequencies for the song(s)
     with ID(s) SONG_IDS. If any cached data of either kind already exists, this
-    command does nothing unless '-r/--recache' is passed.
+    command does nothing unless '-F/--force' is passed.
 
     To run this command for all songs, pass the '-A/--all' flag (ignores
     SONG_IDS).

@@ -111,16 +111,16 @@ Also, playlists don't exist—`maestro` uses **tags**. For example, let's say yo
 
 Add a song (can be a folder of songs too!) given a file path.
 
-Pass the `-y` or `--youtube` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg). Passing a YouTube Music **song** URL (not "Video") is recommended, as passing "Video"s (i.e. just normal YouTube videos) can sometimes mess up the artist/album data.
+Pass the `-Y` or `--youtube` flag to download from a YouTube or YouTube Music URL instead of a file path. This requires installing [FFmpeg](https://github.com/FFmpeg/FFmpeg). Passing a YouTube Music **song** URL (not "Video") is recommended, as passing "Video"s (i.e. just normal YouTube videos) can sometimes mess up the artist/album data.
 
-Pass the `-s` or `--spotify` flag to download from a Spotify URL instead of a file path. This also requires installing FFmpeg.
+Pass the `-S` or `--spotify` flag to download from a Spotify URL instead of a file path. This also requires installing FFmpeg.
 
-Pass the `-p` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
+Pass the `-P` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
 
-By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-m` or `--move` flag to move the file instead.
+By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-M` or `--move` flag to move the file instead.
 
 ### `maestro cache`
-Calculate (or recalculate with the `-r/--recache` flag) visualization frequency data (see [`maestro play`](#maestro-play)) for songs passed by ID (or all songs with the `-a/--all` flag.
+Calculate (or recalculate with the `-F/--force` flag) visualization frequency data (see [`maestro play`](#maestro-play)) for songs passed by ID (or all songs with the `-A/--all` flag.
 
 If you ever go into the song database (located at `~/.maestro-files`) and manually edit a song, e.g. trimming (not recommended but should be fine as long as you don't mess with the name of the file), you should run `maestro cache --recache <SONG_ID>` to readjust the visualization.
 
@@ -141,18 +141,17 @@ List songs (or tags) and details. Use `maestro list -h` to see full options (e.g
 ### `maestro play`
 
 Play songs. Use `maestro play -h` to see full options. Has lots of features:
-- pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the `-m` or `--match-all` flag)
-- shuffle playlist with the `-s` or `--shuffle` flag
-- play songs in reverse order with the `-r` or `--reverse` flag
-- loop playlist with the `-l` or `--loop` flag
-- shuffle playlist on loop with the `-r` or `--reshuffle` flag
+- pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the `-M` or `--match-all` flag)
+- shuffle playlist with the `-s` or `--shuffle option (shuffle once, shuffle every loop, or shuffle every loop except the first)
+- play songs in reverse order with the `-R` or `--reverse` flag
+- loop playlist with the `-L` or `--loop` flag
 - show an audio visualization with the `-V` or `--visualize` flag
   - you may notice some wait time for the visualization to properly load the first time a song is visualized (~7 seconds), but after that the visualization is cached and should load quickly
 - works with headphone buttons (and the Touch Bar and Siri!) on Mac using the Now Playing Center!
-- works with Discord status! (pass the `-d` or `--discord` flag)
+- works with Discord status! (pass the `-D` or `--discord` flag)
 
 While playing:
-- like a song and want to play *that specific song* on loop? click `l` while playing to toggle loop mode (not the same as passing `-l` to `maestro play`!)
+- like a song and want to play *that specific song* on loop? click `l` while playing to toggle loop mode (not the same as passing `-L` to `maestro play`!)
 - seek with left/right arrow keys
 - volume up/down with `[` and `]`
 - remove selected song (not necessarily the currently playing song) from current playlist with `backspace/delete`
@@ -172,7 +171,7 @@ While playing:
 
 ### `maestro push`
 
-Push a song to the top (or bottom) of your song list. Useful if you usually play the most recently added songs first (`maestro play -r`), for example—you can use `maestro push` to push a song to the top of your list so it's the first song to play.
+Push a song to the top (or bottom) of your song list. Useful, for example, if you usually play the most recently added songs first (`maestro play -R`)—you can use `maestro push` to push a song to the top of your list so it's the first song to play.
 
 ### `maestro recommend` (experimental)
 

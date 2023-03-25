@@ -3,16 +3,17 @@ import curses
 import logging
 import multiprocessing
 import os
+import sys
 import threading
 import warnings
 
-logging.disable(logging.INFO)
+logging.disable(logging.CRITICAL)
 
 import click
 import numpy as np
 
-from shutil import copy, move
 from datetime import date
+from shutil import copy, move
 
 from just_playback import Playback
 from numba import jit  # NOTE: I think I'm in love with this decorator
@@ -27,6 +28,31 @@ DISCORD_ID = 1039038199881810040
 
 CUR_YEAR = date.today().year
 EXTS = (".mp3", ".wav", ".flac", ".ogg")
+
+METADATA_KEYS = (
+    "album",
+    "albumartist",
+    "artist",
+    "artwork",
+    "comment",
+    "compilation",
+    "composer",
+    "discnumber",
+    "genre",
+    "lyrics",
+    "totaldiscs",
+    "totaltracks",
+    "tracknumber",
+    "tracktitle",
+    "year",
+    "isrc",
+    "#bitrate",
+    "#codec",
+    "#length",
+    "#channels",
+    "#bitspersample",
+    "#samplerate",
+)
 
 # region paths
 MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
@@ -545,13 +571,34 @@ class PlayerOutput:
             0,
         )
 
-        addstr_fit_to_width(
+        song_data_length_so_far = addstr_fit_to_width(
             self.stdscr,
-            self.playlist[self.i][-2]+" - "+self.playlist[self.i][-1],
+            self.playlist[self.i][-2] + " - ",
             screen_width,
             0,
             curses.color_pair(12),
         )
+
+        if (
+            curses.ncurses_version >= (6, 1)
+            and sys.version_info >= (3, 7)
+            and "A_ITALIC" in dir(curses)
+        ):
+            addstr_fit_to_width(
+                self.stdscr,
+                self.playlist[self.i][-1],
+                screen_width,
+                song_data_length_so_far,
+                curses.color_pair(12) | curses.A_ITALIC,
+            )
+        else:
+            addstr_fit_to_width(
+                self.stdscr,
+                self.playlist[self.i][-1],
+                screen_width,
+                song_data_length_so_far,
+                curses.color_pair(12),
+            )
 
         self.stdscr.move(
             self.stdscr.getyx()[0] + 1,

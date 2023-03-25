@@ -40,7 +40,7 @@ setup(
     install_requires=[
         "click",
         "just_playback",
-        "tinytag",
+        "music-tag",
         "pypresence",
         "yt-dlp",
         "spotdl",

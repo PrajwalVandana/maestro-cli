@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 import click
+import music_tag
 
 from collections import defaultdict
 from queue import Queue
@@ -16,7 +17,6 @@ from time import sleep, time
 from icon import img
 
 from just_playback import Playback
-from tinytag import TinyTag
 
 can_update_discord = True
 try:
@@ -30,12 +30,12 @@ if sys.platform == "darwin":
     try:
         # pylint: disable=no-name-in-module,import-error
         from AppKit import (
-            NSApplication,
             NSApp,
+            NSApplication,
+            NSApplicationActivationPolicyProhibited,
+            NSDate,
             NSObject,
             NSRunLoop,
-            NSDate,
-            NSApplicationActivationPolicyProhibited,
         )
 
         # from MediaPlayer import MPNowPlayingInfoPropertyElapsedPlaybackTime
@@ -188,7 +188,7 @@ def _play(
             NSApplicationActivationPolicyProhibited
         )
 
-        # NOTE: keep reference to delegate object, setDelegate_ doesn't retain
+        # NOTE: keep ref to delegate object, setDelegate_ doesn't retain
         delegate = AppDelegate.alloc().init()
         NSApp().setDelegate_(delegate)
 
@@ -1008,6 +1008,13 @@ def cli():
     default=False,
     help="Calculate and cache visualization frequencies for the song. Ignored if the required dependencies are not installed.",
 )
+@click.option(
+    "-m",
+    "--metadata",
+    "metadata_pairs",
+    default=None,
+    help="Add metadata to the song. Ignored if adding multiple songs. The format is 'key1:value1,key2:value2,...'.",
+)
 def add(
     path_,
     tags,
@@ -1020,6 +1027,7 @@ def add(
     clip,
     playlist_,
     visualize,
+    metadata_pairs,
 ):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if '-r' is passed). The name of each
@@ -1038,6 +1046,19 @@ def add(
     and not the end. To get around this, you can pass -1 as the end time, e.g.
     'maestro add -c 30 -1 https://www.youtube.com/watch?v=3VxuMErCd-E -y'. If
     adding multiple songs, this option cannot be used.
+
+    The '-m/--metadata' option can be used to add metadata to the song. It takes
+    a string of the format 'key1:value1,key2:value2,...'. If adding multiple
+    songs, this option cannot be used.
+
+    Possible editable metadata keys are: album, albumartist, artist, artwork,
+    comment, compilation, composer, discnumber, genre, lyrics, totaldiscs,
+    totaltracks, tracknumber, tracktitle, year, isrc
+
+    Keys are not case sensitive and can contain arbitrary whitespace, '-', and
+    '_' characters. In other words, 'Album Artist', 'album-artist', and
+    'album_artist' are all synonyms for 'albumartist'. Also, 'disk' is
+    synonymous with 'disc'.
     """
 
     paths = None
@@ -1164,38 +1185,53 @@ def add(
         move(paths[0], new_path)
         paths = [new_path]
 
+    if clip is not None and len(paths) == 1:
+        song_duration = music_tag.load_file(paths[0])["#length"].value
+
+        start, end = clip
+        if start < 0:
+            click.secho("Clip start time cannot be negative.", fg="red")
+            return
+        elif start > song_duration:
+            click.secho(
+                "Clip start time cannot be greater than the song duration.",
+                fg="red",
+            )
+            return
+
+        if end == -1:
+            end = song_duration
+        elif end < start:
+            click.secho(
+                "Clip end time cannot be less than the clip start time.",
+                fg="red",
+            )
+            return
+        elif end > song_duration:
+            click.secho(
+                "Clip end time cannot be greater than the song duration.",
+                fg="red",
+            )
+            return
+    else:
+        start = end = None
+
+    if metadata_pairs is not None and len(paths) == 1:
+        # convert from "key:value,key:value" to [("key", "value")]
+        metadata_pairs = [
+            tuple(pair.strip().split(":")) for pair in metadata_pairs.split(",")
+        ]
+        song_data = music_tag.load_file(paths[0])
+        for key, value in metadata_pairs:
+            if key not in METADATA_KEYS or key.startswith("#"):
+                click.secho(
+                    f"'{key}' is not a valid editable metadata key.", fg="red"
+                )
+                continue
+            song_data[key] = value
+        song_data.save()
+
     for path in paths:
-        if clip is not None and len(paths) == 1:
-            song_duration = TinyTag.get(path).duration
-
-            start, end = clip
-            if start < 0:
-                click.secho("Clip start time cannot be negative.", fg="red")
-                return
-            elif start > song_duration:
-                click.secho(
-                    "Clip start time cannot be greater than the song duration.",
-                    fg="red",
-                )
-                return
-
-            if end == -1:
-                end = song_duration
-            elif end < start:
-                click.secho(
-                    "Clip end time cannot be less than the clip start time.",
-                    fg="red",
-                )
-                return
-            elif end > song_duration:
-                click.secho(
-                    "Clip end time cannot be greater than the song duration.",
-                    fg="red",
-                )
-                return
-        else:
-            start = end = None
-
         ext = os.path.splitext(path)[1]
         if not os.path.isdir(path) and ext not in EXTS:
             click.secho(f"'{ext}' is not supported.", fg="red")
@@ -1644,10 +1680,10 @@ def play(
                             playlist.append(details)
 
     for details in playlist:
-        song_data = TinyTag.get(os.path.join(SONGS_DIR, details[1]))
+        song_data = music_tag.load_file(os.path.join(SONGS_DIR, details[1]))
         details += [
-            (song_data.artist or "Unknown Artist"),
-            (song_data.album or "Unknown Album")
+            (song_data["artist"].value or "Unknown Artist"),
+            (song_data["album"].value or "Unknown Album"),
         ]
 
     if shuffle_ == 0:
@@ -1966,9 +2002,9 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                                 tags[tag][0]
                                 + float(stats_lines[i].strip().split("|")[1]),
                                 tags[tag][1]
-                                + TinyTag.get(
+                                + music_tag.load_file(
                                     os.path.join(SONGS_DIR, song_name)
-                                ).duration,
+                                )["#length"].value,
                             )
 
             for tag, (listen_time, total_duration) in tags.items():
@@ -2004,7 +2040,9 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             time_listened = stats[i].strip().split("|")[1]
             lines[i] = tuple(details) + (
                 time_listened,
-                TinyTag.get(os.path.join(SONGS_DIR, details[1])).duration,
+                music_tag.load_file(os.path.join(SONGS_DIR, details[1]))[
+                    "duration"
+                ].value,
             )
 
         lines = [line for line in lines if line]
@@ -2081,9 +2119,9 @@ def entry(song_ids, year):
                         details
                         + stats_lines[i].strip().split("|")[1:2]
                         + [
-                            TinyTag.get(
+                            music_tag.load_file(
                                 os.path.join(SONGS_DIR, details[1])
-                            ).duration
+                            )["#length"].value
                         ]
                     )
                     song_ids.remove(int(details[0]))
@@ -2267,7 +2305,7 @@ def clip_(song_id, start, end):
 
         song_name = details[1]
         song_path = os.path.join(SONGS_DIR, song_name)
-        duration = TinyTag.get(song_path).duration
+        duration = music_tag.load_file(song_path)["#length"].value
 
         if end is None:
             end = duration
@@ -2435,3 +2473,76 @@ def cache(song_ids, recache, all_):
                     f"Failed to cache data for song {song_name} with ID {song_id}. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
                     fg="red",
                 )
+
+
+@cli.command()
+@click.argument("song_id", type=int, required=True)
+@click.argument("pairs", type=str, required=False)
+def metadata(song_id, pairs):
+    """
+    If no PAIRS are passed, prints the metadata for the song with ID SONG_ID.
+
+    If PAIRS are passed, sets the metadata for the song with ID SONG_ID to the
+    key-value pairs in PAIRS. PAIRS should be a string of the form
+    'key1=value1,key2=value2,...'.
+
+    Possible editable metadata keys are: album, albumartist, artist, artwork,
+    comment, compilation, composer, discnumber, genre, lyrics, totaldiscs,
+    totaltracks, tracknumber, tracktitle, year, isrc
+
+    Keys are not case sensitive and can contain arbitrary whitespace, '-', and
+    '_' characters. In other words, 'Album Artist', 'album-artist', and
+    'album_artist' are all synonyms for 'albumartist'. Also, 'disk' is
+    synonymous with 'disc'.
+    """
+
+    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        lines = songs_file.readlines()
+
+        for i in range(len(lines)):
+            details = lines[i].strip().split("|")
+            if int(details[0]) == song_id:
+                song_path = os.path.join(SONGS_DIR, details[1])
+                song_name = details[1]
+                break
+        else:
+            click.secho(
+                f"No song with ID {song_id} found.",
+                fg="red",
+            )
+            return
+
+
+    if pairs:
+        pairs = [
+            tuple(pair.strip().split(":")) for pair in pairs.split(",")
+        ]
+
+        song_data = music_tag.load_file(song_path)
+        for key, value in pairs:
+            if key not in METADATA_KEYS or key.startswith("#"):
+                click.secho(
+                    f"'{key}' is not a valid editable metadata key.", fg="red"
+                )
+                continue
+            song_data[key] = value
+
+        song_data.save()
+
+        click.secho(
+            f"Set metadata for '{song_name}' with ID {song_id} to {pairs}.",
+            fg="green",
+        )
+    else:
+        song_data = music_tag.load_file(song_path)
+        click.echo("Metadata for ", nl=False)
+        click.secho(
+            song_name,
+            fg="blue",
+            bold=True,
+            nl=False
+        )
+        click.echo("with ID {song_id}:")
+
+        for key in METADATA_KEYS:
+            click.echo(f"{key if not key.startswith('#') else key[1:]}: {song_data[key].value}")

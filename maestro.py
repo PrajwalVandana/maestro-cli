@@ -2041,7 +2041,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             lines[i] = tuple(details) + (
                 time_listened,
                 music_tag.load_file(os.path.join(SONGS_DIR, details[1]))[
-                    "duration"
+                    "#length"
                 ].value,
             )
 

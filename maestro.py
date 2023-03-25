@@ -1643,6 +1643,13 @@ def play(
                         if tags <= song_tags:  # subset
                             playlist.append(details)
 
+    for details in playlist:
+        song_data = TinyTag.get(os.path.join(SONGS_DIR, details[1]))
+        details += [
+            (song_data.artist or "Unknown Artist"),
+            (song_data.album or "Unknown Album")
+        ]
+
     if shuffle_ == 0:
         shuffle_ = True
         reshuffle = False

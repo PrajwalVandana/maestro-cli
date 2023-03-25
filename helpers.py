@@ -345,10 +345,10 @@ class PlayerOutput:
 
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
-            - 2  # -2 for status bar
+            - 3  # -3 for status bar
             - 1  # -1 for header
-            - (self.adding_song != None)  # -1 for add mode
-            - (VISUALIZER_HEIGHT if self.can_visualize else 0)  # -visualizer
+            - (self.adding_song != None)  # - add mode
+            - (VISUALIZER_HEIGHT if self.can_visualize else 0)  # - visualizer
         )
 
         if self.clip_mode:
@@ -524,8 +524,37 @@ class PlayerOutput:
         )
         self.stdscr.move(
             self.stdscr.getmaxyx()[0]
-            - 1
+            - 2
             - (VISUALIZER_HEIGHT if self.can_visualize else 0),
+            0,
+        )
+
+        addstr_fit_to_width(
+            self.stdscr,
+            " " * (screen_width - 1),
+            screen_width,
+            0,
+            curses.color_pair(16),
+        )
+        self.stdscr.insstr(  # hacky fix for curses bug
+            " ",
+            curses.color_pair(16),
+        )
+        self.stdscr.move(
+            self.stdscr.getyx()[0],
+            0,
+        )
+
+        addstr_fit_to_width(
+            self.stdscr,
+            self.playlist[self.i][-2]+" - "+self.playlist[self.i][-1],
+            screen_width,
+            0,
+            curses.color_pair(12),
+        )
+
+        self.stdscr.move(
+            self.stdscr.getyx()[0] + 1,
             0,
         )
 
@@ -574,7 +603,7 @@ class PlayerOutput:
         if not volume_line_length_so_far >= screen_width:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
-                - 2
+                - 3
                 - (VISUALIZER_HEIGHT if self.can_visualize else 0),
                 volume_line_length_so_far,
             )
@@ -646,7 +675,7 @@ class PlayerOutput:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
                 - (VISUALIZER_HEIGHT if self.can_visualize else 0)
-                - 3,  # 3 lines for progress bar, status bar, and adding entry
+                - 4,  # 4 lines for status bar + adding entry
                 adding_song_length
                 + (self.adding_song[1] - len(self.adding_song[0])),
             )

@@ -10,5 +10,7 @@ todo.md
 test_songs/
 convert_to_psv.py
 add_stats.py
+song_info.txt
 *_test.py
-*_ref.txt
+*_ref.*
+redownload.py

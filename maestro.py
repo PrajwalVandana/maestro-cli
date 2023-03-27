@@ -852,8 +852,8 @@ def _play(
         if player_output.paused:
             time_listened -= time() - pause_start
 
-        with open(TOTAL_STATS_PATH, "r+", encoding="utf-8") as playlist_file:
-            lines = playlist_file.readlines()
+        with open(TOTAL_STATS_PATH, "r+", encoding="utf-8") as stats_file:
+            lines = stats_file.readlines()
             for j in range(len(lines)):
                 song_id, listened = lines[j].strip().split("|")
                 if song_id == player_output.playlist[player_output.i][0]:
@@ -862,12 +862,12 @@ def _play(
                     break
 
             # write out
-            playlist_file.seek(0)
-            playlist_file.write("".join(lines))
-            playlist_file.truncate()
+            stats_file.seek(0)
+            stats_file.write("".join(lines))
+            stats_file.truncate()
 
-        with open(CUR_YEAR_STATS_PATH, "r+", encoding="utf-8") as playlist_file:
-            lines = playlist_file.readlines()
+        with open(CUR_YEAR_STATS_PATH, "r+", encoding="utf-8") as stats_file:
+            lines = stats_file.readlines()
             for j in range(len(lines)):
                 song_id, listened = lines[j].strip().split("|")
                 if song_id == player_output.playlist[player_output.i][0]:
@@ -876,9 +876,9 @@ def _play(
                     break
 
             # write out
-            playlist_file.seek(0)
-            playlist_file.write("".join(lines))
-            playlist_file.truncate()
+            stats_file.seek(0)
+            stats_file.write("".join(lines))
+            stats_file.truncate()
         # endregion
 
         if player_output.ending:
@@ -1013,7 +1013,7 @@ def cli():
     "--metadata",
     "metadata_pairs",
     default=None,
-    help="Add metadata to the song. Ignored if adding multiple songs. The format is 'key1:value1,key2:value2,...'.",
+    help="Add metadata to the song. Ignored if adding multiple songs. The format is 'key1:value1|key2:value2|...'.",
 )
 def add(
     path_,
@@ -1048,7 +1048,7 @@ def add(
     adding multiple songs, this option cannot be used.
 
     The '-m/--metadata' option can be used to add metadata to the song. It takes
-    a string of the format 'key1:value1,key2:value2,...'. If adding multiple
+    a string of the format 'key1:value1|key2:value2|...'. If adding multiple
     songs, this option cannot be used.
 
     Possible editable metadata keys are: album, albumartist, artist, artwork,
@@ -1684,6 +1684,7 @@ def play(
         details += [
             (song_data["artist"].value or "Unknown Artist"),
             (song_data["album"].value or "Unknown Album"),
+            (song_data["albumartist"].value or "Unknown Album Artist"),
         ]
 
     if shuffle_ == 0:
@@ -1993,14 +1994,19 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
             songs_lines = songs_file.readlines()
             stats_lines = stats_file.readlines()
+
+            stats = dict(
+                map(lambda x: tuple(map(float, x.strip().split("|"))), stats_lines)
+            )
+
             for i in range(len(songs_lines)):
-                song_name, tag_string = songs_lines[i].strip().split("|")[1:3]
+                song_id, song_name, tag_string = songs_lines[i].strip().split("|")[0:3]
                 if tag_string:
                     for tag in tag_string.split(","):
                         if not search_tags or tag in search_tags:
                             tags[tag] = (
                                 tags[tag][0]
-                                + float(stats_lines[i].strip().split("|")[1]),
+                                + stats_lines[float(song_id)],
                                 tags[tag][1]
                                 + music_tag.load_file(
                                     os.path.join(SONGS_DIR, song_name)
@@ -2023,8 +2029,14 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
     ):
         lines = songs_file.readlines()
         stats = stats_file.readlines()
+
+        stats = dict(
+            map(lambda x: tuple(map(float, x.strip().split("|"))), stats)
+        )
+
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
+            song_id = int(details[0])
 
             tags = set(details[2].split(","))
             if search_tags:
@@ -2037,7 +2049,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                         lines[i] = ""
                         continue
 
-            time_listened = stats[i].strip().split("|")[1]
+            time_listened = stats[float(song_id)]
             lines[i] = tuple(details) + (
                 time_listened,
                 music_tag.load_file(os.path.join(SONGS_DIR, details[1]))[
@@ -2112,12 +2124,15 @@ def entry(song_ids, year):
         ):
             lines = songs_file.readlines()
             stats_lines = stats_file.readlines()
+            stats_lines = dict(
+                map(lambda x: tuple(map(float, x.strip().split("|"))), stats_lines)
+            )
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")
                 if int(details[0]) in song_ids:
                     print_entry(
                         details
-                        + stats_lines[i].strip().split("|")[1:2]
+                        + stats_lines[float(details[0])].strip().split("|")[1:2]
                         + [
                             music_tag.load_file(
                                 os.path.join(SONGS_DIR, details[1])
@@ -2484,7 +2499,7 @@ def metadata(song_id, pairs):
 
     If PAIRS are passed, sets the metadata for the song with ID SONG_ID to the
     key-value pairs in PAIRS. PAIRS should be a string of the form
-    'key1=value1,key2=value2,...'.
+    'key1:value1|key2:value2|...'.
 
     Possible editable metadata keys are: album, albumartist, artist, artwork,
     comment, compilation, composer, discnumber, genre, lyrics, totaldiscs,
@@ -2512,11 +2527,8 @@ def metadata(song_id, pairs):
             )
             return
 
-
     if pairs:
-        pairs = [
-            tuple(pair.strip().split(":")) for pair in pairs.split(",")
-        ]
+        pairs = [tuple(pair.strip().split(":")) for pair in pairs.split(",")]
 
         song_data = music_tag.load_file(song_path)
         for key, value in pairs:
@@ -2536,13 +2548,10 @@ def metadata(song_id, pairs):
     else:
         song_data = music_tag.load_file(song_path)
         click.echo("Metadata for ", nl=False)
-        click.secho(
-            song_name,
-            fg="blue",
-            bold=True,
-            nl=False
-        )
+        click.secho(song_name, fg="blue", bold=True, nl=False)
         click.echo("with ID {song_id}:")
 
         for key in METADATA_KEYS:
-            click.echo(f"{key if not key.startswith('#') else key[1:]}: {song_data[key].value}")
+            click.echo(
+                f"{key if not key.startswith('#') else key[1:]}: {song_data[key].value}"
+            )

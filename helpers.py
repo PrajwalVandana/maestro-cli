@@ -573,7 +573,7 @@ class PlayerOutput:
 
         song_data_length_so_far = addstr_fit_to_width(
             self.stdscr,
-            self.playlist[self.i][-2] + " - ",
+            self.playlist[self.i][-3] + " - ",
             screen_width,
             0,
             curses.color_pair(12),
@@ -586,7 +586,7 @@ class PlayerOutput:
         ):
             addstr_fit_to_width(
                 self.stdscr,
-                self.playlist[self.i][-1],
+                self.playlist[self.i][-2],
                 screen_width,
                 song_data_length_so_far,
                 curses.color_pair(12) | curses.A_ITALIC,
@@ -594,11 +594,19 @@ class PlayerOutput:
         else:
             addstr_fit_to_width(
                 self.stdscr,
-                self.playlist[self.i][-1],
+                self.playlist[self.i][-2],
                 screen_width,
                 song_data_length_so_far,
                 curses.color_pair(12),
             )
+
+        song_data_length_so_far = addstr_fit_to_width(
+            self.stdscr,
+            f" ({self.playlist[self.i][-1]})",
+            screen_width,
+            0,
+            curses.color_pair(12),
+        )
 
         self.stdscr.move(
             self.stdscr.getyx()[0] + 1,

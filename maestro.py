@@ -87,7 +87,6 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
         discord_rpc.connect()
         discord_connected.value = 1
     except:  # pylint: disable=bare-except
-        print("Couldn't connect to Discord", file=open("log.txt", "a"))
         discord_connected.value = 0
 
     while True:

@@ -91,7 +91,7 @@ class MacNowPlaying:
         )
         # self.cmd_center.stopCommand().addTargetWithHandler_(self.stop)
 
-        self.title = None
+        self.title_queue = MockQueue()
         self.artist_queue = MockQueue()
         self.paused = False
         self.pos = 0
@@ -99,6 +99,7 @@ class MacNowPlaying:
         self.q = MockQueue()
         self.cover = None
 
+        self.title = ""
         self.artist = ""
         self._cover = None
 
@@ -198,10 +199,17 @@ class MacNowPlaying:
                     self.artist += c
                     c = self.artist_queue.get()
 
+        if not self.title_queue.empty():
+            while not self.title_queue.empty():
+                self.title = ""
+                c = self.title_queue.get()
+                while c != "\n":
+                    self.title += c
+                    c = self.title_queue.get()
+
         # Set basic track information
-        if self.title is not None:
-            # print("title: {}".format(self.title), file=open("log.txt", "a"))
-            nowplaying_info[MPMediaItemPropertyTitle] = self.title
+        nowplaying_info[MPMediaItemPropertyTitle] = self.title
+        # print("title: {}".format(self.title), file=open("log.txt", "a"))
         nowplaying_info[MPMediaItemPropertyArtist] = self.artist
         # print("artist: {}".format(self.artist), file=open("log.txt", "a"))
         nowplaying_info[MPMediaItemPropertyPlaybackDuration] = self.length

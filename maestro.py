@@ -81,12 +81,13 @@ if sys.platform == "darwin" and can_mac_now_playing:
         AppHelper.runEventLoop()
 
 
-def discord_presence_loop(song_name_queue, discord_connected):
+def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
     try:
         discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
         discord_rpc.connect()
         discord_connected.value = 1
     except:  # pylint: disable=bare-except
+        print("Couldn't connect to Discord", file=open("log.txt", "a"))
         discord_connected.value = 0
 
     while True:
@@ -99,14 +100,24 @@ def discord_presence_loop(song_name_queue, discord_connected):
                     song_name += c
                     c = song_name_queue.get()
 
+            artist_name = ""
+            while not artist_queue.empty():
+                c = artist_queue.get()
+                while c != "\n":
+                    artist_name += c
+                    c = artist_queue.get()
+
+            artist_name = "by " + artist_name
+
             if discord_connected.value:
                 try:
                     discord_rpc.update(
-                        details="Listening to",
-                        state=song_name,
+                        details=song_name,
+                        state=artist_name,
                         large_image="maestro-icon",
                     )
                     song_name = ""
+                    artist_name = ""
                     sleep(15)
                 except:  # pylint: disable=bare-except
                     discord_connected.value = 0
@@ -121,11 +132,12 @@ def discord_presence_loop(song_name_queue, discord_connected):
                 if discord_connected.value:
                     try:
                         discord_rpc.update(
-                            details="Listening to",
-                            state=song_name,
+                            details=song_name,
+                            state=artist_name,
                             large_image="maestro-icon",
                         )
                         song_name = ""
+                        artist_name = ""
                         sleep(15)
                     except:  # pylint: disable=bare-except
                         discord_connected.value = 0
@@ -166,15 +178,20 @@ def _play(
 
     if player_output.update_discord:
         discord_song_name_queue = multiprocessing.SimpleQueue()
+        discord_artist_queue = multiprocessing.SimpleQueue()
         discord_presence_process = multiprocessing.Process(
             daemon=True,
             target=discord_presence_loop,
-            args=(discord_song_name_queue, player_output.discord_connected),
+            args=(
+                discord_song_name_queue,
+                discord_artist_queue,
+                player_output.discord_connected,
+            ),
         )
         discord_presence_process.start()
 
     if sys.platform == "darwin" and can_mac_now_playing:
-        mac_now_playing.title = "maestro-cli"
+        mac_now_playing.title_queue = Queue()
         mac_now_playing.artist_queue = Queue()
         mac_now_playing.q = Queue()
         mac_now_playing.cover = cover_img
@@ -224,6 +241,10 @@ def _play(
             mac_now_playing.length = player_output.duration
 
             for c in player_output.playlist[player_output.i][1]:
+                mac_now_playing.title_queue.put(c)
+            mac_now_playing.title_queue.put("\n")
+
+            for c in player_output.playlist[player_output.i][-3]:
                 mac_now_playing.artist_queue.put(c)
             mac_now_playing.artist_queue.put("\n")
 
@@ -233,6 +254,10 @@ def _play(
             for c in player_output.playlist[player_output.i][1]:
                 discord_song_name_queue.put(c)
             discord_song_name_queue.put("\n")
+
+            for c in player_output.playlist[player_output.i][-3]:
+                discord_artist_queue.put(c)
+            discord_artist_queue.put("\n")
 
         playback.play()
 
@@ -477,6 +502,15 @@ def _play(
                                             discord_song_name_queue.put(c)
                                         discord_song_name_queue.put("\n")
 
+                                        discord_artist_queue = (
+                                            multiprocessing.SimpleQueue()
+                                        )
+                                        for c in player_output.playlist[
+                                            player_output.i
+                                        ][-3]:
+                                            discord_artist_queue.put(c)
+                                        discord_artist_queue.put("\n")
+
                                         player_output.discord_connected = (
                                             multiprocessing.Value("i", 2)
                                         )
@@ -487,6 +521,7 @@ def _play(
                                             target=discord_presence_loop,
                                             args=(
                                                 discord_song_name_queue,
+                                                discord_artist_queue,
                                                 player_output.discord_connected,
                                             ),
                                         )
@@ -1996,17 +2031,21 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             stats_lines = stats_file.readlines()
 
             stats = dict(
-                map(lambda x: tuple(map(float, x.strip().split("|"))), stats_lines)
+                map(
+                    lambda x: tuple(map(float, x.strip().split("|"))),
+                    stats_lines,
+                )
             )
 
             for i in range(len(songs_lines)):
-                song_id, song_name, tag_string = songs_lines[i].strip().split("|")[0:3]
+                song_id, song_name, tag_string = (
+                    songs_lines[i].strip().split("|")[0:3]
+                )
                 if tag_string:
                     for tag in tag_string.split(","):
                         if not search_tags or tag in search_tags:
                             tags[tag] = (
-                                tags[tag][0]
-                                + stats_lines[float(song_id)],
+                                tags[tag][0] + stats_lines[float(song_id)],
                                 tags[tag][1]
                                 + music_tag.load_file(
                                     os.path.join(SONGS_DIR, song_name)
@@ -2125,7 +2164,10 @@ def entry(song_ids, year):
             lines = songs_file.readlines()
             stats_lines = stats_file.readlines()
             stats_lines = dict(
-                map(lambda x: tuple(map(float, x.strip().split("|"))), stats_lines)
+                map(
+                    lambda x: tuple(map(float, x.strip().split("|"))),
+                    stats_lines,
+                )
             )
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")

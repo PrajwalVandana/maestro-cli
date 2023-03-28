@@ -159,11 +159,7 @@ def fit_string_to_width(string, width, length_so_far):
 def addstr_fit_to_width(stdscr, string, width, length_so_far, *args, **kwargs):
     string, length_so_far = fit_string_to_width(string, width, length_so_far)
     if string:
-        if length_so_far <= width:
-            stdscr.addstr(string, *args, **kwargs)
-        else:
-            stdscr.addstr(string[:-1], *args, **kwargs)
-            stdscr.insstr(string[-1], *args, **kwargs)
+        stdscr.addstr(string, *args, **kwargs)
     return length_so_far
 
 
@@ -442,9 +438,6 @@ class PlayerOutput:
             17 if (self.clip_mode and self.clip != (0, self.duration)) else 15
         )
 
-        # for aligning song names
-        longest_song_id_length = max(len(song[0]) for song in self.playlist)
-
         for j in range(
             self.scroller.top, self.scroller.top + self.scroller.win_size
         ):
@@ -453,8 +446,7 @@ class PlayerOutput:
 
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
-                    " " * (longest_song_id_length - len(self.playlist[j][0]))
-                    + f"{self.playlist[j][0]} ",
+                    f"{self.playlist[j][0]} ",
                     screen_width,
                     length_so_far,
                     curses.color_pair(2),
@@ -592,7 +584,7 @@ class PlayerOutput:
             and sys.version_info >= (3, 7)
             and "A_ITALIC" in dir(curses)
         ):
-            song_data_length_so_far = addstr_fit_to_width(
+            addstr_fit_to_width(
                 self.stdscr,
                 self.playlist[self.i][-2],
                 screen_width,
@@ -600,7 +592,7 @@ class PlayerOutput:
                 curses.color_pair(12) | curses.A_ITALIC,
             )
         else:
-            song_data_length_so_far = addstr_fit_to_width(
+            addstr_fit_to_width(
                 self.stdscr,
                 self.playlist[self.i][-2],
                 screen_width,
@@ -608,16 +600,16 @@ class PlayerOutput:
                 curses.color_pair(12),
             )
 
-        addstr_fit_to_width(
+        song_data_length_so_far = addstr_fit_to_width(
             self.stdscr,
             f" ({self.playlist[self.i][-1]})",
             screen_width,
-            song_data_length_so_far,
+            0,
             curses.color_pair(12),
         )
 
         self.stdscr.move(
-            self.stdscr.getmaxyx()[0] - VISUALIZER_HEIGHT - 1,
+            self.stdscr.getyx()[0] + 1,
             0,
         )
 

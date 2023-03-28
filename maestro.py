@@ -1219,7 +1219,7 @@ def add(
     if metadata_pairs is not None and len(paths) == 1:
         # convert from "key:value,key:value" to [("key", "value")]
         metadata_pairs = [
-            tuple(pair.strip().split(":")) for pair in metadata_pairs.split(",")
+            tuple(pair.strip().split(":")) for pair in metadata_pairs.split("|")
         ]
         song_data = music_tag.load_file(paths[0])
         for key, value in metadata_pairs:
@@ -2528,30 +2528,35 @@ def metadata(song_id, pairs):
             return
 
     if pairs:
-        pairs = [tuple(pair.strip().split(":")) for pair in pairs.split(",")]
+        pairs = [tuple(pair.strip().split(":")) for pair in pairs.split("|")]
 
         song_data = music_tag.load_file(song_path)
+        valid_pairs = pairs[:]
         for key, value in pairs:
             if key not in METADATA_KEYS or key.startswith("#"):
                 click.secho(
                     f"'{key}' is not a valid editable metadata key.", fg="red"
                 )
+                valid_pairs.remove((key, value))
                 continue
             song_data[key] = value
 
         song_data.save()
 
         click.secho(
-            f"Set metadata for '{song_name}' with ID {song_id} to {pairs}.",
+            f"Set metadata for '{song_name}' with ID {song_id} to {valid_pairs}.",
             fg="green",
         )
     else:
         song_data = music_tag.load_file(song_path)
         click.echo("Metadata for ", nl=False)
         click.secho(song_name, fg="blue", bold=True, nl=False)
-        click.echo("with ID {song_id}:")
+        click.echo(f"with ID {song_id}:")
 
         for key in METADATA_KEYS:
-            click.echo(
-                f"{key if not key.startswith('#') else key[1:]}: {song_data[key].value}"
-            )
+            try:
+                click.echo(
+                    f"{key if not key.startswith('#') else key[1:]}: {song_data[key].value}"
+                )
+            except:
+                pass

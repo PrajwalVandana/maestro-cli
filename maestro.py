@@ -101,6 +101,7 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
 
             artist_name = ""
             while not artist_queue.empty():
+                artist_name = ""
                 c = artist_queue.get()
                 while c != "\n":
                     artist_name += c
@@ -312,7 +313,7 @@ def _play(
                 and not mac_now_playing.q.empty()
             ):
                 c = mac_now_playing.q.get()
-                if c in "nNsS":
+                if c in "nN":
                     if (
                         player_output.i == len(player_output.playlist) - 1
                         and not loop
@@ -322,7 +323,7 @@ def _play(
                         next_song = 1
                         playback.stop()
                         break
-                elif c in "bBpP":
+                elif c in "bB":
                     if player_output.i == 0:
                         pass
                     else:
@@ -361,7 +362,7 @@ def _play(
                     c, next_c = next_c, stdscr.getch()
 
                 if c != -1:
-                    if player_output.adding_song is None:
+                    if player_output.prompting is None:
                         if c == curses.KEY_LEFT:
                             playback.seek(playback.curr_pos - SCRUB_TIME)
                             if sys.platform == "darwin" and can_mac_now_playing:
@@ -379,16 +380,11 @@ def _play(
                             last_timestamp = playback.curr_pos
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_UP:
-                            if player_output.scroller.pos != 0:
-                                player_output.scroller.scroll_backward()
-                                player_output.output(playback.curr_pos)
+                            player_output.scroller.scroll_backward()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_DOWN:
-                            if (
-                                player_output.scroller.pos
-                                != player_output.scroller.num_lines - 1
-                            ):
-                                player_output.scroller.scroll_forward()
-                                player_output.output(playback.curr_pos)
+                            player_output.scroller.scroll_forward()
+                            player_output.output(playback.curr_pos)
                         elif c == curses.KEY_ENTER:
                             player_output.i = player_output.scroller.pos - 1
                             next_song = 1
@@ -421,7 +417,7 @@ def _play(
                         else:
                             try:
                                 c = chr(c)
-                                if c in "nNsS":
+                                if c in "nN":
                                     if (
                                         player_output.i
                                         == len(player_output.playlist) - 1
@@ -432,7 +428,7 @@ def _play(
                                         next_song = 1
                                         playback.stop()
                                         break
-                                elif c in "bBpP":
+                                elif c in "bB":
                                     if player_output.i == 0:
                                         pass
                                     else:
@@ -477,6 +473,18 @@ def _play(
                                     else:
                                         player_output.duration = full_duration
                                     player_output.output(playback.curr_pos)
+                                elif c in "pP":
+                                    player_output.scroller.pos = player_output.i
+                                    player_output.scroller.resize()
+                                    player_output.output(playback.curr_pos)
+                                elif c in "gG":
+                                    if loop:
+                                        playback.stop()
+                                        player_output.i = (
+                                            len(player_output.playlist) - 1
+                                        )
+                                        next_song = 1
+                                        break
                                 elif c in "eE":
                                     player_output.ending = (
                                         not player_output.ending
@@ -526,7 +534,11 @@ def _play(
                                         )
                                         discord_presence_process.start()
                                 elif c in "iI":
-                                    player_output.adding_song = "", 0, True
+                                    player_output.prompting = (
+                                        "",
+                                        0,
+                                        PROMPT_MODES["insert"],
+                                    )
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
                                     player_output.scroller.resize(
@@ -534,7 +546,23 @@ def _play(
                                     )
                                     player_output.output(playback.curr_pos)
                                 elif c in "aA":
-                                    player_output.adding_song = "", 0, False
+                                    player_output.prompting = (
+                                        "",
+                                        0,
+                                        PROMPT_MODES["add"],
+                                    )
+                                    curses.curs_set(True)
+                                    screen_size = stdscr.getmaxyx()
+                                    player_output.scroller.resize(
+                                        screen_size[0] - 3
+                                    )
+                                    player_output.output(playback.curr_pos)
+                                elif c in "tT":
+                                    player_output.prompting = (
+                                        "",
+                                        0,
+                                        PROMPT_MODES["tag"],
+                                    )
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
                                     player_output.scroller.resize(
@@ -636,21 +664,21 @@ def _play(
                     else:
                         if c == curses.KEY_LEFT:
                             # pylint: disable=unsubscriptable-object
-                            player_output.adding_song = (
-                                player_output.adding_song[0],
-                                max(player_output.adding_song[1] - 1, 0),
-                                player_output.adding_song[2],
+                            player_output.prompting = (
+                                player_output.prompting[0],
+                                max(player_output.prompting[1] - 1, 0),
+                                player_output.prompting[2],
                             )
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_RIGHT:
                             # pylint: disable=unsubscriptable-object
-                            player_output.adding_song = (
-                                player_output.adding_song[0],
+                            player_output.prompting = (
+                                player_output.prompting[0],
                                 min(
-                                    player_output.adding_song[1] + 1,
-                                    len(player_output.adding_song[0]),
+                                    player_output.prompting[1] + 1,
+                                    len(player_output.prompting[0]),
                                 ),
-                                player_output.adding_song[2],
+                                player_output.prompting[2],
                             )
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_UP:
@@ -666,24 +694,29 @@ def _play(
                                 player_output.output(playback.curr_pos)
                         elif c == curses.KEY_DC:
                             # pylint: disable=unsubscriptable-object
-                            if player_output.adding_song[1] > 0:
-                                player_output.adding_song = (
-                                    player_output.adding_song[0][
-                                        : player_output.adding_song[1] - 1
+                            if player_output.prompting[1] > 0:
+                                player_output.prompting = (
+                                    player_output.prompting[0][
+                                        : player_output.prompting[1] - 1
                                     ]
-                                    + player_output.adding_song[0][
-                                        player_output.adding_song[1] :
+                                    + player_output.prompting[0][
+                                        player_output.prompting[1] :
                                     ],
-                                    player_output.adding_song[1] - 1,
-                                    player_output.adding_song[2],
+                                    player_output.prompting[1] - 1,
+                                    player_output.prompting[2],
                                 )
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_ENTER:
                             # pylint: disable=unsubscriptable-object
-                            if player_output.adding_song[0].isnumeric():
+                            if player_output.prompting[
+                                0
+                            ].isnumeric() and player_output.prompting[2] in (
+                                PROMPT_MODES["add"],
+                                PROMPT_MODES["insert"],
+                            ):
                                 for details in player_output.playlist:
                                     if int(details[0]) == int(
-                                        player_output.adding_song[0]
+                                        player_output.prompting[0]
                                     ):
                                         break
                                 else:
@@ -696,11 +729,38 @@ def _play(
                                             details = line.strip().split("|")
                                             song_id = int(details[0])
                                             if song_id == int(
-                                                player_output.adding_song[0]
+                                                player_output.prompting[0]
                                             ):
-                                                if player_output.adding_song[2]:
+                                                song_data = music_tag.load_file(
+                                                    os.path.join(
+                                                        SONGS_DIR, details[1]
+                                                    )
+                                                )
+                                                details += [
+                                                    (
+                                                        song_data[
+                                                            "artist"
+                                                        ].value
+                                                        or "Unknown Artist"
+                                                    ),
+                                                    (
+                                                        song_data["album"].value
+                                                        or "Unknown Album"
+                                                    ),
+                                                    (
+                                                        song_data[
+                                                            "albumartist"
+                                                        ].value
+                                                        or "Unknown Album Artist"
+                                                    ),
+                                                ]
+                                                if (
+                                                    player_output.prompting[2]
+                                                    == PROMPT_MODES["insert"]
+                                                ):
                                                     player_output.playlist.insert(
-                                                        player_output.i + 1,
+                                                        player_output.scroller.pos
+                                                        + 1,
                                                         details,
                                                     )
                                                 else:
@@ -720,11 +780,16 @@ def _play(
                                                             details,
                                                         )
                                                     else:
-                                                        if player_output.adding_song[
-                                                            2
-                                                        ]:
+                                                        if (
+                                                            player_output.prompting[
+                                                                2
+                                                            ]
+                                                            == PROMPT_MODES[
+                                                                "insert"
+                                                            ]
+                                                        ):
                                                             next_playlist.insert(
-                                                                player_output.i
+                                                                player_output.scroller.pos
                                                                 + 1,
                                                                 details,
                                                             )
@@ -735,7 +800,7 @@ def _play(
                                                 player_output.scroller.num_lines += (
                                                     1
                                                 )
-                                                player_output.adding_song = None
+                                                player_output.prompting = None
                                                 curses.curs_set(False)
                                                 player_output.scroller.resize(
                                                     screen_size[0] - 2
@@ -744,8 +809,54 @@ def _play(
                                                     playback.curr_pos
                                                 )
                                                 break
+                            elif (
+                                "|" not in player_output.prompting[0]
+                                and player_output.prompting[2]
+                                == PROMPT_MODES["tag"]
+                            ):
+                                tags = player_output.prompting[0].split(",")
+
+                                tagging_ids = {}
+                                for i in range(len(player_output.playlist)):
+                                    tagging_ids[
+                                        int(player_output.playlist[i][0])
+                                    ] = i
+
+                                songs_file = open(
+                                    SONGS_INFO_PATH, "r", encoding="utf-8"
+                                )
+                                lines = songs_file.read().splitlines()
+                                for i in range(len(lines)):
+                                    details = lines[i].strip().split("|")
+                                    song_id = int(details[0])
+                                    if song_id in tagging_ids:
+                                        if details[2]:
+                                            new_tags = details[2].split(",")
+                                        else:
+                                            new_tags = []
+                                        new_tags += [
+                                            tag
+                                            for tag in tags
+                                            if tag not in new_tags
+                                        ]
+                                        details[2] = ",".join(new_tags)
+                                        lines[i] = "|".join(details)
+                                        player_output.playlist[
+                                            tagging_ids[song_id]
+                                        ][2] = details[2]
+                                songs_file.close()
+
+                                songs_file = open(
+                                    SONGS_INFO_PATH, "w", encoding="utf-8"
+                                )
+                                songs_file.write("\n".join(lines))
+                                songs_file.close()
+
+                                player_output.prompting = None
+                                curses.curs_set(False)
+                                player_output.output(playback.curr_pos)
                         elif c == 27:  # ESC key
-                            player_output.adding_song = None
+                            player_output.prompting = None
                             curses.curs_set(False)
                             player_output.scroller.resize(screen_size[0] - 2)
                             player_output.output(playback.curr_pos)
@@ -754,10 +865,17 @@ def _play(
                                 c = chr(c)
                                 if c in "\r\n":
                                     # pylint: disable=unsubscriptable-object
-                                    if player_output.adding_song[0].isnumeric():
+                                    if player_output.prompting[
+                                        0
+                                    ].isnumeric() and player_output.prompting[
+                                        2
+                                    ] in (
+                                        PROMPT_MODES["add"],
+                                        PROMPT_MODES["insert"],
+                                    ):
                                         for details in player_output.playlist:
                                             if int(details[0]) == int(
-                                                player_output.adding_song[0]
+                                                player_output.prompting[0]
                                             ):
                                                 break
                                         else:
@@ -772,15 +890,48 @@ def _play(
                                                     )
                                                     song_id = int(details[0])
                                                     if song_id == int(
-                                                        player_output.adding_song[
+                                                        player_output.prompting[
                                                             0
                                                         ]
                                                     ):
-                                                        if player_output.adding_song[
-                                                            2
-                                                        ]:
+                                                        song_data = (
+                                                            music_tag.load_file(
+                                                                os.path.join(
+                                                                    SONGS_DIR,
+                                                                    details[1],
+                                                                )
+                                                            )
+                                                        )
+                                                        details += [
+                                                            (
+                                                                song_data[
+                                                                    "artist"
+                                                                ].value
+                                                                or "Unknown Artist"
+                                                            ),
+                                                            (
+                                                                song_data[
+                                                                    "album"
+                                                                ].value
+                                                                or "Unknown Album"
+                                                            ),
+                                                            (
+                                                                song_data[
+                                                                    "albumartist"
+                                                                ].value
+                                                                or "Unknown Album Artist"
+                                                            ),
+                                                        ]
+                                                        if (
+                                                            player_output.prompting[
+                                                                2
+                                                            ]
+                                                            == PROMPT_MODES[
+                                                                "insert"
+                                                            ]
+                                                        ):
                                                             player_output.playlist.insert(
-                                                                player_output.i
+                                                                player_output.scroller.pos
                                                                 + 1,
                                                                 details,
                                                             )
@@ -801,11 +952,16 @@ def _play(
                                                                     details,
                                                                 )
                                                             else:
-                                                                if player_output.adding_song[
-                                                                    2
-                                                                ]:
+                                                                if (
+                                                                    player_output.prompting[
+                                                                        2
+                                                                    ]
+                                                                    == PROMPT_MODES[
+                                                                        "insert"
+                                                                    ]
+                                                                ):
                                                                     next_playlist.insert(
-                                                                        player_output.i
+                                                                        player_output.scroller.pos
                                                                         + 1,
                                                                         details,
                                                                     )
@@ -816,7 +972,7 @@ def _play(
                                                         player_output.scroller.num_lines += (
                                                             1
                                                         )
-                                                        player_output.adding_song = (
+                                                        player_output.prompting = (
                                                             None
                                                         )
                                                         curses.curs_set(False)
@@ -827,33 +983,92 @@ def _play(
                                                             playback.curr_pos
                                                         )
                                                         break
+                                    elif (
+                                        "|" not in player_output.prompting[0]
+                                        and player_output.prompting[2]
+                                        == PROMPT_MODES["tag"]
+                                    ):
+                                        tags = player_output.prompting[0].split(
+                                            ","
+                                        )
+
+                                        tagging_ids = {}
+                                        for i in range(
+                                            len(player_output.playlist)
+                                        ):
+                                            tagging_ids[
+                                                int(
+                                                    player_output.playlist[i][0]
+                                                )
+                                            ] = i
+
+                                        songs_file = open(
+                                            SONGS_INFO_PATH,
+                                            "r",
+                                            encoding="utf-8",
+                                        )
+                                        lines = songs_file.read().splitlines()
+                                        for i in range(len(lines)):
+                                            details = (
+                                                lines[i].strip().split("|")
+                                            )
+                                            song_id = int(details[0])
+                                            if song_id in tagging_ids:
+                                                if details[2]:
+                                                    new_tags = details[2].split(
+                                                        ","
+                                                    )
+                                                else:
+                                                    new_tags = []
+                                                new_tags += [
+                                                    tag
+                                                    for tag in tags
+                                                    if tag not in new_tags
+                                                ]
+                                                details[2] = ",".join(new_tags)
+                                                lines[i] = "|".join(details)
+                                                player_output.playlist[
+                                                    tagging_ids[song_id]
+                                                ][2] = details[2]
+                                        songs_file.close()
+
+                                        songs_file = open(
+                                            SONGS_INFO_PATH,
+                                            "w",
+                                            encoding="utf-8",
+                                        )
+                                        songs_file.write("\n".join(lines))
+                                        songs_file.close()
+
+                                        player_output.prompting = None
+                                        curses.curs_set(False)
+                                        player_output.output(playback.curr_pos)
                                 elif c in "\b\x7f":
                                     # pylint: disable=unsubscriptable-object
-                                    if player_output.adding_song[1] > 0:
-                                        player_output.adding_song = (
-                                            player_output.adding_song[0][
-                                                : player_output.adding_song[1]
-                                                - 1
+                                    if player_output.prompting[1] > 0:
+                                        player_output.prompting = (
+                                            player_output.prompting[0][
+                                                : player_output.prompting[1] - 1
                                             ]
-                                            + player_output.adding_song[0][
-                                                player_output.adding_song[1] :
+                                            + player_output.prompting[0][
+                                                player_output.prompting[1] :
                                             ],
-                                            player_output.adding_song[1] - 1,
-                                            player_output.adding_song[2],
+                                            player_output.prompting[1] - 1,
+                                            player_output.prompting[2],
                                         )
                                     player_output.output(playback.curr_pos)
                                 else:
-                                    player_output.adding_song = (
+                                    player_output.prompting = (
                                         # pylint: disable=unsubscriptable-object
-                                        player_output.adding_song[0][
-                                            : player_output.adding_song[1]
+                                        player_output.prompting[0][
+                                            : player_output.prompting[1]
                                         ]
                                         + c
-                                        + player_output.adding_song[0][
-                                            player_output.adding_song[1] :
+                                        + player_output.prompting[0][
+                                            player_output.prompting[1] :
                                         ],
-                                        player_output.adding_song[1] + 1,
-                                        player_output.adding_song[2],
+                                        player_output.prompting[1] + 1,
+                                        player_output.prompting[2],
                                     )
                                     player_output.output(playback.curr_pos)
                             except (ValueError, OverflowError):
@@ -1018,7 +1233,7 @@ def cli():
     "--format",
     "format_",
     type=click.Choice(["wav", "mp3", "flac", "ogg"]),
-    help="Specify the format of the song if downloading from a YouTube or YouTube Music URL.",
+    help="Specify the format of the song if downloading from YouTube, YouTube Music, or Spotify URL.",
     default="flac",
     show_default=True,
 )
@@ -1216,8 +1431,13 @@ def add(
         new_path = os.path.join(
             MAESTRO_DIR, name + os.path.splitext(paths[0])[1]
         )
-        move(paths[0], new_path)
+        # move/copy to MAESTRO_DIR (avoid name conflicts)
+        if move_:
+            move(paths[0], new_path)
+        else:
+            copy(paths[0], new_path)
         paths = [new_path]
+        move_ = True  # always move (from temp loc in MAESTRO_DIR) if renaming
 
     if clip is not None and len(paths) == 1:
         song_duration = music_tag.load_file(paths[0])["#length"].value
@@ -1648,9 +1868,9 @@ def play(
 
     \b
     \x1b[1mSPACE\x1b[0m  to pause/play
-    \x1b[1mb/p\x1b[0m  to go [b]ack to [p]revious song
+    \x1b[1mb\x1b[0m  to go [b]ack to previous song
     \x1b[1mr\x1b[0m  to [r]eplay song
-    \x1b[1ms/n\x1b[0m  to [s]kip to [n]ext song
+    \x1b[1mn\x1b[0m  to skip to [n]ext song
     \x1b[1ml\x1b[0m  to [l]oop the current song
     \x1b[1mc\x1b[0m  to toggle [c]lip mode
     \x1b[1mv\x1b[0m  to toggle [v]isualization
@@ -1659,13 +1879,16 @@ def play(
     \x1b[1m[\x1b[0m  to decrease volume
     \x1b[1m]\x1b[0m  to increase volume
     \x1b[1mm\x1b[0m  to [m]ute/unmute
-    \x1b[1me\x1b[0m  to [e]nd the song player after the current song (indicator in status bar, 'e' to cancel)
+    \x1b[1me\x1b[0m  to [e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)
     \x1b[1mq\x1b[0m  to [q]uit the song player immediately
     \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
+    \x1b[1mp\x1b[0m  to sna[p] back to the currently playing song
+    \x1b[1mg\x1b[0m  to go to the next pa[g]e/loop of the playlist (if not looping, ignored)
     \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the queue
     \x1b[1md\x1b[0m  to toggle [D]iscord rich presence
     \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
-    \x1b[1mi\x1b[0m  to insert a song (by ID) in the playlist after the current song. Opens a prompt like 'a'.
+    \x1b[1mi\x1b[0m  to insert a song (by ID) in the playlist after the selected song. Opens a prompt like 'a'.
+    \x1b[1mt\x1b[0m  to add a tag to all songs in the playlist. Opens a prompt to enter the tag: ENTER to confirm, ESC to cancel.
 
     \b
     song color indicates mode:
@@ -1701,7 +1924,6 @@ def play(
                     playlist.append(details)
         else:
             tags = set(tags)
-            playlist = []
             with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                 for line in songs_file:
                     details = line.strip().split("|")
@@ -1810,12 +2032,21 @@ def rename(original, new_name, renaming_tag):
                 )
 
                 # rename cached visualization frequencies
-                vis_cache_path = os.path.join(
+                data_cache_path = os.path.join(
+                    DATA_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
+                )
+                if os.path.exists(data_cache_path):
+                    os.rename(
+                        data_cache_path,
+                        os.path.join(DATA_CACHE_DIR, new_name + ".npy"),
+                    )
+
+                freq_cache_path = os.path.join(
                     FREQ_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
                 )
-                if os.path.exists(vis_cache_path):
+                if os.path.exists(freq_cache_path):
                     os.rename(
-                        vis_cache_path,
+                        freq_cache_path,
                         os.path.join(FREQ_CACHE_DIR, new_name + ".npy"),
                     )
 
@@ -1887,13 +2118,13 @@ def search(phrase, searching_for_tags):
             for line in songs_file:
                 details = line.strip().split("|")
                 if int(details[0]) in results[0]:
-                    print_entry(details)
+                    print_entry(details, phrase)
 
             songs_file.seek(0)
             for line in songs_file:
                 details = line.strip().split("|")
                 if int(details[0]) in results[1]:
-                    print_entry(details)
+                    print_entry(details, phrase)
 
             click.secho(
                 f"Found {len(results[0]) + len(results[1])} song(s).",
@@ -2024,36 +2255,57 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
             open(stats_path, "r", encoding="utf-8") as stats_file,
         ):
-            tags = defaultdict(lambda: (0.0, 0.0))
-
             songs_lines = songs_file.readlines()
-            stats_lines = stats_file.readlines()
-
             stats = dict(
                 map(
-                    lambda x: tuple(map(float, x.strip().split("|"))),
-                    stats_lines,
+                    lambda t: (int(t[0]),) + t[1:],
+                    map(
+                        lambda x: tuple(map(float, x.strip().split("|"))),
+                        stats_file.readlines(),
+                    ),
                 )
             )
+
+            tags = defaultdict(lambda: (0.0, 0.0))
 
             for i in range(len(songs_lines)):
                 song_id, song_name, tag_string = (
                     songs_lines[i].strip().split("|")[0:3]
                 )
+                song_id = int(song_id)
                 if tag_string:
                     for tag in tag_string.split(","):
                         if not search_tags or tag in search_tags:
                             tags[tag] = (
-                                tags[tag][0] + stats_lines[float(song_id)],
+                                tags[tag][0] + stats[song_id],
                                 tags[tag][1]
                                 + music_tag.load_file(
                                     os.path.join(SONGS_DIR, song_name)
                                 )["#length"].value,
                             )
 
-            for tag, (listen_time, total_duration) in tags.items():
+            tag_items = list(tags.items())
+
+            if sort_ != "none":
+                if sort_ in ("name", "n"):
+                    sort_key = lambda t: t[0]
+                elif sort_ in ("secs-listened", "s"):
+                    sort_key = lambda t: t[1][0]
+                elif sort_ in ("duration", "d"):
+                    sort_key = lambda t: t[1][1]
+                elif sort_ in ("times-listened", "t"):
+                    sort_key = lambda t: t[1][0] / t[1][1]
+                tag_items.sort(
+                    key=sort_key,
+                    reverse=not reverse_,
+                )
+            else:
+                if not reverse_:
+                    tag_items.reverse()
+
+            for tag, (listen_time, total_duration) in tag_items:
                 click.echo(
-                    f"{tag} {click.style(format_seconds(total_duration, show_decimal=True), fg='bright_black')} {click.style(format_seconds(listen_time, show_decimal=True), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='bright_black')}"
+                    f"{tag} {click.style(format_seconds(total_duration, show_decimal=True), fg='bright_black')} {click.style(format_seconds(listen_time, show_decimal=True), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
                 )
                 num_lines += 1
                 if top is not None and num_lines == top:
@@ -2066,10 +2318,14 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
         open(stats_path, "r", encoding="utf-8") as stats_file,
     ):
         lines = songs_file.readlines()
-        stats = stats_file.readlines()
-
         stats = dict(
-            map(lambda x: tuple(map(float, x.strip().split("|"))), stats)
+            map(
+                lambda t: (int(t[0]),) + t[1:],
+                map(
+                    lambda x: tuple(map(float, x.strip().split("|"))),
+                    stats_file.readlines(),
+                ),
+            )
         )
 
         for i in range(len(lines)):
@@ -2087,7 +2343,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                         lines[i] = ""
                         continue
 
-            time_listened = stats[float(song_id)]
+            time_listened = stats[song_id]
             lines[i] = tuple(details) + (
                 time_listened,
                 music_tag.load_file(os.path.join(SONGS_DIR, details[1]))[
@@ -2136,11 +2392,22 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
     "year",
     help="Show time listened for a specific year, instead of the total. Passing 'cur' will show the time listened for the current year.",
 )
+@click.option(
+    "-I/-nI",
+    "--song-info/--no-song-info",
+    "song_info",
+    default=False,
+    help="Show the artist, album, and album artist for each song.",
+)
 @click.argument("song_ids", type=click.INT, nargs=-1, required=True)
-def entry(song_ids, year):
+def entry(song_ids, year, song_info):
     """Prints the details of the song(s) with the ID(s) SONG_IDS.
 
-    Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any"""
+    \b
+    Output format:
+        ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
+        artist - album (album artist) if -I/--song-info is passed
+    """
     song_ids = set(song_ids)
 
     if year is None:
@@ -2161,26 +2428,30 @@ def entry(song_ids, year):
             open(stats_path, "r", encoding="utf-8") as stats_file,
         ):
             lines = songs_file.readlines()
-            stats_lines = stats_file.readlines()
-            stats_lines = dict(
+            stats = dict(
                 map(
-                    lambda x: tuple(map(float, x.strip().split("|"))),
-                    stats_lines,
+                    lambda t: (int(t[0]),) + t[1:],  # convert key to int
+                    map(
+                        lambda x: tuple(map(float, x.strip().split("|"))),
+                        stats_file.readlines(),
+                    ),
                 )
             )
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")
-                if int(details[0]) in song_ids:
+                song_id = int(details[0])
+                if song_id in song_ids:
                     print_entry(
                         details
-                        + stats_lines[float(details[0])].strip().split("|")[1:2]
                         + [
+                            stats[song_id],
                             music_tag.load_file(
                                 os.path.join(SONGS_DIR, details[1])
-                            )["#length"].value
-                        ]
+                            )["#length"].value,
+                        ],
+                        show_song_info=song_info,
                     )
-                    song_ids.remove(int(details[0]))
+                    song_ids.remove(song_id)
     except FileNotFoundError:
         click.secho(f"No stats found for year {year}.", fg="red")
 
@@ -2592,12 +2863,12 @@ def metadata(song_id, pairs):
         song_data = music_tag.load_file(song_path)
         click.echo("Metadata for ", nl=False)
         click.secho(song_name, fg="blue", bold=True, nl=False)
-        click.echo(f"with ID {song_id}:")
+        click.echo(f" with ID {song_id}:")
 
         for key in METADATA_KEYS:
             try:
                 click.echo(
-                    f"{key if not key.startswith('#') else key[1:]}: {song_data[key].value}"
+                    f"\t{key if not key.startswith('#') else key[1:]}: {song_data[key].value}"
                 )
-            except:
+            except:  # pylint: disable=bare-except
                 pass

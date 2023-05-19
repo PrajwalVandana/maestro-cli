@@ -133,14 +133,14 @@ class MacNowPlaying:
         """
         Handle an external 'nextTrackCommand' event.
         """
-        self.q.put("s")
+        self.q.put("n")
         return 0
 
     def prev_handler(self, _event):
         """
         Handle an external 'previousTrackCommand' event.
         """
-        self.q.put("p")
+        self.q.put("b")
         return 0
 
     def seek_backward_handler(self, _event):

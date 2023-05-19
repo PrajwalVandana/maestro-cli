@@ -3,13 +3,13 @@ import curses
 import logging
 import multiprocessing
 import os
-import sys
 import threading
 import warnings
 
 logging.disable(logging.CRITICAL)
 
 import click
+import music_tag
 import numpy as np
 
 from datetime import date
@@ -28,6 +28,11 @@ DISCORD_ID = 1039038199881810040
 
 CUR_YEAR = date.today().year
 EXTS = (".mp3", ".wav", ".flac", ".ogg")
+PROMPT_MODES = {
+    "insert": 0,
+    "add": 1,
+    "tag": 2,
+}
 
 METADATA_KEYS = (
     "album",
@@ -139,8 +144,9 @@ class Scroller:
     def halfway(self):
         return self.top + self.win_size // 2
 
-    def resize(self, win_size):
-        self.win_size = win_size
+    def resize(self, win_size=None):
+        if win_size is not None:
+            self.win_size = win_size
         self.top = max(0, self.pos - self.win_size // 2)
         self.top = max(0, min(self.num_lines - self.win_size, self.top))
 
@@ -304,6 +310,7 @@ class AudioData:
                 self.data = np.repeat(self.data, 2, axis=0)
             elif self.data.shape[0] == 6:  # 5.1 surround -> stereo
                 self.data = np.delete(self.data, (1, 3, 4, 5), axis=0)
+
             np.save(data_cache_path, self.data)
         else:
             self.data = np.load(data_cache_path)
@@ -322,6 +329,7 @@ class AudioData:
             self.freqs = (
                 amplitude_to_db(np.abs(stft(self.data)), ref=np.max) + 80
             )  # [-80, 0] -> [0, 80]
+
             np.save(freq_cache_path, self.freqs)
         else:
             self.freqs = np.load(freq_cache_path)
@@ -346,7 +354,7 @@ class PlayerOutput:
         self.duration = 0
         self.paused = False
         self.ending = False
-        self.adding_song: None | tuple = None
+        self.prompting: None | tuple = None
         self.clip = (0, 0)
         self.discord_connected = multiprocessing.Value("i", 2)
         self.visualizer_data = AudioData()
@@ -377,7 +385,7 @@ class PlayerOutput:
             self.stdscr.getmaxyx()[0]
             - 3  # -3 for status bar
             - 1  # -1 for header
-            - (self.adding_song != None)  # - add mode
+            - (self.prompting != None)  # - add mode
             - (VISUALIZER_HEIGHT if self.can_visualize else 0)  # - visualizer
         )
 
@@ -488,17 +496,33 @@ class PlayerOutput:
                 )
             self.stdscr.move((j - self.scroller.top) + 2, 0)
 
-        if self.adding_song is not None:
+        if self.prompting is not None:
             # pylint: disable=unsubscriptable-object
-            adding_song_length = addstr_fit_to_width(
-                self.stdscr,
-                ("Insert" if self.adding_song[2] else "Append")
-                + " song (by ID): "
-                + self.adding_song[0],
-                screen_width,
-                0,
-                curses.color_pair(1),
-            )
+            if (
+                self.prompting[2] == PROMPT_MODES["add"]
+                or self.prompting[2] == PROMPT_MODES["insert"]
+            ):
+                adding_song_length = addstr_fit_to_width(
+                    self.stdscr,
+                    (
+                        "Insert"
+                        if self.prompting[2] == PROMPT_MODES["insert"]
+                        else "Append"
+                    )
+                    + " song (by ID): "
+                    + self.prompting[0],
+                    screen_width,
+                    0,
+                    curses.color_pair(1),
+                )
+            else:
+                adding_song_length = addstr_fit_to_width(
+                    self.stdscr,
+                    "Add tag to songs: " + self.prompting[0],
+                    screen_width,
+                    0,
+                    curses.color_pair(1),
+                )
             self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
         length_so_far = 0
@@ -587,11 +611,7 @@ class PlayerOutput:
             curses.color_pair(12),
         )
 
-        if (
-            curses.ncurses_version >= (6, 1)
-            and sys.version_info >= (3, 7)
-            and "A_ITALIC" in dir(curses)
-        ):
+        try:
             song_data_length_so_far = addstr_fit_to_width(
                 self.stdscr,
                 self.playlist[self.i][-2],
@@ -599,7 +619,7 @@ class PlayerOutput:
                 song_data_length_so_far,
                 curses.color_pair(12) | curses.A_ITALIC,
             )
-        else:
+        except:  # pylint: disable=bare-except
             song_data_length_so_far = addstr_fit_to_width(
                 self.stdscr,
                 self.playlist[self.i][-2],
@@ -617,7 +637,9 @@ class PlayerOutput:
         )
 
         self.stdscr.move(
-            self.stdscr.getmaxyx()[0] - VISUALIZER_HEIGHT - 1,
+            self.stdscr.getmaxyx()[0]
+            - (VISUALIZER_HEIGHT if self.can_visualize else 0)
+            - 1,
             0,
         )
 
@@ -733,14 +755,14 @@ class PlayerOutput:
                     if i < len(rendered_lines) - 1:
                         self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
-        if self.adding_song is not None:
+        if self.prompting is not None:
             # pylint: disable=unsubscriptable-object
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
                 - (VISUALIZER_HEIGHT if self.can_visualize else 0)
                 - 4,  # 4 lines for status bar + adding entry
                 adding_song_length
-                + (self.adding_song[1] - len(self.adding_song[0])),
+                + (self.prompting[1] - len(self.prompting[0])),
             )
 
         self.stdscr.refresh()
@@ -770,7 +792,10 @@ def init_curses(stdscr):
 
     curses.curs_set(False)
     stdscr.nodelay(True)
-    curses.set_escdelay(25)  # 25 ms
+    try:
+        curses.set_escdelay(25)  # 25 ms
+    except:  # pylint: disable=bare-except
+        pass
 
 
 def add_song(
@@ -844,9 +869,13 @@ def add_song(
         clip_string = ""
 
     if gen_vis_cache:
+        click.echo(
+            "Calculating and caching visualization frequencies ... ", nl=False
+        )
         data = AudioData(os.path.join(SONGS_DIR, song_name), data=False)
         if data.loaded_song is None:
             data = None
+        click.echo("done.")
     else:
         data = None
 
@@ -1152,7 +1181,7 @@ def format_seconds(secs, show_decimal=False):
     )
 
 
-def print_entry(entry_list):
+def print_entry(entry_list, highlight=None, show_song_info=None):
     """
     tuple or iterable of strings
 
@@ -1163,12 +1192,33 @@ def print_entry(entry_list):
 
     optional:
     4: seconds listened
-    5: total duration (must be passed if 3 is passed)
+    5: total duration (must be passed if 4 is passed)
 
-    Pretty prints '<song ID> <song name> [<total duration> <seconds
-    listened> <times listened>] <clip> <tags>'"""
+    Pretty prints
+        <song ID> <song name> [<total duration> <seconds listened> <times listened>] <clip> <tags>
+        [<artist> - <album> (<album artist>)]
+    """
     click.secho(entry_list[0] + " ", fg="bright_black", nl=False)
-    click.secho(entry_list[1] + " ", fg="blue", nl=False)
+    if highlight is None:
+        click.secho(entry_list[1] + " ", fg="blue", nl=False, bold=True)
+    else:
+        highlight_loc = entry_list[1].lower().find(highlight.lower())
+        click.secho(
+            entry_list[1][:highlight_loc],
+            fg="white",
+            nl=False,
+        )
+        click.secho(
+            entry_list[1][highlight_loc : highlight_loc + len(highlight)],
+            fg="blue",
+            nl=False,
+            bold=True,
+        )
+        click.secho(
+            entry_list[1][highlight_loc + len(highlight) :] + " ",
+            fg="white",
+            nl=False,
+        )
 
     if len(entry_list) > 4:  # len should == 6
         secs_listened = float(entry_list[4])
@@ -1202,8 +1252,31 @@ def print_entry(entry_list):
     else:
         click.echo()  # newline
 
+    if show_song_info:
+        song_data = music_tag.load_file(os.path.join(SONGS_DIR, entry_list[1]))
+        artist, album, album_artist = (
+            song_data["artist"].value,
+            song_data["album"].value,
+            song_data["albumartist"].value,
+        )
+        click.secho(
+            f"{(len(entry_list[0])+1)*' '}{artist if artist else 'Unknown Artist'} - ",
+            fg="bright_black",
+            nl=False,
+        )
+        click.secho(
+            (album if album else "Unknown Album"),
+            italic=True,
+            fg="bright_black",
+            nl=False,
+        )
+        click.secho(
+            f" ({album_artist if album_artist else 'Unknown Album'})",
+            fg="bright_black",
+        )
+
 
 def print_to_logfile(*args, **kwargs):
     if "file" in kwargs:
-        raise ValueError("file kwarg is not allowed for 'print_to_logfile'")
+        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
     print(*args, **kwargs, file=open("log.txt", "a", encoding="utf-8"))

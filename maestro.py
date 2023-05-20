@@ -1187,8 +1187,6 @@ def cli():
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
 
-    if not os.path.exists(FREQ_CACHE_DIR):
-        os.makedirs(FREQ_CACHE_DIR)
     if not os.path.exists(DATA_CACHE_DIR):
         os.makedirs(DATA_CACHE_DIR)
 
@@ -1571,13 +1569,8 @@ def remove(args, force, tag):
                     )
 
                     # remove cached visualization frequencies
-                    freq_cache_path = os.path.join(
-                        FREQ_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
-                    )
-                    if os.path.exists(freq_cache_path):
-                        os.remove(freq_cache_path)
                     data_cache_path = os.path.join(
-                        DATA_CACHE_DIR, os.path.splitext(song_name)[0] + ".npy"
+                        DATA_CACHE_DIR, os.path.splitext(song_name)[0] + ".npz"
                     )
                     if os.path.exists(data_cache_path):
                         os.remove(data_cache_path)
@@ -2033,21 +2026,12 @@ def rename(original, new_name, renaming_tag):
 
                 # rename cached visualization frequencies
                 data_cache_path = os.path.join(
-                    DATA_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
+                    DATA_CACHE_DIR, os.path.splitext(old_path)[0] + ".npz"
                 )
                 if os.path.exists(data_cache_path):
                     os.rename(
                         data_cache_path,
-                        os.path.join(DATA_CACHE_DIR, new_name + ".npy"),
-                    )
-
-                freq_cache_path = os.path.join(
-                    FREQ_CACHE_DIR, os.path.splitext(old_path)[0] + ".npy"
-                )
-                if os.path.exists(freq_cache_path):
-                    os.rename(
-                        freq_cache_path,
-                        os.path.join(FREQ_CACHE_DIR, new_name + ".npy"),
+                        os.path.join(DATA_CACHE_DIR, new_name + ".npz"),
                     )
 
                 click.secho(
@@ -2765,28 +2749,19 @@ def cache(song_ids, recache, all_):
             if song_ids and song_id not in song_ids:
                 continue
 
-            vis_cache_path = os.path.join(
-                FREQ_CACHE_DIR,
-                os.path.splitext(song_name)[0] + ".npy",
-            )
             data_cache_path = os.path.join(
                 DATA_CACHE_DIR,
-                os.path.splitext(song_name)[0] + ".npy",
+                os.path.splitext(song_name)[0] + ".npz",
             )
-            if os.path.exists(vis_cache_path) or os.path.exists(
-                data_cache_path
-            ):
+            if os.path.exists(data_cache_path):
                 if not recache:
                     click.secho(
                         f"The song {song_name} with ID {song_id} already has cached data. To force recalculation, pass the '-F/--force' flag.",
                         fg="yellow",
                     )
                     continue
-                else:
-                    if os.path.exists(vis_cache_path):
-                        os.remove(vis_cache_path)
-                    if os.path.exists(data_cache_path):
-                        os.remove(data_cache_path)
+                elif os.path.exists(data_cache_path):
+                    os.remove(data_cache_path)
 
             data = AudioData(os.path.join(SONGS_DIR, song_name))
 

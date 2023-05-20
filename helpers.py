@@ -70,8 +70,7 @@ STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
 CUR_YEAR_STATS_PATH = os.path.join(STATS_DIR, f"{CUR_YEAR}.txt")
 TOTAL_STATS_PATH = os.path.join(STATS_DIR, "total.txt")
 
-FREQ_CACHE_DIR = os.path.join(MAESTRO_DIR, "cache/freqs/")
-DATA_CACHE_DIR = os.path.join(MAESTRO_DIR, "cache/data")
+DATA_CACHE_DIR = os.path.join(MAESTRO_DIR, "data/")
 # endregion
 
 # region player
@@ -269,7 +268,7 @@ def render(
 
 
 class AudioData:
-    def __init__(self, song_path=None, freqs=True, data=True):
+    def __init__(self, song_path=None, data=True):
         if song_path is None:
             self.data = self.freqs = None
             self.loaded_song = ""
@@ -281,9 +280,6 @@ class AudioData:
 
             if data:
                 self.load_data(song_path)
-
-            if freqs:
-                self.load_freqs(song_path)
                 self.freqs = (
                     80 * (self.freqs / 80) ** VIS_FLATTEN_FACTOR
                 )  # flatten
@@ -296,11 +292,11 @@ class AudioData:
     def load_data(self, song_path):
         data_cache_path = os.path.join(
             DATA_CACHE_DIR,
-            os.path.splitext(os.path.basename(song_path))[0] + ".npy",
+            os.path.splitext(os.path.basename(song_path))[0] + ".npz",
         )
 
         if not os.path.exists(data_cache_path):
-            from librosa import load
+            from librosa import load, stft, amplitude_to_db
 
             self.data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
 
@@ -311,28 +307,14 @@ class AudioData:
             elif self.data.shape[0] == 6:  # 5.1 surround -> stereo
                 self.data = np.delete(self.data, (1, 3, 4, 5), axis=0)
 
-            np.save(data_cache_path, self.data)
-        else:
-            self.data = np.load(data_cache_path)
-
-    def load_freqs(self, song_path):
-        freq_cache_path = os.path.join(
-            FREQ_CACHE_DIR,
-            os.path.splitext(os.path.basename(song_path))[0] + ".npy",
-        )
-
-        if not os.path.exists(freq_cache_path):
-            from librosa import stft, amplitude_to_db
-
-            self.load_data(song_path)
-
             self.freqs = (
                 amplitude_to_db(np.abs(stft(self.data)), ref=np.max) + 80
             )  # [-80, 0] -> [0, 80]
 
-            np.save(freq_cache_path, self.freqs)
+            np.savez_compressed(data_cache_path, data=self.data, freqs=self.freqs)
         else:
-            self.freqs = np.load(freq_cache_path)
+            self.data = np.load(data_cache_path)['data']
+            self.freqs = np.load(data_cache_path)['freqs']
 
 
 class PlayerOutput:
@@ -893,7 +875,7 @@ def clip_editor(stdscr, details):
     song_path = os.path.join(SONGS_DIR, song_name)
 
     show_waveform = True
-    audio_data = AudioData(song_path, freqs=False)
+    audio_data = AudioData(song_path)
     if audio_data.loaded_song is None:
         show_waveform = False
 

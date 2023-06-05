@@ -296,7 +296,7 @@ class AudioData:
         )
 
         if not os.path.exists(data_cache_path):
-            from librosa import load, stft, amplitude_to_db
+            from librosa import load
 
             self.data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
 
@@ -307,14 +307,14 @@ class AudioData:
             elif self.data.shape[0] == 6:  # 5.1 surround -> stereo
                 self.data = np.delete(self.data, (1, 3, 4, 5), axis=0)
 
-            self.freqs = (
-                amplitude_to_db(np.abs(stft(self.data)), ref=np.max) + 80
-            )  # [-80, 0] -> [0, 80]
-
-            np.savez_compressed(data_cache_path, data=self.data, freqs=self.freqs)
+            np.savez_compressed(data_cache_path, data=self.data)
         else:
             self.data = np.load(data_cache_path)['data']
-            self.freqs = np.load(data_cache_path)['freqs']
+
+        from librosa import amplitude_to_db, stft
+        self.freqs = (
+            amplitude_to_db(np.abs(stft(self.data)), ref=np.max) + 80
+        )  # [-80, 0] -> [0, 80]
 
 
 class PlayerOutput:
@@ -854,7 +854,7 @@ def add_song(
         click.echo(
             "Calculating and caching visualization frequencies ... ", nl=False
         )
-        data = AudioData(os.path.join(SONGS_DIR, song_name), data=False)
+        data = AudioData(os.path.join(SONGS_DIR, song_name), data=True)
         if data.loaded_song is None:
             data = None
         click.echo("done.")
@@ -1253,7 +1253,7 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
             nl=False,
         )
         click.secho(
-            f" ({album_artist if album_artist else 'Unknown Album'})",
+            f" ({album_artist if album_artist else 'Unknown Album Artist'})",
             fg="bright_black",
         )
 

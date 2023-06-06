@@ -83,12 +83,12 @@ and *now* installing `maestro` should work. Another option (especially if you're
 
 #### Linux
 
-If you have issues, try:
+If you have issues (especially if you get `Illegal instruction (core dumped)` when running `maestro play`, even after installing succesfully), try:
  * upgrading pip: `pip install --upgrade pip`
  * uninstalling `just_playback`: `pip uninstall just_playback`
  * reinstalling `just_playback` with the `--no-binary` flag: `pip install just_playback --no-binary just_playback --force-reinstall --upgrade`
 
-Check this out: [https://github.com/cheofusi/just_playback/issues/21](https://github.com/cheofusi/just_playback/issues/21) ... and good luck 💀.
+Also check this out: [https://github.com/cheofusi/just_playback/issues/21](https://github.com/cheofusi/just_playback/issues/21) ... and good luck 💀.
 
 
 #### If all else fails ...

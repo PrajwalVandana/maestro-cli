@@ -359,8 +359,9 @@ class PlayerOutput:
 
     def output(self, pos):
         self.can_show_visualization = (
-            self.can_visualize
-            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+            self.visualize and
+            self.can_visualize and
+            self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]

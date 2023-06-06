@@ -15,8 +15,7 @@ import numpy as np
 
 from datetime import date
 from shutil import copy, move
-
-# from time import sleep
+from time import sleep
 
 from just_playback import Playback
 from numba import jit  # NOTE: I think I'm in love with this decorator
@@ -356,6 +355,7 @@ class PlayerOutput:
                     )
                     + 80
                 )
+            sleep(1)
 
     @property
     def song_path(self):

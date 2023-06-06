@@ -102,9 +102,9 @@ Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to g
 
 `maestro` uses the concept of a positive integer **song ID** to uniquely refer to each song.
 
-Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro -t jon-bellion <song IDs for each Jon Bellion song>`. Then `maestro play jon-bellion`. If song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`.
+Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro tag <song IDs for each Jon Bellion song> -t jon-bellion `. Then `maestro play jon-bellion`. If song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`.
 
-`maestro` also tracks your listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. For example, to see your top 10 listened songs (by number of times listened; note that this is NOT the number of times the song was played but rather the total listen time for that song divided by the duration), run `maestro list -s times_listened -T 10 -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
+`maestro` also tracks your listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. For example, to see your top 10 listened songs (by average number of times listened; note that this is NOT the number of times the song was played but rather the total listen time for that song divided by the duration), run `maestro list -s times_listened -T 10 -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
 
 ### `maestro add`
 
@@ -117,11 +117,6 @@ Pass the `-S` or `--spotify` flag to download from a Spotify URL instead of a fi
 Pass the `-P` or `--playlist` flag to download an entire YT playlist from a song URL with a playlist component, e.g. https://www.youtube.com/watch?v=V1Z586zoeeE&list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo. The `-p` flag is unnecessary if the URL points directly to a playlist, e.g. https://www.youtube.com/playlist?list=PLfSdF_HSSu55q-5p-maISZyr19erpZsTo.
 
 By default, `maestro add` copies the file to its internal database (`~/.maestro-files`), but you can pass the `-M` or `--move` flag to move the file instead.
-
-### `maestro cache`
-Calculate (or recalculate with the `-F/--force` flag) visualization frequency data (see [`maestro play`](#maestro-play)) for songs passed by ID (or all songs with the `-A/--all` flag.
-
-If you ever go into the song database (located at `~/.maestro-files`) and manually edit a song, e.g. trimming (not recommended but should be fine as long as you don't mess with the name of the file), you should run `maestro cache --recache <SONG_ID>` to readjust the visualization.
 
 ### `maestro clip`
 
@@ -145,12 +140,11 @@ Play songs. Use `maestro play -h` to see full options. Has lots of features:
 - play songs in reverse order with the `-R` or `--reverse` flag
 - loop playlist with the `-L` or `--loop` flag
 - show an audio visualization with the `-V` or `--visualize` flag
-  - you may notice some wait time for the visualization to properly load the first time a song is visualized (~7 seconds), but after that the visualization is cached and should load quickly
 - works with headphone buttons (and the Touch Bar and Siri!) on Mac using the Now Playing Center!
 - works with Discord status! (pass the `-D` or `--discord` flag)
 
 While playing:
-- like a song and want to play *that specific song* on loop? click `l` while playing to toggle loop mode (not the same as passing `-L` to `maestro play`!)
+- like a song and want to play it on loop? click `l` while playing to replay it once, and click it one more time to replay it infinitely (click it a third time to stop replaying it)
 - seek with left/right arrow keys
 - volume up/down with `[` and `]`
 - remove selected song (not necessarily the currently playing song) from current playlist with `backspace/delete`

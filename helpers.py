@@ -1,5 +1,6 @@
 # region imports
 import curses
+import importlib
 import logging
 import multiprocessing
 import os
@@ -14,12 +15,25 @@ import numpy as np
 
 from datetime import date
 from shutil import copy, move
+# from time import sleep
 
 from just_playback import Playback
 from numba import jit  # NOTE: I think I'm in love with this decorator
 from numba.core.errors import NumbaWarning
 
 warnings.simplefilter("ignore", category=NumbaWarning)
+
+try:
+    LIBROSA = importlib.import_module("librosa")
+    if not (
+        "load" in dir(LIBROSA) and
+        "amplitude_to_db" in dir(LIBROSA) and
+        "stft" in dir(LIBROSA)
+    ):
+        raise ImportError
+except ImportError:
+    LIBROSA = None
+
 # endregion
 
 # region constants
@@ -32,6 +46,11 @@ PROMPT_MODES = {
     "insert": 0,
     "add": 1,
     "tag": 2,
+}
+LOOP_MODES = {
+    "none": 0,
+    "one": 1,
+    "inf": 2,
 }
 
 METADATA_KEYS = (
@@ -69,8 +88,6 @@ SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
 CUR_YEAR_STATS_PATH = os.path.join(STATS_DIR, f"{CUR_YEAR}.txt")
 TOTAL_STATS_PATH = os.path.join(STATS_DIR, "total.txt")
-
-DATA_CACHE_DIR = os.path.join(MAESTRO_DIR, "data/")
 # endregion
 
 # region player
@@ -267,56 +284,6 @@ def render(
     return res
 
 
-class AudioData:
-    def __init__(self, song_path=None, data=True):
-        if song_path is None:
-            self.data = self.freqs = None
-            self.loaded_song = ""
-            self.loading = False
-            return
-
-        try:
-            self.loading = True
-
-            if data:
-                self.load_data(song_path)
-                self.freqs = (
-                    80 * (self.freqs / 80) ** VIS_FLATTEN_FACTOR
-                )  # flatten
-
-            self.loaded_song = song_path
-            self.loading = False
-        except:  # pylint: disable=bare-except
-            self.data = self.freqs = self.loaded_song = self.loading = None
-
-    def load_data(self, song_path):
-        data_cache_path = os.path.join(
-            DATA_CACHE_DIR,
-            os.path.splitext(os.path.basename(song_path))[0] + ".npz",
-        )
-
-        if not os.path.exists(data_cache_path):
-            from librosa import load
-
-            self.data = load(song_path, mono=False, sr=SAMPLE_RATE)[0]
-
-            if len(self.data.shape) == 1:  # mono -> stereo
-                self.data = np.repeat([self.data], 2, axis=0)
-            elif self.data.shape[0] == 1:  # mono -> stereo
-                self.data = np.repeat(self.data, 2, axis=0)
-            elif self.data.shape[0] == 6:  # 5.1 surround -> stereo
-                self.data = np.delete(self.data, (1, 3, 4, 5), axis=0)
-
-            np.savez_compressed(data_cache_path, data=self.data)
-        else:
-            self.data = np.load(data_cache_path)['data']
-
-        from librosa import amplitude_to_db, stft
-        self.freqs = (
-            amplitude_to_db(np.abs(stft(self.data)), ref=np.max) + 80
-        )  # [-80, 0] -> [0, 80]
-
-
 class PlayerOutput:
     def __init__(
         self, stdscr, playlist, volume, clip_mode, update_discord, visualize
@@ -326,49 +293,79 @@ class PlayerOutput:
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
         )
         self.playlist = playlist
+        self.i = 0
         self.volume = volume
         self.clip_mode = clip_mode
         self.update_discord = update_discord
-        self.can_visualize = self.visualize = visualize
+        self.visualize = visualize  # want to visualize
+        self.can_visualize = LIBROSA is not None  # can generate visualization
+        # space to show visualization
+        self.can_show_visualization = (
+            self.can_visualize and
+            self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+        )
+        if self.can_visualize:
+            t = threading.Thread(
+                target=self.load_visualizer_data,
+                daemon=True,
+            )
+            t.start()
 
-        self.i = 0
-        self.looping_current_song = False
+        self.looping_current_song = LOOP_MODES["none"]
         self.duration = 0
         self.paused = False
         self.ending = False
         self.prompting: None | tuple = None
         self.clip = (0, 0)
         self.discord_connected = multiprocessing.Value("i", 2)
-        self.visualizer_data = AudioData()
+
+    def load_visualizer_data(self):
+        i = self.i
+        while True:
+            song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
+            cur_song_data = LIBROSA.load(song_path, sr=SAMPLE_RATE)[0]
+
+            if len(cur_song_data.shape) == 1:  # mono -> stereo
+                cur_song_data = np.repeat([cur_song_data], 2, axis=0)
+            elif cur_song_data.shape[0] == 1:  # mono -> stereo
+                cur_song_data = np.repeat(cur_song_data, 2, axis=0)
+            elif cur_song_data.shape[0] == 6:  # 5.1 surround -> stereo
+                cur_song_data = np.delete(cur_song_data, (1, 3, 4, 5), axis=0)
+
+            self.playlist[i][4] = (
+                LIBROSA.amplitude_to_db(
+                    np.abs(LIBROSA.stft(cur_song_data)),
+                    ref=np.max
+                ) + 80
+            )
+
+            if self.playlist[self.i][4] is None:
+                i = self.i
+            else:
+                original = i
+                while self.playlist[i][4] is not None:
+                    i += 1
+                    if i >= len(self.playlist):
+                        i = 0
+                    elif i == original:
+                        break
 
     @property
     def song_path(self):
         return os.path.join(SONGS_DIR, self.playlist[self.i][1])
 
     def output(self, pos):
-        self.can_visualize = (
-            self.visualize and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 3
+        self.can_show_visualization = (
+            self.can_visualize and
+            self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
-
-        if self.can_visualize:
-            if self.visualizer_data.loaded_song != self.song_path:
-                if self.visualizer_data.loaded_song is None:
-                    self.can_visualize = False
-                elif not self.visualizer_data.loading:
-                    t = threading.Thread(
-                        target=lambda: self.visualizer_data.__init__(
-                            self.song_path
-                        ),
-                        daemon=True,
-                    )
-                    t.start()
-
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
             - 3  # -3 for status bar
             - 1  # -1 for header
             - (self.prompting != None)  # - add mode
-            - (VISUALIZER_HEIGHT if self.can_visualize else 0)  # - visualizer
+          # - visualizer
+            - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
         )
 
         if self.clip_mode:
@@ -408,15 +405,15 @@ class PlayerOutput:
         visualize_message = ""
         visualize_color = 12
         if self.visualize:
-            if self.can_visualize:
-                if self.visualizer_data.loading:
-                    visualize_message = "Loading visualization..."
-            else:
-                if self.stdscr.getmaxyx()[0] <= VISUALIZER_HEIGHT + 3:
-                    visualize_message = "Window too small for visualization."
-                else:
-                    visualize_message = "Failed to load visualization."
+            if not self.can_visualize:
+                visualize_message = "Librosa is required for visualization."
                 visualize_color = 14
+            elif not self.can_show_visualization:
+                visualize_message = "Window too small for visualization."
+                visualize_color = 14
+            elif self.playlist[self.i][4] is None:
+                visualize_message = "Loading visualization..."
+                visualize_color = 12
         length_so_far = addstr_fit_to_width(
             self.stdscr,
             " " * (screen_width - length_so_far - len(visualize_message))
@@ -537,9 +534,15 @@ class PlayerOutput:
             length_so_far,
             curses.color_pair(17) | curses.A_BOLD,
         )
+        loop_char = " "
+        if self.looping_current_song == LOOP_MODES["one"]:
+            loop_char = "l"
+        elif self.looping_current_song == LOOP_MODES["inf"]:
+            loop_char = "L"
+        # print_to_logfile(self.looping_current_song)
         length_so_far = addstr_fit_to_width(
             self.stdscr,
-            f"{'l' if self.looping_current_song else ' '}",
+            loop_char,
             screen_width,
             length_so_far,
             curses.color_pair(15) | curses.A_BOLD,
@@ -565,7 +568,7 @@ class PlayerOutput:
         self.stdscr.move(
             self.stdscr.getmaxyx()[0]
             - 2
-            - (VISUALIZER_HEIGHT if self.can_visualize else 0),
+            - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
             0,
         )
 
@@ -620,7 +623,7 @@ class PlayerOutput:
 
         self.stdscr.move(
             self.stdscr.getmaxyx()[0]
-            - (VISUALIZER_HEIGHT if self.can_visualize else 0)
+            - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
             - 1,
             0,
         )
@@ -671,7 +674,7 @@ class PlayerOutput:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
                 - 3
-                - (VISUALIZER_HEIGHT if self.can_visualize else 0),
+                - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
                 volume_line_length_so_far,
             )
             if (
@@ -705,16 +708,16 @@ class PlayerOutput:
                     curses.color_pair(16),
                 )
 
-        if self.can_visualize:
+        if self.can_show_visualization:
             if self.clip_mode:
                 pos += self.clip[0]
 
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
-                - (VISUALIZER_HEIGHT if self.can_visualize else 0),
+                - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
                 0,
             )
-            if self.visualizer_data.loading in (True, None):
+            if self.playlist[self.i][4] is None:
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
@@ -724,10 +727,10 @@ class PlayerOutput:
             else:
                 rendered_lines = render(
                     self.stdscr.getmaxyx()[1],
-                    self.visualizer_data.freqs,
+                    self.playlist[self.i][4],
                     min(
                         round(pos * FPS),
-                        self.visualizer_data.freqs.shape[2] - 1,
+                        self.playlist[self.i][4].shape[2] - 1,
                     ),
                     VISUALIZER_HEIGHT,
                 )
@@ -741,7 +744,7 @@ class PlayerOutput:
             # pylint: disable=unsubscriptable-object
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
-                - (VISUALIZER_HEIGHT if self.can_visualize else 0)
+                - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
                 - 4,  # 4 lines for status bar + adding entry
                 adding_song_length
                 + (self.prompting[1] - len(self.prompting[0])),
@@ -790,7 +793,6 @@ def add_song(
     prepend_newline,
     clip_start,
     clip_end,
-    gen_vis_cache,
 ):
     song_name = os.path.split(path)[1]
     if "|" in song_name:
@@ -850,19 +852,8 @@ def add_song(
     else:
         clip_string = ""
 
-    if gen_vis_cache:
-        click.echo(
-            "Calculating and caching visualization frequencies ... ", nl=False
-        )
-        data = AudioData(os.path.join(SONGS_DIR, song_name), data=True)
-        if data.loaded_song is None:
-            data = None
-        click.echo("done.")
-    else:
-        data = None
-
     click.secho(
-        f"Added{' and cached visualization frequencies for' if data is not None else ''} song '{song_name}' with ID {song_id}"
+        f"Added song '{song_name}' with ID {song_id}"
         + tags_string
         + clip_string
         + ".",
@@ -875,13 +866,19 @@ def clip_editor(stdscr, details):
     song_path = os.path.join(SONGS_DIR, song_name)
 
     show_waveform = True
-    audio_data = AudioData(song_path)
-    if audio_data.loaded_song is None:
+    if LIBROSA is None:
         show_waveform = False
+    else:
+        audio_data = LIBROSA.load(song_path, sr=SAMPLE_RATE)[0]
 
-    init_curses(stdscr)
+        if len(audio_data.shape) == 1:  # mono -> stereo
+            audio_data = np.repeat([audio_data], 2, axis=0)
+        elif audio_data.shape[0] == 1:  # mono -> stereo
+            audio_data = np.repeat(audio_data, 2, axis=0)
+        elif audio_data.shape[0] == 6:  # 5.1 surround -> stereo
+            audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
 
-    if show_waveform:
+
         audio_data.data /= np.max(np.abs(audio_data.data))
         audio_data.data = (
             80
@@ -894,6 +891,8 @@ def clip_editor(stdscr, details):
 
     playback = Playback()
     playback.load_file(song_path)
+
+    init_curses(stdscr)
 
     if details[3]:
         clip_start, clip_end = [float(x) for x in details[3].split()]

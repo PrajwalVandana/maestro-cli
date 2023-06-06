@@ -334,8 +334,9 @@ def _play(
                     playback.stop()
                     next_song = 0
                     break
-                elif c in "eEqQ":
-                    player_output.ending = not player_output.ending
+                elif c in "qQ":
+                    player_output.ending = True
+                    break
                 elif c == " ":
                     player_output.paused = not player_output.paused
 
@@ -441,8 +442,8 @@ def _play(
                                     break
                                 elif c in "lL":
                                     player_output.looping_current_song = (
-                                        not player_output.looping_current_song
-                                    )
+                                        player_output.looping_current_song + 1
+                                    ) % len(LOOP_MODES)
                                     player_output.output(playback.curr_pos)
                                 elif c in "cC":
                                     player_output.clip_mode = (
@@ -1155,6 +1156,15 @@ def _play(
                 if player_output.i == player_output.scroller.pos:
                     player_output.scroller.scroll_forward()
             player_output.i += 1
+        elif next_song == 0:
+            if player_output.looping_current_song == LOOP_MODES["one"]:
+                print_to_logfile(
+                    player_output.looping_current_song, LOOP_MODES["one"]
+                )
+                player_output.looping_current_song = LOOP_MODES["none"]
+                print_to_logfile(
+                    player_output.looping_current_song, LOOP_MODES["none"]
+                )
 
 
 # endregion
@@ -1186,9 +1196,6 @@ def cli():
         ):
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
-
-    if not os.path.exists(DATA_CACHE_DIR):
-        os.makedirs(DATA_CACHE_DIR)
 
 
 @cli.command()
@@ -1250,12 +1257,6 @@ def cli():
     help="If song URL passed is from a YouTube playlist, download all the songs. If the URL points directly to a playlist, this flag is unncessary.",
 )
 @click.option(
-    "-V/-nV",
-    "--visualize/--no-visualize",
-    default=False,
-    help="Calculate and cache visualization frequencies for the song. Ignored if the required dependencies are not installed.",
-)
-@click.option(
     "-m",
     "--metadata",
     "metadata_pairs",
@@ -1273,7 +1274,6 @@ def add(
     format_,
     clip,
     playlist_,
-    visualize,
     metadata_pairs,
 ):
     """Add a new song, located at PATH. If PATH is a folder, adds all files
@@ -1515,7 +1515,6 @@ def add(
                 prepend_newline,
                 start,
                 end,
-                visualize,
             )
 
 
@@ -1567,13 +1566,6 @@ def remove(args, force, tag):
                     os.remove(  # remove actual song
                         os.path.join(SONGS_DIR, song_name)
                     )
-
-                    # remove cached visualization frequencies
-                    data_cache_path = os.path.join(
-                        DATA_CACHE_DIR, os.path.splitext(song_name)[0] + ".npz"
-                    )
-                    if os.path.exists(data_cache_path):
-                        os.remove(data_cache_path)
 
                     click.secho(
                         f"Removed song '{song_name}' with ID {song_id}.",
@@ -1931,6 +1923,7 @@ def play(
     for details in playlist:
         song_data = music_tag.load_file(os.path.join(SONGS_DIR, details[1]))
         details += [
+            None,  # visualization data
             (song_data["artist"].value or "Unknown Artist"),
             (song_data["album"].value or "Unknown Album"),
             (song_data["albumartist"].value or "Unknown Album Artist"),
@@ -2023,16 +2016,6 @@ def rename(original, new_name, renaming_tag):
                     os.path.join(SONGS_DIR, old_path),
                     os.path.join(SONGS_DIR, details[1]),
                 )
-
-                # rename cached visualization frequencies
-                data_cache_path = os.path.join(
-                    DATA_CACHE_DIR, os.path.splitext(old_path)[0] + ".npz"
-                )
-                if os.path.exists(data_cache_path):
-                    os.rename(
-                        data_cache_path,
-                        os.path.join(DATA_CACHE_DIR, new_name + ".npz"),
-                    )
 
                 click.secho(
                     f"Renamed song '{old_path}' with ID {original} to '{details[1]}'.",
@@ -2701,80 +2684,6 @@ def unclip(song_ids, all_, force):
             f"Removed clip(s) for song(s) with ID(s) {', '.join(map(str, song_ids))}.",
             fg="green",
         )
-
-
-@cli.command()
-@click.argument("song_ids", type=int, nargs=-1, required=False)
-@click.option(
-    "-F/-nF",
-    "--force/--no-force",
-    "recache",
-    default=False,
-    help="Force recalculation of existing visualization frequency caches.",
-)
-@click.option(
-    "-A/-nA",
-    "--all/--no-all",
-    "all_",
-    default=False,
-    help="Calculate visualization frequency caches for all songs. Ignores SONG_IDS.",
-)
-def cache(song_ids, recache, all_):
-    """
-    Calculate and cache audio data and visualization frequencies for the song(s)
-    with ID(s) SONG_IDS. If any cached data of either kind already exists, this
-    command does nothing unless '-F/--force' is passed.
-
-    To run this command for all songs, pass the '-A/--all' flag (ignores
-    SONG_IDS).
-    """
-    if song_ids:
-        song_ids = set(song_ids)
-    else:
-        if not all_:
-            click.secho(
-                "No song IDs passed. To cache data for all songs, pass the '-A/--all' flag.",
-                fg="red",
-            )
-            return
-        song_ids = set()
-
-    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
-        lines = songs_file.readlines()
-
-        for i in range(len(lines)):
-            song_id, song_name, *_ = lines[i].strip().split("|")
-            song_id = int(song_id)
-
-            if song_ids and song_id not in song_ids:
-                continue
-
-            data_cache_path = os.path.join(
-                DATA_CACHE_DIR,
-                os.path.splitext(song_name)[0] + ".npz",
-            )
-            if os.path.exists(data_cache_path):
-                if not recache:
-                    click.secho(
-                        f"The song {song_name} with ID {song_id} already has cached data. To force recalculation, pass the '-F/--force' flag.",
-                        fg="yellow",
-                    )
-                    continue
-                elif os.path.exists(data_cache_path):
-                    os.remove(data_cache_path)
-
-            data = AudioData(os.path.join(SONGS_DIR, song_name))
-
-            if data.loaded_song is not None:
-                click.secho(
-                    f"Cached data for song {song_name} with ID {song_id}.",
-                    fg="green",
-                )
-            else:
-                click.secho(
-                    f"Failed to cache data for song {song_name} with ID {song_id}. Maybe you haven't installed the required dependencies (librosa, numba, numpy)?",
-                    fg="red",
-                )
 
 
 @cli.command()

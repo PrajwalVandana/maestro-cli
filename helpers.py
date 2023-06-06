@@ -323,7 +323,7 @@ class PlayerOutput:
         i = self.i
         while True:
             song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
-            cur_song_data = LIBROSA.load(song_path, sr=SAMPLE_RATE)[0]
+            cur_song_data = LIBROSA.load(song_path, mono=False, sr=SAMPLE_RATE)[0]
 
             if len(cur_song_data.shape) == 1:  # mono -> stereo
                 cur_song_data = np.repeat([cur_song_data], 2, axis=0)

@@ -1097,7 +1097,7 @@ def _play(
                 last_timestamp = playback.curr_pos
                 player_output.output(playback.curr_pos)
 
-            sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
+            # sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
 
         # region stats
         time_listened = time() - start_time

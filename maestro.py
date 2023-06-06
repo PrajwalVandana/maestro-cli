@@ -1276,7 +1276,10 @@ def add(
     playlist_,
     metadata_pairs,
 ):
-    """Add a new song, located at PATH. If PATH is a folder, adds all files
+    """
+    Add a new song.
+
+    Adds the audio file located at PATH. If PATH is a folder, adds all files
     in PATH (including files in subfolders if '-r' is passed). The name of each
     song will be the filename (unless '-n' is passed). Filenames and tags cannot
     contain the character '|', and tags cannot contain ','.
@@ -1856,7 +1859,7 @@ def play(
     \x1b[1mb\x1b[0m  to go [b]ack to previous song
     \x1b[1mr\x1b[0m  to [r]eplay song
     \x1b[1mn\x1b[0m  to skip to [n]ext song
-    \x1b[1ml\x1b[0m  to [l]oop the current song
+    \x1b[1ml\x1b[0m  to [l]oop the current song once ('l' in status bar). press again to loop infinitely ('L' in status bar). press once again to turn off looping
     \x1b[1mc\x1b[0m  to toggle [c]lip mode
     \x1b[1mv\x1b[0m  to toggle [v]isualization
     \x1b[1mLEFT\x1b[0m  to rewind 5s
@@ -1868,7 +1871,7 @@ def play(
     \x1b[1mq\x1b[0m  to [q]uit the song player immediately
     \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
     \x1b[1mp\x1b[0m  to sna[p] back to the currently playing song
-    \x1b[1mg\x1b[0m  to go to the next pa[g]e/loop of the playlist (if not looping, ignored)
+    \x1b[1mg\x1b[0m  to go to the next pa[g]e/loop of the playlist (ignored if not repeating playlist)
     \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the queue
     \x1b[1md\x1b[0m  to toggle [D]iscord rich presence
     \x1b[1ma\x1b[0m  to add a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
@@ -1878,7 +1881,7 @@ def play(
     \b
     song color indicates mode:
         \x1b[1;34mblue\x1b[0m     normal
-        \x1b[1;33myellow\x1b[0m   looping current song
+        \x1b[1;33myellow\x1b[0m   looping current song (once or repeatedly)
 
     \b
     progress bar color indicates status:
@@ -1974,7 +1977,10 @@ def play(
 @click.argument("original")
 @click.argument("new_name")
 def rename(original, new_name, renaming_tag):
-    """Renames the song with the ID ORIGINAL to NEW_NAME. The extension of the
+    """
+    Rename a song.
+
+    Renames the song with the ID ORIGINAL to NEW_NAME. The extension of the
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
 
     If the '-T/--tag' flag is passed, treats ORIGINAL as a tag, renaming all
@@ -2368,7 +2374,10 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 )
 @click.argument("song_ids", type=click.INT, nargs=-1, required=True)
 def entry(song_ids, year, song_info):
-    """Prints the details of the song(s) with the ID(s) SONG_IDS.
+    """
+    View the details for specific song(s).
+
+    Prints the details of the song(s) with the ID(s) SONG_IDS.
 
     \b
     Output format:
@@ -2440,7 +2449,8 @@ def entry(song_ids, year, song_info):
 )
 def recommend(song, title):
     """
-    Note: this feature is experimental.
+    Get recommendations from YT Music based on song titles. Note: this feature
+    is experimental.
 
     Recommends songs (possibly explicit) using the YouTube Music API similar
     to the song with ID SONG to listen to.
@@ -2507,7 +2517,9 @@ def recommend(song, title):
 @click.option("-B/-nB", "--bottom/--no-bottom", "bottom", default=False)
 def push(song_ids, bottom):
     """
-    Push the song(s) with ID(s) SONG_IDS to the top of the playlist (as if they
+    Move songs around to the bottom or top of the database.
+
+    Push the song(s) with ID(s) SONG_IDS to the top of the database (as if they
     were the songs most recently added) in the order they are passed (e.g.
     'maestro push 1 2 3' will make the most recent song be 3).
 
@@ -2553,6 +2565,8 @@ def push(song_ids, bottom):
 @click.argument("end", required=False, type=float, default=None)
 def clip_(song_id, start, end):
     """
+    Create or edit the clip for a song.
+
     Sets the clip for the song with ID SONG_ID to the time range START to END
     (in seconds).
 
@@ -2642,6 +2656,8 @@ def clip_(song_id, start, end):
 @click.option("-F/-nF", "--force/--no-force", "force", default=False)
 def unclip(song_ids, all_, force):
     """
+    Remove clips for specific song(s).
+
     Removes clip for the song(s) with ID(s) SONG_IDS.
 
     If the '-A/--all' flag is passed, the clips for all songs will be removed,
@@ -2691,6 +2707,8 @@ def unclip(song_ids, all_, force):
 @click.argument("pairs", type=str, required=False)
 def metadata(song_id, pairs):
     """
+    View or edit the metadata for a song.
+
     If no PAIRS are passed, prints the metadata for the song with ID SONG_ID.
 
     If PAIRS are passed, sets the metadata for the song with ID SONG_ID to the

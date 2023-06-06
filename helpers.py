@@ -15,6 +15,7 @@ import numpy as np
 
 from datetime import date
 from shutil import copy, move
+
 # from time import sleep
 
 from just_playback import Playback
@@ -26,9 +27,9 @@ warnings.simplefilter("ignore", category=NumbaWarning)
 try:
     LIBROSA = importlib.import_module("librosa")
     if not (
-        "load" in dir(LIBROSA) and
-        "amplitude_to_db" in dir(LIBROSA) and
-        "stft" in dir(LIBROSA)
+        "load" in dir(LIBROSA)
+        and "amplitude_to_db" in dir(LIBROSA)
+        and "stft" in dir(LIBROSA)
     ):
         raise ImportError
 except ImportError:
@@ -210,7 +211,7 @@ def bin_average(arr, n, include_remainder=False, func=np.max):
     return avg_head
 
 
-@jit
+# @jit
 def render(
     num_bins,
     freqs,
@@ -301,8 +302,8 @@ class PlayerOutput:
         self.can_visualize = LIBROSA is not None  # can generate visualization
         # space to show visualization
         self.can_show_visualization = (
-            self.can_visualize and
-            self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+            self.can_visualize
+            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
         if self.can_visualize:
             t = threading.Thread(
@@ -323,7 +324,9 @@ class PlayerOutput:
         i = self.i
         while True:
             song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
-            cur_song_data = LIBROSA.load(song_path, mono=False, sr=SAMPLE_RATE)[0]
+            cur_song_data = LIBROSA.load(song_path, mono=False, sr=SAMPLE_RATE)[
+                0
+            ]
 
             if len(cur_song_data.shape) == 1:  # mono -> stereo
                 cur_song_data = np.repeat([cur_song_data], 2, axis=0)
@@ -334,9 +337,9 @@ class PlayerOutput:
 
             self.playlist[i][4] = (
                 LIBROSA.amplitude_to_db(
-                    np.abs(LIBROSA.stft(cur_song_data)),
-                    ref=np.max
-                ) + 80
+                    np.abs(LIBROSA.stft(cur_song_data)), ref=np.max
+                )
+                + 80
             )
 
             if self.playlist[self.i][4] is None:
@@ -356,15 +359,15 @@ class PlayerOutput:
 
     def output(self, pos):
         self.can_show_visualization = (
-            self.can_visualize and
-            self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+            self.can_visualize
+            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
             - 3  # -3 for status bar
             - 1  # -1 for header
             - (self.prompting != None)  # - add mode
-          # - visualizer
+            # - visualizer
             - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
         )
 
@@ -852,11 +855,12 @@ def add_song(
     else:
         clip_string = ""
 
+    song_metadata = music_tag.load_file(dest_path)
     click.secho(
         f"Added song '{song_name}' with ID {song_id}"
         + tags_string
         + clip_string
-        + ".",
+        + f" and metadata (artist: {song_metadata['artist'] if song_metadata['artist'] else '<None>'}, album: {song_metadata['album'] if song_metadata['album'] else '<None>'}, albumartist: {song_metadata['albumartist'] if song_metadata['album'] else '<None>'}).",
         fg="green",
     )
 
@@ -878,15 +882,10 @@ def clip_editor(stdscr, details):
         elif audio_data.shape[0] == 6:  # 5.1 surround -> stereo
             audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
 
-
-        audio_data.data /= np.max(np.abs(audio_data.data))
-        audio_data.data = (
+        audio_data /= np.max(np.abs(audio_data))
+        audio_data = (
             80
-            * (
-                (np.reshape(audio_data.data, audio_data.data.shape + (1,)) + 1)
-                / 2
-            )
-            ** WAVEFORM_FLATTEN_FACTOR
+            * ((np.reshape(audio_data, audio_data.shape + (1,)) + 1) / 2) ** 80
         )
 
     playback = Playback()
@@ -1046,7 +1045,7 @@ def clip_editor_output(
     if show_waveform:
         rendered_lines = render(
             screen_width - 2,
-            audio_data.data,
+            audio_data,
             0,
             WAVEFORM_HEIGHT,
             mono=True,
@@ -1175,9 +1174,9 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
     4: seconds listened
     5: total duration (must be passed if 4 is passed)
 
-    Pretty prints
+    Pretty prints ([] means optional)
         <song ID> <song name> [<total duration> <seconds listened> <times listened>] <clip> <tags>
-        [<artist> - <album> (<album artist>)]
+            [<artist> - <album> (<album artist>)]
     """
     click.secho(entry_list[0] + " ", fg="bright_black", nl=False)
     if highlight is None:

@@ -8,7 +8,7 @@
 - audio visualization directly in the terminal!
 - Discord integration!
 - [clips!](#maestro-clip)
-- shuffle! (along with precise control over the behavior of shuffling when looping)
+- shuffle! (along with precise control over the behavior of shuffling when repeating)
 - filter by [tags](#usage)!
 
 ## Installation
@@ -90,6 +90,14 @@ If you have issues, try:
 
 Check this out: [https://github.com/cheofusi/just_playback/issues/21](https://github.com/cheofusi/just_playback/issues/21) ... and good luck 💀.
 
+
+#### If all else fails ...
+You could uninstall and reinstall.
+```pip uninstall maestro-music```
+and also remove the `~/.maestro-files` folder.
+
+WARNING: this will delete all your songs! You should probably back up your `~/.maestro-files/songs/` folder first.
+
 ## Platforms
 
 Tested heavily on macOS Monterey, barely at all on Windows and Linux. `maestro` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!).
@@ -136,7 +144,7 @@ List songs (or tags) and details. Use `maestro list -h` to see full options (e.g
 
 Play songs. Use `maestro play -h` to see full options. Has lots of features:
 - pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the `-M` or `--match-all` flag)
-- shuffle playlist with the `-s` or `--shuffle option (shuffle once, shuffle every loop, or shuffle every loop except the first)
+- shuffle playlist with the `-s` or `--shuffle option (shuffle once, shuffle everytime the playlist repeats, or shuffle everytime the playlist repeats except the first)
 - play songs in reverse order with the `-R` or `--reverse` flag
 - loop playlist with the `-L` or `--loop` flag
 - show an audio visualization with the `-V` or `--visualize` flag

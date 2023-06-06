@@ -305,11 +305,12 @@ class PlayerOutput:
             self.can_visualize
             and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
-        if self.can_visualize:
+        if self.visualize and self.can_visualize:
             t = threading.Thread(
                 target=self.load_visualizer_data,
                 daemon=True,
             )
+            self.visualizer_data = {}
             t.start()
 
         self.looping_current_song = LOOP_MODES["none"]
@@ -321,37 +322,40 @@ class PlayerOutput:
         self.discord_connected = multiprocessing.Value("i", 2)
 
     def load_visualizer_data(self):
-        i = self.i
         while True:
-            song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
-            cur_song_data = LIBROSA.load(song_path, mono=False, sr=SAMPLE_RATE)[
-                0
-            ]
-
-            if len(cur_song_data.shape) == 1:  # mono -> stereo
-                cur_song_data = np.repeat([cur_song_data], 2, axis=0)
-            elif cur_song_data.shape[0] == 1:  # mono -> stereo
-                cur_song_data = np.repeat(cur_song_data, 2, axis=0)
-            elif cur_song_data.shape[0] == 6:  # 5.1 surround -> stereo
-                cur_song_data = np.delete(cur_song_data, (1, 3, 4, 5), axis=0)
-
-            self.playlist[i][4] = (
-                LIBROSA.amplitude_to_db(
-                    np.abs(LIBROSA.stft(cur_song_data)), ref=np.max
-                )
-                + 80
+            cur_song_ids = set(
+                map(lambda x: x[0], self.playlist[self.i : self.i + 5])
             )
+            keys_to_delete = []
+            for k in self.visualizer_data:
+                if k not in cur_song_ids:
+                    keys_to_delete.append(k)
+            for k in keys_to_delete:
+                del self.visualizer_data[k]
 
-            if self.playlist[self.i][4] is None:
-                i = self.i
-            else:
-                original = i
-                while self.playlist[i][4] is not None:
-                    i += 1
-                    if i >= len(self.playlist):
-                        i = 0
-                    elif i == original:
-                        break
+            for i in range(self.i, self.i + 5):
+                if self.playlist[i][0] in self.visualizer_data:
+                    continue
+                song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
+                cur_song_data = LIBROSA.load(
+                    song_path, mono=False, sr=SAMPLE_RATE
+                )[0]
+
+                if len(cur_song_data.shape) == 1:  # mono -> stereo
+                    cur_song_data = np.repeat([cur_song_data], 2, axis=0)
+                elif cur_song_data.shape[0] == 1:  # mono -> stereo
+                    cur_song_data = np.repeat(cur_song_data, 2, axis=0)
+                elif cur_song_data.shape[0] == 6:  # 5.1 surround -> stereo
+                    cur_song_data = np.delete(
+                        cur_song_data, (1, 3, 4, 5), axis=0
+                    )
+
+                self.visualizer_data[self.playlist[i][0]] = (
+                    LIBROSA.amplitude_to_db(
+                        np.abs(LIBROSA.stft(cur_song_data)), ref=np.max
+                    )
+                    + 80
+                )
 
     @property
     def song_path(self):
@@ -359,9 +363,9 @@ class PlayerOutput:
 
     def output(self, pos):
         self.can_show_visualization = (
-            self.visualize and
-            self.can_visualize and
-            self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+            self.visualize
+            and self.can_visualize
+            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
@@ -415,7 +419,7 @@ class PlayerOutput:
             elif not self.can_show_visualization:
                 visualize_message = "Window too small for visualization."
                 visualize_color = 14
-            elif self.playlist[self.i][4] is None:
+            elif self.playlist[self.i][0] not in self.visualizer_data:
                 visualize_message = "Loading visualization..."
                 visualize_color = 12
         length_so_far = addstr_fit_to_width(
@@ -721,7 +725,7 @@ class PlayerOutput:
                 - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
                 0,
             )
-            if self.playlist[self.i][4] is None:
+            if self.playlist[self.i][0] not in self.visualizer_data:
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
@@ -731,10 +735,10 @@ class PlayerOutput:
             else:
                 rendered_lines = render(
                     self.stdscr.getmaxyx()[1],
-                    self.playlist[self.i][4],
+                    self.visualizer_data[self.playlist[self.i][0]],
                     min(
                         round(pos * FPS),
-                        self.playlist[self.i][4].shape[2] - 1,
+                        self.visualizer_data[self.playlist[self.i][0]].shape[2] - 1,
                     ),
                     VISUALIZER_HEIGHT,
                 )

@@ -1926,7 +1926,6 @@ def play(
     for details in playlist:
         song_data = music_tag.load_file(os.path.join(SONGS_DIR, details[1]))
         details += [
-            None,  # visualization data
             (song_data["artist"].value or "Unknown Artist"),
             (song_data["album"].value or "Unknown Album"),
             (song_data["albumartist"].value or "Unknown Album Artist"),

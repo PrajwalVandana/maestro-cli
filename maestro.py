@@ -2607,12 +2607,14 @@ def clip_(song_id, start, end):
             click.secho(f"No song found with ID {song_id}.", fg="red")
             return
 
+        song_name = details[1]
+
         if start is None:  # clip editor
             start, end = curses.wrapper(clip_editor, details)
             if start is None:
+                click.secho(f"No change in clip for {song_name}.", fg="green")
                 return
 
-        song_name = details[1]
         song_path = os.path.join(SONGS_DIR, song_name)
         duration = music_tag.load_file(song_path)["#length"].value
 

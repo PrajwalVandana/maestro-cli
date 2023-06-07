@@ -906,6 +906,7 @@ def clip_editor(stdscr, details):
     change_output = True
     playback.play()
     playback.pause()
+    playback.seek(clip_start)
     last_timestamp = playback.curr_pos
     while True:
         if playback.curr_pos >= clip_end:

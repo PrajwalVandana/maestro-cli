@@ -240,24 +240,25 @@ def _play(
             mac_now_playing.pos = 0
             mac_now_playing.length = player_output.duration
 
-            for c in player_output.playlist[player_output.i][1]:
-                mac_now_playing.title_queue.put(c)
-            mac_now_playing.title_queue.put("\n")
-
-            for c in player_output.playlist[player_output.i][-3]:
-                mac_now_playing.artist_queue.put(c)
-            mac_now_playing.artist_queue.put("\n")
+            multiprocessing_put_word(
+                mac_now_playing.title_queue,
+                player_output.playlist[player_output.i][1],
+            )
+            multiprocessing_put_word(
+                mac_now_playing.title_queue,
+                player_output.playlist[player_output.i][-3],
+            )
 
             update_now_playing = True
 
         if player_output.update_discord:
-            for c in player_output.playlist[player_output.i][1]:
-                discord_song_name_queue.put(c)
-            discord_song_name_queue.put("\n")
-
-            for c in player_output.playlist[player_output.i][-3]:
-                discord_artist_queue.put(c)
-            discord_artist_queue.put("\n")
+            multiprocessing_put_word(
+                discord_artist_queue, player_output.playlist[player_output.i][1]
+            )
+            multiprocessing_put_word(
+                discord_artist_queue,
+                player_output.playlist[player_output.i][-3],
+            )
 
         playback.play()
 
@@ -1320,7 +1321,8 @@ def add(
             fg="red",
         )
         return
-    elif youtube or spotify:
+
+    if youtube or spotify:
         if youtube and spotify:
             click.secho(
                 "Cannot pass both '-y/--youtube' and '-s/--spotify' flags.",
@@ -1449,7 +1451,7 @@ def add(
         if start < 0:
             click.secho("Clip start time cannot be negative.", fg="red")
             return
-        elif start > song_duration:
+        if start > song_duration:
             click.secho(
                 "Clip start time cannot be greater than the song duration.",
                 fg="red",

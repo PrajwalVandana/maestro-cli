@@ -865,7 +865,7 @@ def add_song(
         f"Added song '{song_name}' with ID {song_id}"
         + tags_string
         + clip_string
-        + f" and metadata (artist: {song_metadata['artist'] if song_metadata['artist'] else '<None>'}, album: {song_metadata['album'] if song_metadata['album'] else '<None>'}, albumartist: {song_metadata['albumartist'] if song_metadata['album'] else '<None>'}).",
+        + f" and metadata (artist: {song_metadata['artist'] if song_metadata['artist'] else '<None>'}, album: {song_metadata['album'] if song_metadata['album'] else '<None>'}, albumartist: {song_metadata['albumartist'] if song_metadata['albumartist'] else '<None>'}).",
         fg="green",
     )
 
@@ -1266,3 +1266,9 @@ def print_to_logfile(*args, **kwargs):
     if "file" in kwargs:
         raise ValueError("file kwargs not allowed for 'print_to_logfile'")
     print(*args, **kwargs, file=open("log.txt", "a", encoding="utf-8"))
+
+
+def multiprocessing_put_word(q, word):
+    for c in word:
+        q.put(c)
+    q.put("\n")

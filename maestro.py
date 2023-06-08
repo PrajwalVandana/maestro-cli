@@ -177,13 +177,13 @@ def _play(
     )
 
     if player_output.update_discord:
-        discord_song_name_queue = multiprocessing.SimpleQueue()
+        discord_title_queue = multiprocessing.SimpleQueue()
         discord_artist_queue = multiprocessing.SimpleQueue()
         discord_presence_process = multiprocessing.Process(
             daemon=True,
             target=discord_presence_loop,
             args=(
-                discord_song_name_queue,
+                discord_title_queue,
                 discord_artist_queue,
                 player_output.discord_connected,
             ),
@@ -245,7 +245,7 @@ def _play(
                 player_output.playlist[player_output.i][1],
             )
             multiprocessing_put_word(
-                mac_now_playing.title_queue,
+                mac_now_playing.artist_queue,
                 player_output.playlist[player_output.i][-3],
             )
 
@@ -253,7 +253,7 @@ def _play(
 
         if player_output.update_discord:
             multiprocessing_put_word(
-                discord_artist_queue, player_output.playlist[player_output.i][1]
+                discord_title_queue, player_output.playlist[player_output.i][1]
             )
             multiprocessing_put_word(
                 discord_artist_queue,
@@ -502,14 +502,14 @@ def _play(
                                     else:
                                         player_output.update_discord = True
 
-                                        discord_song_name_queue = (
+                                        discord_title_queue = (
                                             multiprocessing.SimpleQueue()
                                         )
                                         for c in player_output.playlist[
                                             player_output.i
                                         ][1]:
-                                            discord_song_name_queue.put(c)
-                                        discord_song_name_queue.put("\n")
+                                            discord_title_queue.put(c)
+                                        discord_title_queue.put("\n")
 
                                         discord_artist_queue = (
                                             multiprocessing.SimpleQueue()
@@ -529,7 +529,7 @@ def _play(
                                             daemon=True,
                                             target=discord_presence_loop,
                                             args=(
-                                                discord_song_name_queue,
+                                                discord_title_queue,
                                                 discord_artist_queue,
                                                 player_output.discord_connected,
                                             ),

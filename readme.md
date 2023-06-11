@@ -1,5 +1,6 @@
 # maestro
 [![Downloads](https://static.pepy.tech/badge/maestro-music)](https://pepy.tech/project/maestro-music) [![PyPI version](https://badge.fury.io/py/maestro-music.svg)](https://badge.fury.io/py/maestro-music)
+
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
 ## Features

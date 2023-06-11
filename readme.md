@@ -140,6 +140,8 @@ List details for a specific song.
 
 List songs (or tags) and details. Use `maestro list -h` to see full options (e.g. sort, list only songs with a certain tag, etc.).
 
+![maestro list example](data/list.png)
+
 ### `maestro play`
 
 Play songs. Use `maestro play -h` to see full options. Has lots of features:
@@ -169,6 +171,8 @@ While playing:
 - space to pause/play
 - `e` to end after the current song
 - `q` to end immediately (don't just close the window or `CTRL-c`, this messes up the accuracy of the listen time statistics)
+
+![maestro play example](data/player.png)
 
 ### `maestro push`
 

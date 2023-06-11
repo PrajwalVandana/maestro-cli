@@ -13,7 +13,7 @@ MAC_DEPS = [
 
 setup(
     name="maestro-music",
-    version="1.0.3",
+    version="1.0.4",
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",

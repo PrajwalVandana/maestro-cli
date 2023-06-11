@@ -301,7 +301,8 @@ class PlayerOutput:
         self.can_visualize = LIBROSA is not None  # can generate visualization
         # space to show visualization
         self.can_show_visualization = (
-            self.can_visualize
+            self.visualize
+            and self.can_visualize
             and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
         )
         if self.visualize and self.can_visualize:
@@ -311,6 +312,8 @@ class PlayerOutput:
             )
             self.visualizer_data = {}
             t.start()
+        else:
+            self.visualizer_data = None
 
         self.looping_current_song = LOOP_MODES["none"]
         self.duration = 0
@@ -413,6 +416,14 @@ class PlayerOutput:
         visualize_message = ""
         visualize_color = 12
         if self.visualize:
+            if self.visualizer_data is None and self.can_visualize:
+                t = threading.Thread(
+                    target=self.load_visualizer_data,
+                    daemon=True,
+                )
+                self.visualizer_data = {}
+                t.start()
+
             if not self.can_visualize:
                 visualize_message = "Librosa is required for visualization."
                 visualize_color = 14

@@ -9,13 +9,12 @@ Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 
 - cross-platform!
 - add songs directly from YouTube, YouTube Music, or Spotify!
-- audio visualization directly in the terminal!
-- Discord integration!
+- audio visualization directly in the terminal! ![maestro play example](data/player.png)
+- Discord integration! ![maestro play example](data/discord.png)
+- Mac integration (Touch Bar, Now Playing center, headphone controls)! ![maestro play example](data/now_playing.png)
 - [clips!](#maestro-clip)
 - shuffle! (along with precise control over the behavior of shuffling when repeating)
 - filter by [tags](#usage)!
-
-![maestro play example](data/player.png)
 
 ## Installation
 

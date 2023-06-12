@@ -15,6 +15,8 @@ Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 - shuffle! (along with precise control over the behavior of shuffling when repeating)
 - filter by [tags](#usage)!
 
+![maestro play example](data/player.png)
+
 ## Installation
 
 Make sure you have Python 3 and `pip` installed.

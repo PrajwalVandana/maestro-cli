@@ -1,7 +1,7 @@
-# maestro
+# maestro-cli
 [![Downloads](https://static.pepy.tech/badge/maestro-music)](https://pepy.tech/project/maestro-music) [![PyPI version](https://badge.fury.io/py/maestro-music.svg)](https://badge.fury.io/py/maestro-music) [![Support Server](https://img.shields.io/discord/1117677384846544896.svg?color=7289da&label=maestro-cli&logo=discord)](https://discord.gg/AW8fh2QEav)
 
-`maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
+`maestro-cli` is a command-line tool to play songs (or any audio, really) in the terminal.
 
 Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 
@@ -24,7 +24,7 @@ First, run
 pip install maestro-music
 ```
 
-**NOTE**: `pip install maestro` will NOT work, this downloads a totally unrelated package from PyPI.
+**NOTE**: `pip install maestro` and `pip install maestro-cli` will NOT work, they are totally unrelated PyPI packages.
 
 Now, if you want to be able to directly download songs from YouTube or Spotify, you'll need to install [FFmpeg](https://github.com/FFmpeg/FFmpeg). You can also download the songs yourself and pass the path to the downloaded file to `maestro add`.
 
@@ -63,7 +63,7 @@ Also, if you have `conda`, see if running the following fixes your issue before 
 conda install libsndfile ffmpeg cffi
 ```
 
-`maestro` uses [just_playback](https://github.com/cheofusi/just_playback) to play sound, which uses a C library called [miniaudio](https://github.com/mackron/miniaudio). Unfortunately, the creators did not provide wheels, so installation of `just_playback` and therefore `maestro` usually fails if there's any (compatibility or otherwise) problems with your C/C++ compiler. Here are platforms where there are known issues:
+`maestro-cli` uses [just_playback](https://github.com/cheofusi/just_playback) to play sound, which uses a C library called [miniaudio](https://github.com/mackron/miniaudio). Unfortunately, the creators did not provide wheels, so installation of `just_playback` and therefore `maestro-cli` usually fails if there's any (compatibility or otherwise) problems with your C/C++ compiler. Here are platforms where there are known issues:
 
 #### Apple Silicon
 
@@ -71,7 +71,7 @@ There's a problem with the flag `-march=native` for older versions of the `clang
 ```
 pip install PATH_TO_DOWNLOADED_ARM64_WHEEL
 ```
-and *now* installing `maestro` should work.
+and *now* `pip install maestro-music` should work.
 
 #### Windows
 
@@ -83,7 +83,7 @@ find and download the `win_amd64` wheel of `just_playback` in `dependency_builds
 ```
 pip install PATH_TO_DOWNLOADED_WIN64_WHEEL
 ```
-and *now* installing `maestro` should work. Another option (especially if you're on a 32-bit Windows) is to just get Visual C++ Build Tools.
+and *now* `pip install maestro-music` should work. Another option (especially if you're on a 32-bit Windows) is to just get Visual C++ Build Tools.
 
 #### Linux
 
@@ -104,7 +104,7 @@ WARNING: this will delete all your songs! You should probably back up your `~/.m
 
 ## Platforms
 
-Tested heavily on macOS Monterey, barely at all on Windows and Linux. `maestro` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!). You can also join the [Discord server](https://discord.gg/AW8fh2QEav) and ask for help there.
+Tested heavily on macOS Monterey, lightly on Windows and Linux. `maestro-cli` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!). You can also join the [Discord server](https://discord.gg/AW8fh2QEav) and ask for help there.
 
 Supports `.mp3`, `.wav`, `.flac`, and `.ogg` (Ogg Vorbis).
 
@@ -112,11 +112,11 @@ Supports `.mp3`, `.wav`, `.flac`, and `.ogg` (Ogg Vorbis).
 
 Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to get comprehensive help for that command—the below is just an overview.
 
-`maestro` uses the concept of a positive integer **song ID** to uniquely refer to each song.
+`maestro-cli` uses the concept of a positive integer **song ID** to uniquely refer to each song.
 
-Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro tag <song IDs for each Jon Bellion song> -t jon-bellion `. Then `maestro play jon-bellion`. If song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`.
+Also, playlists don't exist—`maestro-cli` uses **tags**. For example, let's say you want to be able to listen to all your Jon Bellion songs together. Instead of adding them all to a playlist, run `maestro tag <song IDs for each Jon Bellion song> -t jon-bellion `. Then `maestro play jon-bellion`. If song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`.
 
-`maestro` also tracks your listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. For example, to see your top 10 listened songs (by average number of times listened; note that this is NOT the number of times the song was played but rather the total listen time for that song divided by the duration), run `maestro list -s times_listened -T 10 -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
+`maestro-cli` also tracks your listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. For example, to see your top 10 listened songs (by average number of times listened; note that this is NOT the number of times the song was played but rather the total listen time for that song divided by the duration), run `maestro list -s times_listened -T 10 -y cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
 
 ### `maestro add`
 

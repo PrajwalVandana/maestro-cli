@@ -3,6 +3,8 @@
 
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 
+Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
+
 ## Features
 
 - cross-platform!
@@ -102,7 +104,7 @@ WARNING: this will delete all your songs! You should probably back up your `~/.m
 
 ## Platforms
 
-Tested heavily on macOS Monterey, barely at all on Windows and Linux. `maestro` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!).
+Tested heavily on macOS Monterey, barely at all on Windows and Linux. `maestro` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!). You can also join the [Discord server](https://discord.gg/AW8fh2QEav) and ask for help there.
 
 Supports `.mp3`, `.wav`, `.flac`, and `.ogg` (Ogg Vorbis).
 

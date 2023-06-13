@@ -307,7 +307,7 @@ class PlayerOutput:
         )
         if self.visualize and self.can_visualize:
             t = threading.Thread(
-                target=self.load_visualizer_data,
+                target=self._load_visualizer_data,
                 daemon=True,
             )
             self.visualizer_data = {}
@@ -323,7 +323,7 @@ class PlayerOutput:
         self.clip = (0, 0)
         self.discord_connected = multiprocessing.Value("i", 2)
 
-    def load_visualizer_data(self):
+    def _load_visualizer_data(self):
         while True:
             cur_song_ids = set(
                 map(lambda x: x[0], self.playlist[self.i : self.i + 5])
@@ -335,7 +335,7 @@ class PlayerOutput:
             for k in keys_to_delete:
                 del self.visualizer_data[k]
 
-            for i in range(self.i, self.i + 5):
+            for i in range(self.i, min(self.i + 5, len(self.playlist))):
                 if self.playlist[i][0] in self.visualizer_data:
                     continue
                 song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
@@ -358,6 +358,8 @@ class PlayerOutput:
                     )
                     + 80
                 )
+                # except Exception as e:
+                #     print_to_logfile(e)
             sleep(1)
 
     @property
@@ -418,7 +420,7 @@ class PlayerOutput:
         if self.visualize:
             if self.visualizer_data is None and self.can_visualize:
                 t = threading.Thread(
-                    target=self.load_visualizer_data,
+                    target=self._load_visualizer_data,
                     daemon=True,
                 )
                 self.visualizer_data = {}

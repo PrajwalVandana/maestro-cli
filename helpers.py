@@ -81,7 +81,9 @@ METADATA_KEYS = (
 # region paths
 MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
 
-SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
+SETTINGS_FILE = os.path.join(MAESTRO_DIR, "settings.json")
+DEFAULT_SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
+SONGS_DIR = None
 
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 
@@ -214,7 +216,7 @@ def bin_average(arr, n, include_remainder=False, func=np.max):
 def render(
     num_bins,
     freqs,
-    t,
+    frame,
     visualizer_height,
     mono=None,
     include_remainder=None,
@@ -234,12 +236,12 @@ def render(
         num_bins = (num_bins - 1) // 2
     else:
         gap_bins = 0
-        freqs[0, :, t] = (freqs[0, :, t] + freqs[1, :, t]) / 2
+        freqs[0, :, frame] = (freqs[0, :, frame] + freqs[1, :, frame]) / 2
 
     num_vertical_block_sizes = len(VERTICAL_BLOCKS) - 1
     freqs = np.round(
         bin_average(
-            freqs[:, :, t],
+            freqs[:, :, frame],
             num_bins,
             (freqs.shape[-2] % num_bins) > num_bins / 2
             if include_remainder is None
@@ -887,25 +889,6 @@ def clip_editor(stdscr, details):
     song_name = details[1]
     song_path = os.path.join(SONGS_DIR, song_name)
 
-    show_waveform = True
-    if LIBROSA is None:
-        show_waveform = False
-    else:
-        audio_data = LIBROSA.load(song_path, sr=SAMPLE_RATE)[0]
-
-        if len(audio_data.shape) == 1:  # mono -> stereo
-            audio_data = np.repeat([audio_data], 2, axis=0)
-        elif audio_data.shape[0] == 1:  # mono -> stereo
-            audio_data = np.repeat(audio_data, 2, axis=0)
-        elif audio_data.shape[0] == 6:  # 5.1 surround -> stereo
-            audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
-
-        audio_data /= np.max(np.abs(audio_data))
-        audio_data = (
-            80
-            * ((np.reshape(audio_data, audio_data.shape + (1,)) + 1) / 2) ** 80
-        )
-
     playback = Playback()
     playback.load_file(song_path)
 
@@ -933,7 +916,6 @@ def clip_editor(stdscr, details):
         if change_output:
             clip_editor_output(
                 stdscr,
-                audio_data,
                 details,
                 playback.curr_pos,
                 playback.paused,
@@ -941,7 +923,6 @@ def clip_editor(stdscr, details):
                 clip_start,
                 clip_end,
                 editing_start,
-                show_waveform,
             )
 
         c = stdscr.getch()
@@ -1039,7 +1020,6 @@ def clip_editor(stdscr, details):
 
 def clip_editor_output(
     stdscr,
-    audio_data,
     details,
     pos,
     paused,
@@ -1047,7 +1027,6 @@ def clip_editor_output(
     clip_start,
     clip_end,
     editing_start,
-    show_waveform,
 ):
     stdscr.erase()
 
@@ -1057,20 +1036,6 @@ def clip_editor_output(
         return
 
     screen_width = stdscr.getmaxyx()[1]
-
-    show_waveform = (
-        show_waveform and stdscr.getmaxyx()[0] >= 4 + WAVEFORM_HEIGHT
-    )
-    if show_waveform:
-        rendered_lines = render(
-            screen_width - 2,
-            audio_data,
-            0,
-            WAVEFORM_HEIGHT,
-            mono=True,
-            include_remainder=True,
-            func=np.max,
-        )
 
     stdscr.insstr(
         f"{format_seconds(clip_start, show_decimal=True)}"
@@ -1085,10 +1050,6 @@ def clip_editor_output(
     stdscr.insstr(end_str, curses.color_pair(7))
 
     stdscr.move(1, 0)
-    if show_waveform:
-        for i in range(len(rendered_lines)):
-            stdscr.addstr(" " + rendered_lines[i])
-            stdscr.move(stdscr.getyx()[0] + 1, 0)
 
     clip_bar_width = screen_width - 2
     if clip_bar_width > 0:

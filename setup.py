@@ -1,19 +1,22 @@
 from setuptools import setup
 
 MAC_DEPS = [
-    "pyobjc-core; sys_platform == 'darwin'",
-    "pyobjc-framework-ApplicationServices; sys_platform == 'darwin'",
-    "pyobjc-framework-AVFoundation; sys_platform == 'darwin'",
-    "pyobjc-framework-Cocoa; sys_platform == 'darwin'",
-    "pyobjc-framework-CoreAudio; sys_platform == 'darwin'",
-    "pyobjc-framework-CoreMedia; sys_platform == 'darwin'",
-    "pyobjc-framework-MediaPlayer; sys_platform == 'darwin'",
-    "pyobjc-framework-Quartz; sys_platform == 'darwin'",
+    dep + "; sys_platform == 'darwin'"
+    for dep in [
+        "pyobjc-core",
+        "pyobjc-framework-ApplicationServices",
+        "pyobjc-framework-AVFoundation",
+        "pyobjc-framework-Cocoa",
+        "pyobjc-framework-CoreAudio",
+        "pyobjc-framework-CoreMedia",
+        "pyobjc-framework-MediaPlayer",
+        "pyobjc-framework-Quartz",
+    ]
 ]
 
 setup(
     name="maestro-music",
-    version="1.0.5",
+    version="1.0.6",
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",

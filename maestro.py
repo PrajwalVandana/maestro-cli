@@ -1,8 +1,8 @@
 # region imports
 import curses
+import json
 import multiprocessing
 import os
-from shutil import move
 import subprocess
 import sys
 
@@ -12,6 +12,7 @@ import music_tag
 from collections import defaultdict
 from queue import Queue
 from random import shuffle, randint
+from shutil import move
 from time import sleep, time
 
 from icon import img
@@ -1176,8 +1177,23 @@ def _play(
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
 def cli():
     """A command line interface for playing music."""
-    if not os.path.exists(SONGS_DIR):
-        os.makedirs(SONGS_DIR)
+    global SONGS_DIR  # pylint: disable=global-statement
+
+    if not os.path.exists(SETTINGS_FILE):
+        with open(SETTINGS_FILE, "x", encoding="utf-8") as f:
+            json.dump({"song_directory": DEFAULT_SONGS_DIR}, f)
+            SONGS_DIR = DEFAULT_SONGS_DIR
+    else:
+        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+            if "song_directory" not in settings:
+                settings["song_directory"] = DEFAULT_SONGS_DIR
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as g:
+                    json.dump(settings, g)
+            else:
+                if not os.path.exists(settings["song_directory"]):
+                    os.makedirs(settings["song_directory"])
+            SONGS_DIR = settings["song_directory"]
 
     if not os.path.exists(SONGS_INFO_PATH):
         with open(SONGS_INFO_PATH, "x", encoding="utf-8") as _:
@@ -1812,7 +1828,7 @@ def untag(song_ids, tags, all_):
     "--loop/--no-loop",
     "loop",
     default=False,
-    help="Loop the playlist. Can be toggled with 'l'.",
+    help="Loop the playlist.",
 )
 @click.option(
     "-C/-nC",
@@ -1895,6 +1911,7 @@ def play(
     For the color vision deficient, both modes also have indicators in the status bar.
     """
     playlist = []
+    songs_not_found = []
 
     if only:
         only = set(only)
@@ -1902,7 +1919,9 @@ def play(
             for line in songs_file:
                 details = line.strip().split("|")
                 song_id = int(details[0])
-                if song_id in only:
+                if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                    songs_not_found.append(details)
+                elif song_id in only:
                     playlist.append(details)
 
         if not playlist:
@@ -1913,19 +1932,25 @@ def play(
             with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                 for line in songs_file:
                     details = line.strip().split("|")
-                    playlist.append(details)
+                    if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                        songs_not_found.append(details)
+                    else:
+                        playlist.append(details)
         else:
             tags = set(tags)
             with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                 for line in songs_file:
                     details = line.strip().split("|")
                     song_tags = set(details[2].split(","))
-                    if not match_all:
-                        if tags & song_tags:  # intersection
-                            playlist.append(details)
+                    if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                        songs_not_found.append(details)
                     else:
-                        if tags <= song_tags:  # subset
-                            playlist.append(details)
+                        if not match_all:
+                            if tags & song_tags:  # intersection
+                                playlist.append(details)
+                        else:
+                            if tags <= song_tags:  # subset
+                                playlist.append(details)
 
     for details in playlist:
         song_data = music_tag.load_file(os.path.join(SONGS_DIR, details[1]))
@@ -1967,6 +1992,11 @@ def play(
             discord and can_update_discord,
             visualize,
         )
+
+    if songs_not_found:
+        click.secho("Song files not found:", fg="red")
+        for details in songs_not_found:
+            click.secho(f"\t{details[1]} (ID {details[0]})", fg="red")
 
 
 @cli.command()
@@ -2225,6 +2255,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
         search_tags = set(search_tags)
 
     num_lines = 0
+    songs_not_found = []
 
     if listing_tags:
         with (
@@ -2243,11 +2274,13 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             )
 
             tags = defaultdict(lambda: (0.0, 0.0))
-
             for i in range(len(songs_lines)):
                 song_id, song_name, tag_string = (
                     songs_lines[i].strip().split("|")[0:3]
                 )
+                if not os.path.exists(os.path.join(SONGS_DIR, song_name)):
+                    songs_not_found.append((song_id, song_name))
+                    continue
                 song_id = int(song_id)
                 if tag_string:
                     for tag in tag_string.split(","):
@@ -2286,6 +2319,10 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 num_lines += 1
                 if top is not None and num_lines == top:
                     break
+            if songs_not_found:
+                click.secho("Song files not found:", fg="red")
+                for song_id, song_name in songs_not_found:
+                    click.secho(f"\t{song_name} (ID {song_id})", fg="red")
         return
 
     no_results = True
@@ -2293,7 +2330,16 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
         open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
         open(stats_path, "r", encoding="utf-8") as stats_file,
     ):
-        lines = songs_file.readlines()
+
+        def check_if_file_exists(detail_string):
+            details = detail_string.strip().split("|")
+            if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                songs_not_found.append(details)
+                return False
+            return True
+
+        lines = list(filter(check_if_file_exists, songs_file.readlines()))
+
         stats = dict(
             map(
                 lambda t: (int(t[0]),) + t[1:],
@@ -2359,6 +2405,10 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
         click.secho(
             "No songs found. Use 'maestro add' to add a song.", fg="red"
         )
+    elif songs_not_found:
+        click.secho("Song files not found:", fg="red")
+        for details in songs_not_found:
+            click.secho(f"\t{details[1]} (ID {details[0]})", fg="red")
 
 
 @cli.command()
@@ -2420,6 +2470,12 @@ def entry(song_ids, year, song_info):
                 details = lines[i].strip().split("|")
                 song_id = int(details[0])
                 if song_id in song_ids:
+                    if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                        click.secho(
+                            f"Song file with ID {song_id} not found.", fg="red"
+                        )
+                        song_ids.remove(song_id)
+                        continue
                     print_entry(
                         details
                         + [
@@ -2610,6 +2666,12 @@ def clip_(song_id, start, end):
             return
 
         song_name = details[1]
+        if not os.path.exists(os.path.join(SONGS_DIR, song_name)):
+            click.secho(
+                f"Song file {song_name} (ID {song_id}) not found.",
+                fg="red",
+            )
+            return
 
         if start is None:  # clip editor
             start, end = curses.wrapper(clip_editor, details)
@@ -2738,6 +2800,12 @@ def metadata(song_id, pairs):
             if int(details[0]) == song_id:
                 song_path = os.path.join(SONGS_DIR, details[1])
                 song_name = details[1]
+                if not os.path.exists(song_path):
+                    click.secho(
+                        f"Song file {song_name} (ID {song_id}) not found.",
+                        fg="red",
+                    )
+                    return
                 break
         else:
             click.secho(
@@ -2779,3 +2847,31 @@ def metadata(song_id, pairs):
                 )
             except:  # pylint: disable=bare-except
                 pass
+
+
+@cli.command(name="dir")
+@click.argument("directory", type=click.Path(file_okay=False), required=False)
+def dir_(directory):
+    """
+    Change the directory where maestro looks for songs.
+    NOTE: This does not move any songs. It only changes where maestro looks for
+    songs. You will have to move the songs yourself.
+
+    If no argument is passed, prints the current directory.
+    """
+
+    if directory is None:
+        click.echo(SONGS_DIR)
+        return
+
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+    with open(SETTINGS_FILE, "r+", encoding="utf-8") as settings_file:
+        settings = json.load(settings_file)
+        settings["song_directory"] = directory
+        settings_file.seek(0)
+        json.dump(settings, settings_file)
+        settings_file.truncate()
+
+    click.secho(f"Changed song directory to {directory}.", fg="green")

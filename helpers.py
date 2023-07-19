@@ -1,4 +1,7 @@
+import config  # pylint: disable=wildcard-import,unused-wildcard-import
+
 # region imports
+
 import curses
 import importlib
 import logging
@@ -13,7 +16,6 @@ import click
 import music_tag
 import numpy as np
 
-from datetime import date
 from shutil import copy, move
 from time import sleep
 
@@ -33,105 +35,6 @@ try:
         raise ImportError
 except ImportError:
     LIBROSA = None
-
-# endregion
-
-# region constants
-
-DISCORD_ID = 1039038199881810040
-
-CUR_YEAR = date.today().year
-EXTS = (".mp3", ".wav", ".flac", ".ogg")
-PROMPT_MODES = {
-    "insert": 0,
-    "add": 1,
-    "tag": 2,
-}
-LOOP_MODES = {
-    "none": 0,
-    "one": 1,
-    "inf": 2,
-}
-
-METADATA_KEYS = (
-    "album",
-    "albumartist",
-    "artist",
-    "artwork",
-    "comment",
-    "compilation",
-    "composer",
-    "discnumber",
-    "genre",
-    "lyrics",
-    "totaldiscs",
-    "totaltracks",
-    "tracknumber",
-    "tracktitle",
-    "year",
-    "isrc",
-    "#bitrate",
-    "#codec",
-    "#length",
-    "#channels",
-    "#bitspersample",
-    "#samplerate",
-)
-
-# region paths
-MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
-
-SETTINGS_FILE = os.path.join(MAESTRO_DIR, "settings.json")
-DEFAULT_SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
-SONGS_DIR = None
-
-SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
-
-STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
-CUR_YEAR_STATS_PATH = os.path.join(STATS_DIR, f"{CUR_YEAR}.txt")
-TOTAL_STATS_PATH = os.path.join(STATS_DIR, "total.txt")
-# endregion
-
-# region player
-HORIZONTAL_BLOCKS = {
-    1: "▏",
-    2: "▎",
-    3: "▍",
-    4: "▌",
-    5: "▋",
-    6: "▊",
-    7: "▉",
-    8: "█",
-}
-SCRUB_TIME = 5  # in seconds
-VOLUME_STEP = 0.01  # self.volume is 0-1
-MIN_PROGRESS_BAR_WIDTH = 20
-MIN_VOLUME_BAR_WIDTH, MAX_VOLUME_BAR_WIDTH = 10, 40
-# endregion
-
-# region visualizer
-FPS = 60
-
-STEP_SIZE = 512  # librosa default
-SAMPLE_RATE = STEP_SIZE * FPS
-
-VERTICAL_BLOCKS = {
-    0: " ",
-    1: "▁",
-    2: "▂",
-    3: "▃",
-    4: "▄",
-    5: "▅",
-    6: "▆",
-    7: "▇",
-    8: "█",
-}
-VISUALIZER_HEIGHT = 8  # should divide 80
-WAVEFORM_HEIGHT = 6  # should also divide 80
-
-VIS_FLATTEN_FACTOR = 3  # higher = more flattening; 1 = no flattening
-WAVEFORM_FLATTEN_FACTOR = 20
-# endregion
 
 # endregion
 
@@ -238,7 +141,7 @@ def render(
         gap_bins = 0
         freqs[0, :, frame] = (freqs[0, :, frame] + freqs[1, :, frame]) / 2
 
-    num_vertical_block_sizes = len(VERTICAL_BLOCKS) - 1
+    num_vertical_block_sizes = len(config.VERTICAL_BLOCKS) - 1
     freqs = np.round(
         bin_average(
             freqs[:, :, frame],
@@ -276,11 +179,11 @@ def render(
     for h in range(visualizer_height - 1, -1, -1):
         s = ""
         for b in range(num_bins):
-            s += VERTICAL_BLOCKS[arr[0, h, b]]
+            s += config.VERTICAL_BLOCKS[arr[0, h, b]]
         if not mono:
             s += " " * gap_bins
             for b in range(num_bins):
-                s += VERTICAL_BLOCKS[arr[1, h, b]]
+                s += config.VERTICAL_BLOCKS[arr[1, h, b]]
         res.append(s)
 
     return res
@@ -305,7 +208,7 @@ class PlayerOutput:
         self.can_show_visualization = (
             self.visualize
             and self.can_visualize
-            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+            and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
         )
         if self.visualize and self.can_visualize:
             t = threading.Thread(
@@ -317,7 +220,7 @@ class PlayerOutput:
         else:
             self.visualizer_data = None
 
-        self.looping_current_song = LOOP_MODES["none"]
+        self.looping_current_song = config.LOOP_MODES["none"]
         self.duration = 0
         self.paused = False
         self.ending = False
@@ -340,9 +243,10 @@ class PlayerOutput:
             for i in range(self.i, min(self.i + 5, len(self.playlist))):
                 if self.playlist[i][0] in self.visualizer_data:
                     continue
-                song_path = os.path.join(SONGS_DIR, self.playlist[i][1])
+                print_to_logfile(f"helpers.py {config.SONGS_DIR}")
+                song_path = os.path.join(config.SONGS_DIR, self.playlist[i][1])
                 cur_song_data = LIBROSA.load(
-                    song_path, mono=False, sr=SAMPLE_RATE
+                    song_path, mono=False, sr=config.SAMPLE_RATE
                 )[0]
 
                 if len(cur_song_data.shape) == 1:  # mono -> stereo
@@ -366,13 +270,13 @@ class PlayerOutput:
 
     @property
     def song_path(self):
-        return os.path.join(SONGS_DIR, self.playlist[self.i][1])
+        return os.path.join(config.SONGS_DIR, self.playlist[self.i][1])
 
     def output(self, pos):
         self.can_show_visualization = (
             self.visualize
             and self.can_visualize
-            and self.stdscr.getmaxyx()[0] > VISUALIZER_HEIGHT + 5
+            and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
         )
         self.scroller.resize(
             self.stdscr.getmaxyx()[0]
@@ -380,7 +284,7 @@ class PlayerOutput:
             - 1  # -1 for header
             - (self.prompting != None)  # - add mode
             # - visualizer
-            - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
+            - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0)
         )
 
         if self.clip_mode:
@@ -501,14 +405,14 @@ class PlayerOutput:
         if self.prompting is not None:
             # pylint: disable=unsubscriptable-object
             if (
-                self.prompting[2] == PROMPT_MODES["add"]
-                or self.prompting[2] == PROMPT_MODES["insert"]
+                self.prompting[2] == config.PROMPT_MODES["add"]
+                or self.prompting[2] == config.PROMPT_MODES["insert"]
             ):
                 adding_song_length = addstr_fit_to_width(
                     self.stdscr,
                     (
                         "Insert"
-                        if self.prompting[2] == PROMPT_MODES["insert"]
+                        if self.prompting[2] == config.PROMPT_MODES["insert"]
                         else "Append"
                     )
                     + " song (by ID): "
@@ -558,9 +462,9 @@ class PlayerOutput:
             curses.color_pair(17) | curses.A_BOLD,
         )
         loop_char = " "
-        if self.looping_current_song == LOOP_MODES["one"]:
+        if self.looping_current_song == config.LOOP_MODES["one"]:
             loop_char = "l"
-        elif self.looping_current_song == LOOP_MODES["inf"]:
+        elif self.looping_current_song == config.LOOP_MODES["inf"]:
             loop_char = "L"
         # print_to_logfile(self.looping_current_song)
         length_so_far = addstr_fit_to_width(
@@ -591,7 +495,7 @@ class PlayerOutput:
         self.stdscr.move(
             self.stdscr.getmaxyx()[0]
             - 2
-            - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
+            - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0),
             0,
         )
 
@@ -646,7 +550,7 @@ class PlayerOutput:
 
         self.stdscr.move(
             self.stdscr.getmaxyx()[0]
-            - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
+            - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0)
             - 1,
             0,
         )
@@ -661,7 +565,7 @@ class PlayerOutput:
             curses.color_pair(progress_bar_display_color),
         )
         if not length_so_far >= screen_width:
-            if screen_width - length_so_far >= MIN_PROGRESS_BAR_WIDTH + 2:
+            if screen_width - length_so_far >= config.MIN_PROGRESS_BAR_WIDTH + 2:
                 progress_bar_width = screen_width - length_so_far - 2
                 bar = "|"
                 progress_block_width = (
@@ -669,10 +573,10 @@ class PlayerOutput:
                 ) // self.duration
                 for _ in range(progress_bar_width):
                     if progress_block_width > 8:
-                        bar += HORIZONTAL_BLOCKS[8]
+                        bar += config.HORIZONTAL_BLOCKS[8]
                         progress_block_width -= 8
                     elif progress_block_width > 0:
-                        bar += HORIZONTAL_BLOCKS[progress_block_width]
+                        bar += config.HORIZONTAL_BLOCKS[progress_block_width]
                         progress_block_width = 0
                     else:
                         bar += " "
@@ -697,25 +601,25 @@ class PlayerOutput:
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
                 - 3
-                - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
+                - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0),
                 volume_line_length_so_far,
             )
             if (
                 screen_width - volume_line_length_so_far
-                >= MIN_VOLUME_BAR_WIDTH + 10
+                >= config.MIN_VOLUME_BAR_WIDTH + 10
             ):
                 bar = f"{str(int(self.volume*100)).rjust(3)}/100 |"
                 volume_bar_width = min(
                     screen_width - volume_line_length_so_far - (len(bar) + 1),
-                    MAX_VOLUME_BAR_WIDTH,
+                    config.MAX_VOLUME_BAR_WIDTH,
                 )
                 block_width = int(volume_bar_width * 8 * self.volume)
                 for _ in range(volume_bar_width):
                     if block_width > 8:
-                        bar += HORIZONTAL_BLOCKS[8]
+                        bar += config.HORIZONTAL_BLOCKS[8]
                         block_width -= 8
                     elif block_width > 0:
-                        bar += HORIZONTAL_BLOCKS[block_width]
+                        bar += config.HORIZONTAL_BLOCKS[block_width]
                         block_width = 0
                     else:
                         bar += " "
@@ -737,14 +641,14 @@ class PlayerOutput:
 
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
-                - (VISUALIZER_HEIGHT if self.can_show_visualization else 0),
+                - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0),
                 0,
             )
             if self.playlist[self.i][0] not in self.visualizer_data:
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
-                        * VISUALIZER_HEIGHT
+                        * config.VISUALIZER_HEIGHT
                     ).rstrip()
                 )
             else:
@@ -752,10 +656,10 @@ class PlayerOutput:
                     self.stdscr.getmaxyx()[1],
                     self.visualizer_data[self.playlist[self.i][0]],
                     min(
-                        round(pos * FPS),
+                        round(pos * config.FPS),
                         self.visualizer_data[self.playlist[self.i][0]].shape[2] - 1,
                     ),
-                    VISUALIZER_HEIGHT,
+                    config.VISUALIZER_HEIGHT,
                 )
                 for i in range(len(rendered_lines)):
                     self.stdscr.addstr(rendered_lines[i][:-1])
@@ -767,7 +671,7 @@ class PlayerOutput:
             # pylint: disable=unsubscriptable-object
             self.stdscr.move(
                 self.stdscr.getmaxyx()[0]
-                - (VISUALIZER_HEIGHT if self.can_show_visualization else 0)
+                - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0)
                 - 4,  # 4 lines for status bar + adding entry
                 adding_song_length
                 + (self.prompting[1] - len(self.prompting[0])),
@@ -835,7 +739,7 @@ def add_song(
             song_basename, song_ext = os.path.splitext(song_name)
             song_name = song_basename + " copy" + song_ext
             break
-    dest_path = os.path.join(SONGS_DIR, song_name)
+    dest_path = os.path.join(config.SONGS_DIR, song_name)
 
     if move_:
         move(path, dest_path)
@@ -851,12 +755,12 @@ def add_song(
         songs_file.write(f"{clip_start} {clip_end}")
     songs_file.write("\n")
 
-    for stats_file in os.listdir(STATS_DIR):
+    for stats_file in os.listdir(config.STATS_DIR):
         if not stats_file.endswith(".txt"):
             continue
 
         with open(
-            os.path.join(STATS_DIR, stats_file), "r+", encoding="utf-8"
+            os.path.join(config.STATS_DIR, stats_file), "r+", encoding="utf-8"
         ) as stats_file:
             stats_file_contents = stats_file.read()
             if stats_file_contents and not stats_file_contents.endswith("\n"):
@@ -887,7 +791,7 @@ def add_song(
 
 def clip_editor(stdscr, details):
     song_name = details[1]
-    song_path = os.path.join(SONGS_DIR, song_name)
+    song_path = os.path.join(config.SONGS_DIR, song_name)
 
     playback = Playback()
     playback.load_file(song_path)
@@ -1068,7 +972,7 @@ def clip_editor_output(
                 before_clip_block_width -= 8
             else:
                 stdscr.addstr(
-                    HORIZONTAL_BLOCKS[before_clip_block_width],
+                    config.HORIZONTAL_BLOCKS[before_clip_block_width],
                     curses.color_pair(7) | curses.A_REVERSE,
                 )
                 clip_block_width -= 8 - before_clip_block_width
@@ -1077,11 +981,11 @@ def clip_editor_output(
 
         while num_chars_added < clip_bar_width:
             if clip_block_width >= 8:
-                stdscr.addstr(HORIZONTAL_BLOCKS[8], curses.color_pair(7))
+                stdscr.addstr(config.HORIZONTAL_BLOCKS[8], curses.color_pair(7))
                 clip_block_width -= 8
             elif clip_block_width > 0:
                 stdscr.addstr(
-                    HORIZONTAL_BLOCKS[clip_block_width], curses.color_pair(7)
+                    config.HORIZONTAL_BLOCKS[clip_block_width], curses.color_pair(7)
                 )
                 clip_block_width = 0
             else:
@@ -1096,10 +1000,10 @@ def clip_editor_output(
         progress_block_width = (progress_bar_width * 8 * pos) // duration
         for _ in range(progress_bar_width):
             if progress_block_width > 8:
-                bar += HORIZONTAL_BLOCKS[8]
+                bar += config.HORIZONTAL_BLOCKS[8]
                 progress_block_width -= 8
             elif progress_block_width > 0:
-                bar += HORIZONTAL_BLOCKS[progress_block_width]
+                bar += config.HORIZONTAL_BLOCKS[progress_block_width]
                 progress_block_width = 0
             else:
                 bar += " "
@@ -1213,7 +1117,7 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
         click.echo()  # newline
 
     if show_song_info:
-        song_data = music_tag.load_file(os.path.join(SONGS_DIR, entry_list[1]))
+        song_data = music_tag.load_file(os.path.join(config.SONGS_DIR, entry_list[1]))
         artist, album, album_artist = (
             song_data["artist"].value,
             song_data["album"].value,

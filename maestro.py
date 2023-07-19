@@ -12,7 +12,7 @@ import music_tag
 from collections import defaultdict
 from queue import Queue
 from random import shuffle, randint
-from shutil import move
+from shutil import move, copy
 from time import sleep, time
 
 from icon import img
@@ -24,8 +24,6 @@ try:
     import pypresence
 except ImportError:
     can_update_discord = False
-
-from helpers import *  # pylint: disable=wildcard-import,unused-wildcard-import
 
 if sys.platform == "darwin":
     try:
@@ -52,6 +50,9 @@ if sys.platform == "darwin":
     except Exception as e:  # pylint: disable=bare-except,broad-except
         # print(e, file=open("log.txt", "a"))
         can_mac_now_playing = False
+
+import config
+import helpers
 
 # endregion
 
@@ -84,7 +85,7 @@ if sys.platform == "darwin" and can_mac_now_playing:
 
 def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
     try:
-        discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
+        discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
         discord_rpc.connect()
         discord_connected.value = 1
     except:  # pylint: disable=bare-except
@@ -124,7 +125,7 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
                     discord_connected.value = 0
             else:
                 try:
-                    discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
+                    discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
                     discord_rpc.connect()
                     discord_connected.value = 1
                 except:  # pylint: disable=bare-except
@@ -145,7 +146,7 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
         else:
             if not discord_connected.value:
                 try:
-                    discord_rpc = pypresence.Presence(client_id=DISCORD_ID)
+                    discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
                     discord_rpc.connect()
                     discord_connected.value = 1
                 except:  # pylint: disable=bare-except
@@ -164,7 +165,7 @@ def _play(
 ):
     global can_mac_now_playing  # pylint: disable=global-statement
 
-    init_curses(stdscr)
+    helpers.init_curses(stdscr)
 
     if loop:
         next_playlist = playlist[:]
@@ -173,7 +174,8 @@ def _play(
     else:
         next_playlist = None
 
-    player_output = PlayerOutput(
+    helpers.print_to_logfile("maestro.py", config.SONGS_DIR)
+    player_output = helpers.PlayerOutput(
         stdscr, playlist, volume, clip_mode, update_discord, visualize
     )
 
@@ -219,7 +221,7 @@ def _play(
     prev_volume = volume
     while player_output.i in range(len(player_output.playlist)):
         song_path = os.path.join(
-            SONGS_DIR, player_output.playlist[player_output.i][1]
+            config.SONGS_DIR, player_output.playlist[player_output.i][1]
         )
 
         playback = Playback()
@@ -241,11 +243,11 @@ def _play(
             mac_now_playing.pos = 0
             mac_now_playing.length = player_output.duration
 
-            multiprocessing_put_word(
+            helpers.multiprocessing_put_word(
                 mac_now_playing.title_queue,
                 player_output.playlist[player_output.i][1],
             )
-            multiprocessing_put_word(
+            helpers.multiprocessing_put_word(
                 mac_now_playing.artist_queue,
                 player_output.playlist[player_output.i][-3],
             )
@@ -253,10 +255,10 @@ def _play(
             update_now_playing = True
 
         if player_output.update_discord:
-            multiprocessing_put_word(
+            helpers.multiprocessing_put_word(
                 discord_title_queue, player_output.playlist[player_output.i][1]
             )
-            multiprocessing_put_word(
+            helpers.multiprocessing_put_word(
                 discord_artist_queue,
                 player_output.playlist[player_output.i][-3],
             )
@@ -367,7 +369,7 @@ def _play(
                 if c != -1:
                     if player_output.prompting is None:
                         if c == curses.KEY_LEFT:
-                            playback.seek(playback.curr_pos - SCRUB_TIME)
+                            playback.seek(playback.curr_pos - config.SCRUB_TIME)
                             if sys.platform == "darwin" and can_mac_now_playing:
                                 mac_now_playing.pos = round(playback.curr_pos)
                                 update_now_playing = True
@@ -375,7 +377,7 @@ def _play(
                             last_timestamp = playback.curr_pos
                             player_output.output(playback.curr_pos)
                         elif c == curses.KEY_RIGHT:
-                            playback.seek(playback.curr_pos + SCRUB_TIME)
+                            playback.seek(playback.curr_pos + config.SCRUB_TIME)
                             if sys.platform == "darwin" and can_mac_now_playing:
                                 mac_now_playing.pos = round(playback.curr_pos)
                                 update_now_playing = True
@@ -445,7 +447,7 @@ def _play(
                                 elif c in "lL":
                                     player_output.looping_current_song = (
                                         player_output.looping_current_song + 1
-                                    ) % len(LOOP_MODES)
+                                    ) % len(config.LOOP_MODES)
                                     player_output.output(playback.curr_pos)
                                 elif c in "cC":
                                     player_output.clip_mode = (
@@ -540,7 +542,7 @@ def _play(
                                     player_output.prompting = (
                                         "",
                                         0,
-                                        PROMPT_MODES["insert"],
+                                        config.PROMPT_MODES["insert"],
                                     )
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
@@ -552,7 +554,7 @@ def _play(
                                     player_output.prompting = (
                                         "",
                                         0,
-                                        PROMPT_MODES["add"],
+                                        config.PROMPT_MODES["add"],
                                     )
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
@@ -564,7 +566,7 @@ def _play(
                                     player_output.prompting = (
                                         "",
                                         0,
-                                        PROMPT_MODES["tag"],
+                                        config.PROMPT_MODES["tag"],
                                     )
                                     curses.curs_set(True)
                                     screen_size = stdscr.getmaxyx()
@@ -613,7 +615,7 @@ def _play(
                                     player_output.output(playback.curr_pos)
                                 elif c == "[":
                                     player_output.volume = max(
-                                        0, player_output.volume - VOLUME_STEP
+                                        0, player_output.volume - config.VOLUME_STEP
                                     )
                                     playback.set_volume(player_output.volume)
 
@@ -622,7 +624,7 @@ def _play(
                                     prev_volume = player_output.volume
                                 elif c == "]":
                                     player_output.volume = min(
-                                        1, player_output.volume + VOLUME_STEP
+                                        1, player_output.volume + config.VOLUME_STEP
                                     )
                                     playback.set_volume(player_output.volume)
 
@@ -714,8 +716,8 @@ def _play(
                             if player_output.prompting[
                                 0
                             ].isnumeric() and player_output.prompting[2] in (
-                                PROMPT_MODES["add"],
-                                PROMPT_MODES["insert"],
+                                config.PROMPT_MODES["add"],
+                                config.PROMPT_MODES["insert"],
                             ):
                                 for details in player_output.playlist:
                                     if int(details[0]) == int(
@@ -724,7 +726,7 @@ def _play(
                                         break
                                 else:
                                     with open(
-                                        SONGS_INFO_PATH,
+                                        config.SONGS_INFO_PATH,
                                         "r",
                                         encoding="utf-8",
                                     ) as songs_file:
@@ -736,7 +738,7 @@ def _play(
                                             ):
                                                 song_data = music_tag.load_file(
                                                     os.path.join(
-                                                        SONGS_DIR, details[1]
+                                                        config.SONGS_DIR, details[1]
                                                     )
                                                 )
                                                 details += [
@@ -759,7 +761,7 @@ def _play(
                                                 ]
                                                 if (
                                                     player_output.prompting[2]
-                                                    == PROMPT_MODES["insert"]
+                                                    == config.PROMPT_MODES["insert"]
                                                 ):
                                                     player_output.playlist.insert(
                                                         player_output.scroller.pos
@@ -787,7 +789,7 @@ def _play(
                                                             player_output.prompting[
                                                                 2
                                                             ]
-                                                            == PROMPT_MODES[
+                                                            == config.PROMPT_MODES[
                                                                 "insert"
                                                             ]
                                                         ):
@@ -815,7 +817,7 @@ def _play(
                             elif (
                                 "|" not in player_output.prompting[0]
                                 and player_output.prompting[2]
-                                == PROMPT_MODES["tag"]
+                                == config.PROMPT_MODES["tag"]
                             ):
                                 tags = player_output.prompting[0].split(",")
 
@@ -826,7 +828,7 @@ def _play(
                                     ] = i
 
                                 songs_file = open(
-                                    SONGS_INFO_PATH, "r", encoding="utf-8"
+                                    config.SONGS_INFO_PATH, "r", encoding="utf-8"
                                 )
                                 lines = songs_file.read().splitlines()
                                 for i in range(len(lines)):
@@ -850,7 +852,7 @@ def _play(
                                 songs_file.close()
 
                                 songs_file = open(
-                                    SONGS_INFO_PATH, "w", encoding="utf-8"
+                                    config.SONGS_INFO_PATH, "w", encoding="utf-8"
                                 )
                                 songs_file.write("\n".join(lines))
                                 songs_file.close()
@@ -873,8 +875,8 @@ def _play(
                                     ].isnumeric() and player_output.prompting[
                                         2
                                     ] in (
-                                        PROMPT_MODES["add"],
-                                        PROMPT_MODES["insert"],
+                                        config.PROMPT_MODES["add"],
+                                        config.PROMPT_MODES["insert"],
                                     ):
                                         for details in player_output.playlist:
                                             if int(details[0]) == int(
@@ -883,7 +885,7 @@ def _play(
                                                 break
                                         else:
                                             with open(
-                                                SONGS_INFO_PATH,
+                                                config.SONGS_INFO_PATH,
                                                 "r",
                                                 encoding="utf-8",
                                             ) as songs_file:
@@ -900,7 +902,7 @@ def _play(
                                                         song_data = (
                                                             music_tag.load_file(
                                                                 os.path.join(
-                                                                    SONGS_DIR,
+                                                                    config.SONGS_DIR,
                                                                     details[1],
                                                                 )
                                                             )
@@ -929,7 +931,7 @@ def _play(
                                                             player_output.prompting[
                                                                 2
                                                             ]
-                                                            == PROMPT_MODES[
+                                                            == config.PROMPT_MODES[
                                                                 "insert"
                                                             ]
                                                         ):
@@ -959,7 +961,7 @@ def _play(
                                                                     player_output.prompting[
                                                                         2
                                                                     ]
-                                                                    == PROMPT_MODES[
+                                                                    == config.PROMPT_MODES[
                                                                         "insert"
                                                                     ]
                                                                 ):
@@ -989,7 +991,7 @@ def _play(
                                     elif (
                                         "|" not in player_output.prompting[0]
                                         and player_output.prompting[2]
-                                        == PROMPT_MODES["tag"]
+                                        == config.PROMPT_MODES["tag"]
                                     ):
                                         tags = player_output.prompting[0].split(
                                             ","
@@ -1006,7 +1008,7 @@ def _play(
                                             ] = i
 
                                         songs_file = open(
-                                            SONGS_INFO_PATH,
+                                            config.SONGS_INFO_PATH,
                                             "r",
                                             encoding="utf-8",
                                         )
@@ -1036,7 +1038,7 @@ def _play(
                                         songs_file.close()
 
                                         songs_file = open(
-                                            SONGS_INFO_PATH,
+                                            config.SONGS_INFO_PATH,
                                             "w",
                                             encoding="utf-8",
                                         )
@@ -1090,10 +1092,10 @@ def _play(
             frame_duration = min(
                 (
                     1
-                    if progress_bar_width < MIN_PROGRESS_BAR_WIDTH
+                    if progress_bar_width < config.MIN_PROGRESS_BAR_WIDTH
                     else player_output.duration / (progress_bar_width * 8)
                 ),
-                1 / FPS if player_output.visualize else 1,
+                1 / config.FPS if player_output.visualize else 1,
             )
             if abs(playback.curr_pos - last_timestamp) > frame_duration:
                 last_timestamp = playback.curr_pos
@@ -1106,7 +1108,7 @@ def _play(
         if player_output.paused:
             time_listened -= time() - pause_start
 
-        with open(TOTAL_STATS_PATH, "r+", encoding="utf-8") as stats_file:
+        with open(config.TOTAL_STATS_PATH, "r+", encoding="utf-8") as stats_file:
             lines = stats_file.readlines()
             for j in range(len(lines)):
                 song_id, listened = lines[j].strip().split("|")
@@ -1120,7 +1122,7 @@ def _play(
             stats_file.write("".join(lines))
             stats_file.truncate()
 
-        with open(CUR_YEAR_STATS_PATH, "r+", encoding="utf-8") as stats_file:
+        with open(config.CUR_YEAR_STATS_PATH, "r+", encoding="utf-8") as stats_file:
             lines = stats_file.readlines()
             for j in range(len(lines)):
                 song_id, listened = lines[j].strip().split("|")
@@ -1161,14 +1163,14 @@ def _play(
                     player_output.scroller.scroll_forward()
             player_output.i += 1
         elif next_song == 0:
-            if player_output.looping_current_song == LOOP_MODES["one"]:
-                print_to_logfile(
-                    player_output.looping_current_song, LOOP_MODES["one"]
-                )
-                player_output.looping_current_song = LOOP_MODES["none"]
-                print_to_logfile(
-                    player_output.looping_current_song, LOOP_MODES["none"]
-                )
+            if player_output.looping_current_song == config.LOOP_MODES["one"]:
+                # helpers.print_to_logfile(
+                #     player_output.looping_current_song, config.LOOP_MODES["one"]
+                # )
+                player_output.looping_current_song = config.LOOP_MODES["none"]
+                # helpers.print_to_logfile(
+                #     player_output.looping_current_song, config.LOOP_MODES["none"]
+                # )
 
 
 # endregion
@@ -1177,41 +1179,40 @@ def _play(
 @click.group(context_settings=dict(help_option_names=["-h", "--help"]))
 def cli():
     """A command line interface for playing music."""
-    global SONGS_DIR  # pylint: disable=global-statement
 
-    if not os.path.exists(SETTINGS_FILE):
-        with open(SETTINGS_FILE, "x", encoding="utf-8") as f:
-            json.dump({"song_directory": DEFAULT_SONGS_DIR}, f)
-            SONGS_DIR = DEFAULT_SONGS_DIR
+    if not os.path.exists(config.SETTINGS_FILE):
+        with open(config.SETTINGS_FILE, "x", encoding="utf-8") as f:
+            json.dump({"song_directory": config.DEFAULT_SONGS_DIR}, f)
+            config.SONGS_DIR = config.DEFAULT_SONGS_DIR
     else:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+        with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
             settings = json.load(f)
             if "song_directory" not in settings:
-                settings["song_directory"] = DEFAULT_SONGS_DIR
-                with open(SETTINGS_FILE, "w", encoding="utf-8") as g:
+                settings["song_directory"] = config.DEFAULT_SONGS_DIR
+                with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
                     json.dump(settings, g)
             else:
                 if not os.path.exists(settings["song_directory"]):
                     os.makedirs(settings["song_directory"])
-            SONGS_DIR = settings["song_directory"]
+            config.SONGS_DIR = settings["song_directory"]
 
-    if not os.path.exists(SONGS_INFO_PATH):
-        with open(SONGS_INFO_PATH, "x", encoding="utf-8") as _:
+    if not os.path.exists(config.SONGS_INFO_PATH):
+        with open(config.SONGS_INFO_PATH, "x", encoding="utf-8") as _:
             pass
 
-    if not os.path.exists(STATS_DIR):
-        os.makedirs(STATS_DIR)
-    if not os.path.exists(TOTAL_STATS_PATH):
+    if not os.path.exists(config.STATS_DIR):
+        os.makedirs(config.STATS_DIR)
+    if not os.path.exists(config.TOTAL_STATS_PATH):
         with (
-            open(TOTAL_STATS_PATH, "w", encoding="utf-8") as f,
-            open(SONGS_INFO_PATH, "r", encoding="utf-8") as g,
+            open(config.TOTAL_STATS_PATH, "w", encoding="utf-8") as f,
+            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
         ):
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
-    if not os.path.exists(CUR_YEAR_STATS_PATH):
+    if not os.path.exists(config.CUR_YEAR_STATS_PATH):
         with (
-            open(CUR_YEAR_STATS_PATH, "w", encoding="utf-8") as f,
-            open(SONGS_INFO_PATH, "r", encoding="utf-8") as g,
+            open(config.CUR_YEAR_STATS_PATH, "w", encoding="utf-8") as f,
+            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
         ):
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
@@ -1363,7 +1364,7 @@ def add(
                     "--no-playlist" if not playlist_ else "",
                     "--embed-metadata",
                     "-o",
-                    os.path.join(MAESTRO_DIR, "%(title)s.%(ext)s"),
+                    os.path.join(config.MAESTRO_DIR, "%(title)s.%(ext)s"),
                 ],
                 check=True,
             )
@@ -1376,7 +1377,7 @@ def add(
                 return
 
             cwd = os.getcwd()
-            os.chdir(MAESTRO_DIR)
+            os.chdir(config.MAESTRO_DIR)
             try:
                 subprocess.run(
                     [
@@ -1396,17 +1397,17 @@ def add(
                 raise err
 
         paths = []
-        for fname in os.listdir(MAESTRO_DIR):
+        for fname in os.listdir(config.MAESTRO_DIR):
             for f in [".wav", ".mp3", ".flac", ".ogg"]:
                 if fname.endswith(f):
-                    raw_path = os.path.join(MAESTRO_DIR, fname)
+                    raw_path = os.path.join(config.MAESTRO_DIR, fname)
                     sanitized_path = raw_path.replace("|", "-")
 
                     os.rename(raw_path, sanitized_path)
 
                     paths.append(sanitized_path)
             if fname.endswith(".part"):  # delete incomplete downloads
-                os.remove(os.path.join(MAESTRO_DIR, fname))
+                os.remove(os.path.join(config.MAESTRO_DIR, fname))
 
         move_ = True
 
@@ -1416,11 +1417,11 @@ def add(
             if recurse:
                 for dirpath, _, fnames in os.walk(path_):
                     for fname in fnames:
-                        if os.path.splitext(fname)[1] in EXTS:
+                        if os.path.splitext(fname)[1] in config.EXTS:
                             paths.append(os.path.join(dirpath, fname))
             else:
                 for fname in os.listdir(path_):
-                    if os.path.splitext(fname)[1] in EXTS:
+                    if os.path.splitext(fname)[1] in config.EXTS:
                         full_path = os.path.join(path_, fname)
                         if os.path.isfile(full_path):
                             paths.append(full_path)
@@ -1450,15 +1451,15 @@ def add(
 
     if len(paths) == 1 and name is not None:
         new_path = os.path.join(
-            MAESTRO_DIR, name + os.path.splitext(paths[0])[1]
+            config.MAESTRO_DIR, name + os.path.splitext(paths[0])[1]
         )
-        # move/copy to MAESTRO_DIR (avoid name conflicts)
+        # move/copy to config.MAESTRO_DIR (avoid name conflicts)
         if move_:
             move(paths[0], new_path)
         else:
             copy(paths[0], new_path)
         paths = [new_path]
-        move_ = True  # always move (from temp loc in MAESTRO_DIR) if renaming
+        move_ = True  # always move (from temp loc in config.MAESTRO_DIR) if renaming
 
     if clip is not None and len(paths) == 1:
         song_duration = music_tag.load_file(paths[0])["#length"].value
@@ -1498,7 +1499,7 @@ def add(
         ]
         song_data = music_tag.load_file(paths[0])
         for key, value in metadata_pairs:
-            if key not in METADATA_KEYS or key.startswith("#"):
+            if key not in config.METADATA_KEYS or key.startswith("#"):
                 click.secho(
                     f"'{key}' is not a valid editable metadata key.", fg="red"
                 )
@@ -1508,7 +1509,7 @@ def add(
 
     for path in paths:
         ext = os.path.splitext(path)[1]
-        if not os.path.isdir(path) and ext not in EXTS:
+        if not os.path.isdir(path) and ext not in config.EXTS:
             click.secho(f"'{ext}' is not supported.", fg="red")
             return
 
@@ -1517,7 +1518,7 @@ def add(
                 click.secho("Tags cannot contain ',' or '|'.", fg="red")
                 return
 
-        with open(SONGS_INFO_PATH, "a+", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "a+", encoding="utf-8") as songs_file:
             songs_file.seek(0)  # start reading from beginning
 
             lines = songs_file.readlines()
@@ -1528,7 +1529,7 @@ def add(
 
             prepend_newline = lines and lines[-1][-1] != "\n"
 
-            add_song(
+            helpers.add_song(
                 path,
                 tags,
                 move_,
@@ -1574,7 +1575,7 @@ def remove(args, force, tag):
                 print("Did not delete.")
                 return
 
-        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             lines = songs_file.read().splitlines()
 
             to_be_deleted = []
@@ -1587,7 +1588,7 @@ def remove(args, force, tag):
 
                     song_name = details[1]
                     os.remove(  # remove actual song
-                        os.path.join(SONGS_DIR, song_name)
+                        os.path.join(config.SONGS_DIR, song_name)
                     )
 
                     click.secho(
@@ -1598,14 +1599,14 @@ def remove(args, force, tag):
         for i in reversed(to_be_deleted):
             del lines[i]
 
-        with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
             songs_file.write("\n".join(lines))
 
-        for stats_file in os.listdir(STATS_DIR):
+        for stats_file in os.listdir(config.STATS_DIR):
             if not stats_file.endswith(".txt"):
                 continue
 
-            stats_path = os.path.join(STATS_DIR, stats_file)
+            stats_path = os.path.join(config.STATS_DIR, stats_file)
             with open(stats_path, "r", encoding="utf-8") as stats_file:
                 stats_lines = stats_file.read().splitlines()
 
@@ -1638,7 +1639,7 @@ def remove(args, force, tag):
                 print("Did not delete.")
                 return
 
-        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             lines = songs_file.read().splitlines()
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")
@@ -1649,7 +1650,7 @@ def remove(args, force, tag):
                 details[2] = ",".join(tags)
                 lines[i] = "|".join(details)
 
-        with open(SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
             songs_file.write("\n".join(lines))
 
         click.secho(
@@ -1678,7 +1679,7 @@ def tag_(song_ids, tags):
             click.secho("Tags cannot contain ',' or '|'.", fg="red")
             return
     if tags:
-        songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+        songs_file = open(config.SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
@@ -1695,7 +1696,7 @@ def tag_(song_ids, tags):
                 lines[i] = "|".join(details)
         songs_file.close()
 
-        songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+        songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
         songs_file.write("\n".join(lines))
         songs_file.close()
 
@@ -1734,7 +1735,7 @@ def untag(song_ids, tags, all_):
     num_songs = len(song_ids)
     tags = set(tags)
     if tags:
-        songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+        songs_file = open(config.SONGS_INFO_PATH, "r", encoding="utf-8")
         lines = songs_file.read().splitlines()
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
@@ -1750,7 +1751,7 @@ def untag(song_ids, tags, all_):
                 )
         songs_file.close()
 
-        songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+        songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
         songs_file.write("\n".join(lines))
         songs_file.close()
 
@@ -1772,7 +1773,7 @@ def untag(song_ids, tags, all_):
                 fg="red",
             )
         else:
-            songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+            songs_file = open(config.SONGS_INFO_PATH, "r", encoding="utf-8")
             lines = songs_file.read().splitlines()
             for i in range(len(lines)):
                 line = lines[i]
@@ -1781,7 +1782,7 @@ def untag(song_ids, tags, all_):
                     lines[i] = "|".join(details[:2] + [""] + details[3:])
             songs_file.close()
 
-            songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+            songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
             songs_file.write("\n".join(lines))
             songs_file.close()
 
@@ -1915,11 +1916,11 @@ def play(
 
     if only:
         only = set(only)
-        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             for line in songs_file:
                 details = line.strip().split("|")
                 song_id = int(details[0])
-                if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                if not os.path.exists(os.path.join(config.SONGS_DIR, details[1])):
                     songs_not_found.append(details)
                 elif song_id in only:
                     playlist.append(details)
@@ -1929,20 +1930,20 @@ def play(
             return
     else:
         if not tags:
-            with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+            with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                 for line in songs_file:
                     details = line.strip().split("|")
-                    if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                    if not os.path.exists(os.path.join(config.SONGS_DIR, details[1])):
                         songs_not_found.append(details)
                     else:
                         playlist.append(details)
         else:
             tags = set(tags)
-            with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+            with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
                 for line in songs_file:
                     details = line.strip().split("|")
                     song_tags = set(details[2].split(","))
-                    if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                    if not os.path.exists(os.path.join(config.SONGS_DIR, details[1])):
                         songs_not_found.append(details)
                     else:
                         if not match_all:
@@ -1953,7 +1954,7 @@ def play(
                                 playlist.append(details)
 
     for details in playlist:
-        song_data = music_tag.load_file(os.path.join(SONGS_DIR, details[1]))
+        song_data = music_tag.load_file(os.path.join(config.SONGS_DIR, details[1]))
         details += [
             (song_data["artist"].value or "Unknown Artist"),
             (song_data["album"].value or "Unknown Album"),
@@ -2020,7 +2021,7 @@ def rename(original, new_name, renaming_tag):
     ocurrences of it to NEW_NAME—doesn't check if the tag NEW_NAME already,
     exists, so be careful!
     """
-    songs_file = open(SONGS_INFO_PATH, "r", encoding="utf-8")
+    songs_file = open(config.SONGS_INFO_PATH, "r", encoding="utf-8")
     lines = songs_file.read().splitlines()
     if not renaming_tag:
         if not original.isnumeric():
@@ -2048,12 +2049,12 @@ def rename(original, new_name, renaming_tag):
 
                 lines[i] = "|".join(details)
                 songs_file.close()
-                songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+                songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
                 songs_file.write("\n".join(lines))
 
                 os.rename(
-                    os.path.join(SONGS_DIR, old_path),
-                    os.path.join(SONGS_DIR, details[1]),
+                    os.path.join(config.SONGS_DIR, old_path),
+                    os.path.join(config.SONGS_DIR, details[1]),
                 )
 
                 click.secho(
@@ -2078,7 +2079,7 @@ def rename(original, new_name, renaming_tag):
                     break
 
         songs_file.close()
-        songs_file = open(SONGS_INFO_PATH, "w", encoding="utf-8")
+        songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
         songs_file.write("\n".join(lines))
 
         click.secho(
@@ -2103,7 +2104,7 @@ def search(phrase, searching_for_tags):
 
     If the '-T' flag is passed, searches for tags instead of song names."""
     phrase = phrase.lower()
-    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+    with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
             results = [], []  # starts, contains but does not start
             for line in songs_file:
@@ -2124,13 +2125,13 @@ def search(phrase, searching_for_tags):
             for line in songs_file:
                 details = line.strip().split("|")
                 if int(details[0]) in results[0]:
-                    print_entry(details, phrase)
+                    helpers.print_entry(details, phrase)
 
             songs_file.seek(0)
             for line in songs_file:
                 details = line.strip().split("|")
                 if int(details[0]) in results[1]:
-                    print_entry(details, phrase)
+                    helpers.print_entry(details, phrase)
 
             click.secho(
                 f"Found {len(results[0]) + len(results[1])} song(s).",
@@ -2237,16 +2238,16 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             return
 
     if year is None:
-        stats_path = TOTAL_STATS_PATH
+        stats_path = config.TOTAL_STATS_PATH
     else:
         if year == "cur":
-            year = CUR_YEAR
-            stats_path = CUR_YEAR_STATS_PATH
+            year = config.CUR_YEAR
+            stats_path = config.CUR_YEAR_STATS_PATH
         else:
             if not year.isdigit():
                 click.secho("Year must be a number or 'cur'.", fg="red")
                 return
-            stats_path = os.path.join(STATS_DIR, f"{year}.txt")
+            stats_path = os.path.join(config.STATS_DIR, f"{year}.txt")
             if not os.path.exists(stats_path):
                 click.secho(f"No stats found for year {year}.", fg="red")
                 return
@@ -2259,7 +2260,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
     if listing_tags:
         with (
-            open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
             open(stats_path, "r", encoding="utf-8") as stats_file,
         ):
             songs_lines = songs_file.readlines()
@@ -2278,7 +2279,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 song_id, song_name, tag_string = (
                     songs_lines[i].strip().split("|")[0:3]
                 )
-                if not os.path.exists(os.path.join(SONGS_DIR, song_name)):
+                if not os.path.exists(os.path.join(config.SONGS_DIR, song_name)):
                     songs_not_found.append((song_id, song_name))
                     continue
                 song_id = int(song_id)
@@ -2289,7 +2290,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                                 tags[tag][0] + stats[song_id],
                                 tags[tag][1]
                                 + music_tag.load_file(
-                                    os.path.join(SONGS_DIR, song_name)
+                                    os.path.join(config.SONGS_DIR, song_name)
                                 )["#length"].value,
                             )
 
@@ -2314,7 +2315,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
             for tag, (listen_time, total_duration) in tag_items:
                 click.echo(
-                    f"{tag} {click.style(format_seconds(total_duration, show_decimal=True), fg='bright_black')} {click.style(format_seconds(listen_time, show_decimal=True), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
+                    f"{tag} {click.style(helpers.format_seconds(total_duration, show_decimal=True), fg='bright_black')} {click.style(helpers.format_seconds(listen_time, show_decimal=True), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
                 )
                 num_lines += 1
                 if top is not None and num_lines == top:
@@ -2327,13 +2328,13 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
 
     no_results = True
     with (
-        open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+        open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
         open(stats_path, "r", encoding="utf-8") as stats_file,
     ):
 
         def check_if_file_exists(detail_string):
             details = detail_string.strip().split("|")
-            if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+            if not os.path.exists(os.path.join(config.SONGS_DIR, details[1])):
                 songs_not_found.append(details)
                 return False
             return True
@@ -2368,7 +2369,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             time_listened = stats[song_id]
             lines[i] = tuple(details) + (
                 time_listened,
-                music_tag.load_file(os.path.join(SONGS_DIR, details[1]))[
+                music_tag.load_file(os.path.join(config.SONGS_DIR, details[1]))[
                     "#length"
                 ].value,
             )
@@ -2393,7 +2394,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 lines.reverse()
 
         for details in lines:
-            print_entry(details)
+            helpers.print_entry(details)
             num_lines += 1
             no_results = False
             if top is not None and num_lines == top:
@@ -2440,20 +2441,20 @@ def entry(song_ids, year, song_info):
     song_ids = set(song_ids)
 
     if year is None:
-        stats_path = TOTAL_STATS_PATH
+        stats_path = config.TOTAL_STATS_PATH
     else:
         if year == "cur":
-            year = CUR_YEAR
-            stats_path = CUR_YEAR_STATS_PATH
+            year = config.CUR_YEAR
+            stats_path = config.CUR_YEAR_STATS_PATH
         else:
             if not year.isdigit():
                 click.secho("Year must be a number.", fg="red")
                 return
-            stats_path = os.path.join(STATS_DIR, f"{year}.txt")
+            stats_path = os.path.join(config.STATS_DIR, f"{year}.txt")
 
     try:
         with (
-            open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
+            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
             open(stats_path, "r", encoding="utf-8") as stats_file,
         ):
             lines = songs_file.readlines()
@@ -2470,18 +2471,18 @@ def entry(song_ids, year, song_info):
                 details = lines[i].strip().split("|")
                 song_id = int(details[0])
                 if song_id in song_ids:
-                    if not os.path.exists(os.path.join(SONGS_DIR, details[1])):
+                    if not os.path.exists(os.path.join(config.SONGS_DIR, details[1])):
                         click.secho(
                             f"Song file with ID {song_id} not found.", fg="red"
                         )
                         song_ids.remove(song_id)
                         continue
-                    print_entry(
+                    helpers.print_entry(
                         details
                         + [
                             stats[song_id],
                             music_tag.load_file(
-                                os.path.join(SONGS_DIR, details[1])
+                                os.path.join(config.SONGS_DIR, details[1])
                             )["#length"].value,
                         ],
                         show_song_info=song_info,
@@ -2537,7 +2538,7 @@ def recommend(song, title):
             )
             return
 
-        with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+        with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             for line in songs_file:
                 details = line.strip().split("|")
                 if details[0] == song:
@@ -2585,7 +2586,7 @@ def push(song_ids, bottom):
     If the '-B' flag is passed, the song(s) will be pushed to the bottom of the
     list instead.
     """
-    with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
+    with open(config.SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
         lines_to_move = []
@@ -2654,7 +2655,7 @@ def clip_(song_id, start, end):
             click.secho("END must be a positive number.", fg="red")
             return
 
-    with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
+    with open(config.SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
         for i in range(len(lines)):
@@ -2666,7 +2667,7 @@ def clip_(song_id, start, end):
             return
 
         song_name = details[1]
-        if not os.path.exists(os.path.join(SONGS_DIR, song_name)):
+        if not os.path.exists(os.path.join(config.SONGS_DIR, song_name)):
             click.secho(
                 f"Song file {song_name} (ID {song_id}) not found.",
                 fg="red",
@@ -2674,12 +2675,12 @@ def clip_(song_id, start, end):
             return
 
         if start is None:  # clip editor
-            start, end = curses.wrapper(clip_editor, details)
+            start, end = curses.wrapper(helpers.clip_editor, details)
             if start is None:
                 click.secho(f"No change in clip for {song_name}.", fg="green")
                 return
 
-        song_path = os.path.join(SONGS_DIR, song_name)
+        song_path = os.path.join(config.SONGS_DIR, song_name)
         duration = music_tag.load_file(song_path)["#length"].value
 
         if end is None:
@@ -2748,7 +2749,7 @@ def unclip(song_ids, all_, force):
         if input().lower() != "y":
             return
 
-    with open(SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
+    with open(config.SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
         for i in range(len(lines)):
@@ -2792,13 +2793,13 @@ def metadata(song_id, pairs):
     synonymous with 'disc'.
     """
 
-    with open(SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
+    with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
             if int(details[0]) == song_id:
-                song_path = os.path.join(SONGS_DIR, details[1])
+                song_path = os.path.join(config.SONGS_DIR, details[1])
                 song_name = details[1]
                 if not os.path.exists(song_path):
                     click.secho(
@@ -2820,7 +2821,7 @@ def metadata(song_id, pairs):
         song_data = music_tag.load_file(song_path)
         valid_pairs = pairs[:]
         for key, value in pairs:
-            if key not in METADATA_KEYS or key.startswith("#"):
+            if key not in config.METADATA_KEYS or key.startswith("#"):
                 click.secho(
                     f"'{key}' is not a valid editable metadata key.", fg="red"
                 )
@@ -2840,7 +2841,7 @@ def metadata(song_id, pairs):
         click.secho(song_name, fg="blue", bold=True, nl=False)
         click.echo(f" with ID {song_id}:")
 
-        for key in METADATA_KEYS:
+        for key in config.METADATA_KEYS:
             try:
                 click.echo(
                     f"\t{key if not key.startswith('#') else key[1:]}: {song_data[key].value}"
@@ -2861,13 +2862,13 @@ def dir_(directory):
     """
 
     if directory is None:
-        click.echo(SONGS_DIR)
+        click.echo(config.SONGS_DIR)
         return
 
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-    with open(SETTINGS_FILE, "r+", encoding="utf-8") as settings_file:
+    with open(config.SETTINGS_FILE, "r+", encoding="utf-8") as settings_file:
         settings = json.load(settings_file)
         settings["song_directory"] = directory
         settings_file.seek(0)

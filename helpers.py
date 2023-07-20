@@ -243,7 +243,7 @@ class PlayerOutput:
             for i in range(self.i, min(self.i + 5, len(self.playlist))):
                 if self.playlist[i][0] in self.visualizer_data:
                     continue
-                print_to_logfile(f"helpers.py {config.SONGS_DIR}")
+                # print_to_logfile(f"helpers.py {config.SONGS_DIR}")
                 song_path = os.path.join(config.SONGS_DIR, self.playlist[i][1])
                 cur_song_data = LIBROSA.load(
                     song_path, mono=False, sr=config.SAMPLE_RATE

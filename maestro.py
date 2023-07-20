@@ -174,7 +174,7 @@ def _play(
     else:
         next_playlist = None
 
-    helpers.print_to_logfile("maestro.py", config.SONGS_DIR)
+    # helpers.print_to_logfile("maestro.py", config.SONGS_DIR)
     player_output = helpers.PlayerOutput(
         stdscr, playlist, volume, clip_mode, update_discord, visualize
     )
@@ -1584,12 +1584,24 @@ def remove(args, force, tag):
                 song_id = int(details[0])
                 if song_id in remaining_song_ids:
                     remaining_song_ids.remove(song_id)
-                    to_be_deleted.append(i)
 
                     song_name = details[1]
-                    os.remove(  # remove actual song
-                        os.path.join(config.SONGS_DIR, song_name)
-                    )
+                    song_path = os.path.join(config.SONGS_DIR, song_name)
+                    if os.path.exists(song_path):
+                        os.remove(song_path)
+                    else:
+                        click.secho(
+                            f"Warning: Song file '{song_name}' (ID {song_id}) not found. Would you still like to delete the song from the database? [y/n] ",
+                            fg="yellow",
+                            nl=False,
+                        )
+                        if input().lower() != "y":
+                            click.echo(
+                                f"Skipping song '{song_name}' (ID {song_id})."
+                            )
+                            continue
+
+                    to_be_deleted.append(i)
 
                     click.secho(
                         f"Removed song '{song_name}' with ID {song_id}.",
@@ -2047,6 +2059,14 @@ def rename(original, new_name, renaming_tag):
                 old_path = details[1]
                 details[1] = new_name + os.path.splitext(old_path)[1]
 
+                full_song_path = os.path.join(config.SONGS_DIR, old_path)
+                if not os.path.exists(full_song_path):
+                    click.secho(
+                        f"Song file '{old_path}' (ID {original}) not found.",
+                        fg="red",
+                    )
+                    return
+
                 lines[i] = "|".join(details)
                 songs_file.close()
                 songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
@@ -2400,16 +2420,16 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
             if top is not None and num_lines == top:
                 break
 
-    if no_results and search_tags:
+    if songs_not_found:
+        click.secho("Song files not found:", fg="red")
+        for details in songs_not_found:
+            click.secho(f"\t{details[1]} (ID {details[0]})", fg="red")
+    elif no_results and search_tags:
         click.secho("No songs found matching tags.", fg="red")
     elif no_results:
         click.secho(
             "No songs found. Use 'maestro add' to add a song.", fg="red"
         )
-    elif songs_not_found:
-        click.secho("Song files not found:", fg="red")
-        for details in songs_not_found:
-            click.secho(f"\t{details[1]} (ID {details[0]})", fg="red")
 
 
 @cli.command()

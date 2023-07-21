@@ -1180,6 +1180,9 @@ def _play(
 def cli():
     """A command line interface for playing music."""
 
+    if not os.path.exists(config.MAESTRO_DIR):
+        os.makedirs(config.MAESTRO_DIR)
+
     if not os.path.exists(config.SETTINGS_FILE):
         with open(config.SETTINGS_FILE, "x", encoding="utf-8") as f:
             json.dump({"song_directory": config.DEFAULT_SONGS_DIR}, f)
@@ -1195,6 +1198,9 @@ def cli():
                 if not os.path.exists(settings["song_directory"]):
                     os.makedirs(settings["song_directory"])
             config.SONGS_DIR = settings["song_directory"]
+
+    if not os.path.exists(config.SONGS_DIR):
+        os.makedirs(config.SONGS_DIR)
 
     if not os.path.exists(config.SONGS_INFO_PATH):
         with open(config.SONGS_INFO_PATH, "x", encoding="utf-8") as _:
@@ -1579,6 +1585,7 @@ def remove(args, force, tag):
             lines = songs_file.read().splitlines()
 
             to_be_deleted = []
+            skipping = set()
             for i in range(len(lines)):
                 details = lines[i].strip().split("|")
                 song_id = int(details[0])
@@ -1599,6 +1606,7 @@ def remove(args, force, tag):
                             click.echo(
                                 f"Skipping song '{song_name}' (ID {song_id})."
                             )
+                            skipping.add(song_id)
                             continue
 
                     to_be_deleted.append(i)
@@ -1614,7 +1622,7 @@ def remove(args, force, tag):
         with open(config.SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
             songs_file.write("\n".join(lines))
 
-        for stats_file in os.listdir(config.STATS_DIR):
+        for stats_file in os.listdir(config.STATS_DIR):  # delete stats
             if not stats_file.endswith(".txt"):
                 continue
 
@@ -1626,7 +1634,7 @@ def remove(args, force, tag):
                 for i in range(len(stats_lines)):
                     details = stats_lines[i].strip().split("|")
                     song_id = int(details[0])
-                    if song_id in song_ids:
+                    if song_id in song_ids and song_id not in skipping:
                         to_be_deleted.append(i)
 
             for i in reversed(to_be_deleted):

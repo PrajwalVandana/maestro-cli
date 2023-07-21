@@ -20,10 +20,13 @@ from shutil import copy, move
 from time import sleep
 
 from just_playback import Playback
-from numba import jit  # NOTE: I think I'm in love with this decorator
-from numba.core.errors import NumbaWarning
+try:
+    from numba import jit  # NOTE: I think I'm in love with this decorator
+    from numba.core.errors import NumbaWarning
 
-warnings.simplefilter("ignore", category=NumbaWarning)
+    warnings.simplefilter("ignore", category=NumbaWarning)
+except:  # pylint: disable=bare-except
+    jit = lambda x: x
 
 try:
     LIBROSA = importlib.import_module("librosa")

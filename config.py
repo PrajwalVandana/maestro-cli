@@ -49,8 +49,14 @@ METADATA_KEYS = (
 MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
 
 SETTINGS_FILE = os.path.join(MAESTRO_DIR, "settings.json")
-DEFAULT_SONGS_DIR = os.path.join(MAESTRO_DIR, "songs/")
-SONGS_DIR = None
+DEFAULT_SETTINGS = {
+    "song_directory": os.path.join(MAESTRO_DIR, "songs/"),
+    # "data_outlets": {
+    #     "file": [],
+    #     "serial": [],
+    # },
+}
+SETTINGS = {}
 
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 

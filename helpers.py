@@ -1220,18 +1220,18 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
             song_data["albumartist"].value,
         )
         click.secho(
-            f"{(len(entry_list[0])+1)*' '}{artist if artist else 'Unknown Artist'} - ",
+            f"{(len(entry_list[0])+1)*' '}{artist if artist else 'No Artist'} - ",
             fg="bright_black",
             nl=False,
         )
         click.secho(
-            (album if album else "Unknown Album"),
+            (album if album else "No Album"),
             italic=True,
             fg="bright_black",
             nl=False,
         )
         click.secho(
-            f" ({album_artist if album_artist else 'Unknown Album Artist'})",
+            f" ({album_artist if album_artist else 'No Album Artist'})",
             fg="bright_black",
         )
 

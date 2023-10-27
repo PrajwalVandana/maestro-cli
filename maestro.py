@@ -699,7 +699,7 @@ def _play(
                                                     )
                                                 )
                                                 details += [
-                                                    (song_data[x[0]].value or f"Unknown {x[1]}")
+                                                    (song_data[x[0]].value or f"No {x[1]}")
                                                     for x in (
                                                         ("artist", "Artist"),
                                                         ("album", "Album"),
@@ -1726,9 +1726,9 @@ def play(
             os.path.join(config.SETTINGS["song_directory"], details[1])
         )
         details += [
-            (song_data["artist"].value or "Unknown Artist"),
-            (song_data["album"].value or "Unknown Album"),
-            (song_data["albumartist"].value or "Unknown Album Artist"),
+            (song_data["artist"].value or "No Artist"),
+            (song_data["album"].value or "No Album"),
+            (song_data["albumartist"].value or "No Album Artist"),
         ]
 
     if shuffle_ == 0:

@@ -82,11 +82,11 @@ If you get this error on a 64-bit Windows
 ```
 error: Microsoft Visual C++ 14.0 or greater is required. Get it with "Microsoft C++ Build Tools": https://visualstudio.microsoft.com/visual-cpp-build-tools/
 ```
-find and download the `win_amd64` wheel of `just_playback` in `dependency_builds`, then run
+you need Visual C++ Build Tools. If it's not possible to install them (e.g. no administrator permissions), you can try one of the pre-built wheels of `just_playback` in the `dependency_builds` folder (might not work):
 ```
 pip install PATH_TO_DOWNLOADED_WIN64_WHEEL
 ```
-and *now* `pip install maestro-music` should work. Another option (especially if you're on a 32-bit Windows) is to just get Visual C++ Build Tools.
+There are wheels for Python 3.10 and 3.12 for AMD64 systems.
 
 #### Linux
 

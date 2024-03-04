@@ -153,7 +153,7 @@ List songs (or tags) and details. Use `maestro list -h` to see full options (e.g
 
 Play songs. Use `maestro play -h` to see full options. Has lots of features:
 - pass tag(s) as arguments to play songs with any of those tag(s) (or songs with all of those tag(s) if you pass the `-M` or `--match-all` flag)
-- shuffle playlist with the `-s` or `--shuffle option (shuffle once, shuffle everytime the playlist repeats, or shuffle everytime the playlist repeats except the first)
+- shuffle playlist with the `-s` and `-r` options
 - play songs in reverse order with the `-R` or `--reverse` flag
 - loop playlist with the `-L` or `--loop` flag
 - show an audio visualization with the `-V` or `--visualize` flag

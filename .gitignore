@@ -8,10 +8,8 @@ __pycache__
 
 todo.md
 test_songs/
-convert_to_psv.py
-add_stats.py
 song_info.txt
 *_test.py
 *_ref.*
-redownload.py
 sound_vis_cache/
+gui_helper.py

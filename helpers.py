@@ -17,6 +17,7 @@ import music_tag
 
 from shutil import copy, move
 from time import sleep
+from random import randint
 
 from just_playback import Playback
 
@@ -45,6 +46,26 @@ except ImportError:
 # endregion
 
 
+def bounded_shuffle(lst, radius=-1):
+    """
+    Randomly shuffle `lst`, but with the constraint that each element can only
+    move at most `radius` positions away from its original position.
+
+    To shuffle with no bounds, set `radius = -1`.
+    """
+    n = len(lst)
+    if radius == -1:
+        radius = n
+    elif radius == 0:
+        return
+
+    index_at = list(range(n))
+    for i in range(n-1, 0, -1):
+        j = randint(max(0, index_at[i]-radius), i)
+        index_at[j], index_at[i] = index_at[i], index_at[j]
+        lst[j], lst[i] = lst[i], lst[j]
+
+
 class Scroller:
     def __init__(self, num_lines, win_size):
         self.num_lines = num_lines
@@ -69,12 +90,12 @@ class Scroller:
 
     @property
     def halfway(self):
-        return self.top + self.win_size // 2
+        return self.top + (self.win_size-1) // 2
 
     def resize(self, win_size=None):
         if win_size is not None:
             self.win_size = win_size
-        self.top = max(0, self.pos - self.win_size // 2)
+        self.top = max(0, self.pos - (self.win_size-1) // 2)
         self.top = max(0, min(self.num_lines - self.win_size, self.top))
 
 
@@ -109,10 +130,7 @@ def lerp(start, stop, t):
 def bin_average(arr, n, include_remainder=False, func=np.max):
     remainder = arr.shape[1] % n
     if remainder == 0:
-        # print_to_logfile(typeof(arr.reshape(arr.shape[0], -1, n)))
-        temp = func(arr.reshape(arr.shape[0], -1, n), axis=1)
-        # print_to_logfile(typeof(temp))
-        return temp
+        return func(arr.reshape(arr.shape[0], -1, n), axis=1)
 
     # print_to_logfile(
     #     typeof(arr[:, :-remainder].reshape(arr.shape[0], -1, n)),
@@ -196,7 +214,7 @@ def render(
             if mono:
                 s += config.VERTICAL_BLOCKS[arr[0, h, b]]
             else:
-                s += config.VERTICAL_BLOCKS[arr[0, h, num_bins-b-1]]
+                s += config.VERTICAL_BLOCKS[arr[0, h, num_bins - b - 1]]
         if not mono:
             s += " " * gap_bins
             for b in range(num_bins):
@@ -228,7 +246,6 @@ class PlayerOutput:
             and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
         )
         if self.visualize and self.can_visualize:
-            self.audio_data = {}
             self.visualizer_data = {}
             t = threading.Thread(
                 target=self._load_visualizer_data,
@@ -236,13 +253,13 @@ class PlayerOutput:
             )
             t.start()
         else:
-            self.audio_data = None
             self.visualizer_data = None
         self.compiled = None
 
         self.looping_current_song = config.LOOP_MODES["none"]
         self.duration = 0
         self.paused = False
+        self.restarting = False
         self.ending = False
         self.prompting: None | tuple = None
         self.clip = (0, 0)
@@ -258,48 +275,42 @@ class PlayerOutput:
                 if k not in cur_song_ids:
                     keys_to_delete.append(k)
             for k in keys_to_delete:
-                # if k not in self.audio_data:
-                #     print_to_logfile(f"ayo wtf: {k}, {k in self.visualizer_data}")
-                del self.audio_data[k]
                 del self.visualizer_data[k]
 
             for i in range(self.i, min(self.i + 5, len(self.playlist))):
                 song_id = self.playlist[i][0]
                 if song_id in self.visualizer_data:
                     continue
-                song_path = os.path.join(config.SETTINGS["song_directory"], self.playlist[i][1])
+                song_path = os.path.join(
+                    config.SETTINGS["song_directory"], self.playlist[i][1]
+                )
                 # shape = (# channels, # frames)
-                self.audio_data[song_id] = LIBROSA.load(
+                audio_data = LIBROSA.load(
                     song_path, mono=False, sr=config.SAMPLE_RATE
                 )[0]
 
-                if len(self.audio_data[song_id].shape) == 1:  # mono -> stereo
-                    self.audio_data[song_id] = np.repeat(
-                        [self.audio_data[song_id]], 2, axis=0
-                    )
-                elif self.audio_data[song_id].shape[0] == 1:  # mono -> stereo
-                    self.audio_data[song_id] = np.repeat(
-                        self.audio_data[song_id], 2, axis=0
-                    )
-                elif self.audio_data[song_id].shape[0] == 6:  # 5.1 -> stereo
-                    self.audio_data[song_id] = np.delete(
-                        self.audio_data[song_id], (1, 3, 4, 5), axis=0
-                    )
+                if len(audio_data.shape) == 1:  # mono -> stereo
+                    audio_data = np.repeat([audio_data], 2, axis=0)
+                elif audio_data.shape[0] == 1:  # mono -> stereo
+                    audio_data = np.repeat(audio_data, 2, axis=0)
+                elif audio_data.shape[0] == 6:  # 5.1 -> stereo
+                    audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
 
                 self.visualizer_data[song_id] = (
                     LIBROSA.amplitude_to_db(
-                        np.abs(LIBROSA.stft(self.audio_data[song_id])),
+                        np.abs(LIBROSA.stft(audio_data)),
                         ref=np.max,
                     )
                     + 80
                 )
-                # print_to_logfile(song_id in self.audio_data)
 
             sleep(1)
 
     @property
     def song_path(self):
-        return os.path.join(config.SETTINGS["song_directory"], self.playlist[self.i][1])
+        return os.path.join(
+            config.SETTINGS["song_directory"], self.playlist[self.i][1]
+        )
 
     def prompting_delete_char(self):
         if self.prompting[1] > 0:
@@ -368,7 +379,6 @@ class PlayerOutput:
                     daemon=True,
                 )
                 self.visualizer_data = {}
-                self.audio_data = {}
                 t.start()
 
             if not self.can_visualize:
@@ -986,7 +996,7 @@ def clip_editor(stdscr, details, start=None, end=None):
                 change_output = True
                 playback.pause()
                 clip_end = min(clip_end + 0.1, playback.duration)
-                playback.seek(clip_end - 0.1)
+                playback.seek(clip_end - 1)
             elif c == curses.KEY_SRIGHT:
                 change_output = True
                 playback.pause()
@@ -1220,18 +1230,18 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
             song_data["albumartist"].value,
         )
         click.secho(
-            f"{(len(entry_list[0])+1)*' '}{artist if artist else 'Unknown Artist'} - ",
+            f"{(len(entry_list[0])+1)*' '}{artist if artist else 'No Artist'} - ",
             fg="bright_black",
             nl=False,
         )
         click.secho(
-            (album if album else "Unknown Album"),
+            (album if album else "No Album"),
             italic=True,
             fg="bright_black",
             nl=False,
         )
         click.secho(
-            f" ({album_artist if album_artist else 'Unknown Album Artist'})",
+            f" ({album_artist if album_artist else 'No Album Artist'})",
             fg="bright_black",
         )
 

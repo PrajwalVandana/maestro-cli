@@ -1,5 +1,6 @@
 from setuptools import setup
 
+
 MAC_DEPS = [
     dep + "; sys_platform == 'darwin'"
     for dep in [
@@ -39,7 +40,14 @@ setup(
         "audio-visualization",
         "audio-visualizer",
     ],
-    py_modules=["maestro", "mac_presence", "icon", "helpers", "config"],
+    py_modules=[
+        "maestro",
+        "mac_presence",
+        "icon",
+        "helpers",
+        "config",
+        "__version__",
+    ],
     install_requires=[
         "click",
         "just_playback",

@@ -3,21 +3,29 @@ import curses
 import json
 import multiprocessing
 import os
+import requests
 import subprocess
 import sys
+
+# import threading
+# import tkthread
+# tkthread.patch()
 
 import click
 import music_tag
 
 from collections import defaultdict
 from queue import Queue
-from random import shuffle, randint
+from random import randint
 from shutil import move, copy
 from time import sleep, time
 
 from icon import img
+from __version__ import VERSION
 
 from just_playback import Playback
+
+# import gui_helper
 
 can_update_discord = True
 try:
@@ -85,7 +93,18 @@ if sys.platform == "darwin" and can_mac_now_playing:
         AppHelper.runEventLoop()
 
 
-def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
+def read_from_queue(queue):
+    while not queue.empty():
+        res = ""
+        c = queue.get()
+        while c != "\n":
+            res += c
+            c = queue.get()
+
+    return res
+
+
+def discord_presence_loop(song_name_queue, artist_queue, album_queue, discord_connected):
     try:
         discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
         discord_rpc.connect()
@@ -96,22 +115,9 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
     while True:
         song_name = ""
         if not song_name_queue.empty() or song_name:
-            while not song_name_queue.empty():
-                song_name = ""
-                c = song_name_queue.get()
-                while c != "\n":
-                    song_name += c
-                    c = song_name_queue.get()
-
-            artist_name = ""
-            while not artist_queue.empty():
-                artist_name = ""
-                c = artist_queue.get()
-                while c != "\n":
-                    artist_name += c
-                    c = artist_queue.get()
-
-            artist_name = "by " + artist_name
+            song_name = read_from_queue(song_name_queue)
+            artist_name = "by " + read_from_queue(artist_queue)
+            album_name = read_from_queue(album_queue)
 
             if discord_connected.value:
                 try:
@@ -119,9 +125,11 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
                         details=song_name,
                         state=artist_name,
                         large_image="maestro-icon",
+                        large_text=album_name,
                     )
                     song_name = ""
                     artist_name = ""
+                    album_name = ""
                     sleep(15)
                 except:  # pylint: disable=bare-except
                     discord_connected.value = 0
@@ -141,9 +149,11 @@ def discord_presence_loop(song_name_queue, artist_queue, discord_connected):
                             details=song_name,
                             state=artist_name,
                             large_image="maestro-icon",
+                            large_text=album_name,
                         )
                         song_name = ""
                         artist_name = ""
+                        album_name = ""
                         sleep(15)
                     except:  # pylint: disable=bare-except
                         discord_connected.value = 0
@@ -175,8 +185,7 @@ def _play(
 
     if loop:
         next_playlist = playlist[:]
-        if reshuffle:
-            shuffle(next_playlist)
+        helpers.bounded_shuffle(next_playlist, reshuffle)
     else:
         next_playlist = None
 
@@ -187,12 +196,14 @@ def _play(
     if player_output.update_discord:
         discord_title_queue = multiprocessing.SimpleQueue()
         discord_artist_queue = multiprocessing.SimpleQueue()
+        discord_album_queue = multiprocessing.SimpleQueue()
         discord_presence_process = multiprocessing.Process(
             daemon=True,
             target=discord_presence_loop,
             args=(
                 discord_title_queue,
                 discord_artist_queue,
+                discord_album_queue,
                 player_output.discord_connected,
             ),
         )
@@ -269,6 +280,10 @@ def _play(
                 discord_artist_queue,
                 player_output.playlist[player_output.i][-3],
             )
+            helpers.multiprocessing_put_word(
+                discord_album_queue,
+                player_output.playlist[player_output.i][-2],
+            )
 
         playback.play()
 
@@ -284,7 +299,7 @@ def _play(
 
         last_timestamp = playback.curr_pos
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
-        player_output.ending = False
+        player_output.restarting = False
         while True:
             if not playback.active or (
                 player_output.clip_mode
@@ -412,12 +427,15 @@ def _play(
                             break
                         elif c == curses.KEY_DC:
                             selected_song = player_output.scroller.pos
+                            deleted_song_id = int(player_output.playlist[selected_song][0])
                             del player_output.playlist[selected_song]
 
                             if loop:
                                 if reshuffle:
-                                    next_playlist = playlist[:]
-                                    shuffle(next_playlist)
+                                    for i in range(len(next_playlist)):
+                                        if int(next_playlist[i][0]) == deleted_song_id:
+                                            del next_playlist[i]
+                                            break
                                 else:
                                     del next_playlist[selected_song]
 
@@ -454,6 +472,7 @@ def _play(
                                     playback.stop()
                                     break
                             elif ch in "rR":
+                                player_output.restarting = True
                                 playback.stop()
                                 next_song = 0
                                 break
@@ -519,20 +538,26 @@ def _play(
                                     discord_title_queue = (
                                         multiprocessing.SimpleQueue()
                                     )
-                                    for char in player_output.playlist[
-                                        player_output.i
-                                    ][1]:
-                                        discord_title_queue.put(char)
-                                    discord_title_queue.put("\n")
+                                    helpers.multiprocessing_put_word(
+                                        discord_title_queue,
+                                        player_output.playlist[player_output.i][1],
+                                    )
 
                                     discord_artist_queue = (
                                         multiprocessing.SimpleQueue()
                                     )
-                                    for char in player_output.playlist[
-                                        player_output.i
-                                    ][-3]:
-                                        discord_artist_queue.put(char)
-                                    discord_artist_queue.put("\n")
+                                    helpers.multiprocessing_put_word(
+                                        discord_artist_queue,
+                                        player_output.playlist[player_output.i][-3],
+                                    )
+
+                                    discord_album_queue = (
+                                        multiprocessing.SimpleQueue()
+                                    )
+                                    helpers.multiprocessing_put_word(
+                                        discord_album_queue,
+                                        player_output.playlist[player_output.i][-2],
+                                    )
 
                                     player_output.discord_connected = (
                                         multiprocessing.Value("i", 2)
@@ -546,6 +571,7 @@ def _play(
                                             args=(
                                                 discord_title_queue,
                                                 discord_artist_queue,
+                                                discord_album_queue,
                                                 player_output.discord_connected,
                                             ),
                                         )
@@ -679,59 +705,63 @@ def _play(
                                 config.PROMPT_MODES["add"],
                                 config.PROMPT_MODES["insert"],
                             ):
-                                for details in player_output.playlist:
-                                    if int(details[0]) == int(player_output.prompting[0]):
-                                        break
-                                else:
-                                    with open(
-                                        config.SONGS_INFO_PATH,
-                                        "r",
-                                        encoding="utf-8",
-                                    ) as songs_file:
-                                        for line in songs_file:
-                                            details = line.strip().split("|")
-                                            song_id = int(details[0])
-                                            if song_id == int(player_output.prompting[0]):
-                                                song_data = music_tag.load_file(
-                                                    os.path.join(
-                                                        config.SETTINGS["song_directory"],
-                                                        details[1],
-                                                    )
+                                with open(
+                                    config.SONGS_INFO_PATH,
+                                    "r",
+                                    encoding="utf-8",
+                                ) as songs_file:
+                                    for line in songs_file:
+                                        details = line.strip().split("|")
+                                        song_id = int(details[0])
+                                        if song_id == int(player_output.prompting[0]):
+                                            song_data = music_tag.load_file(
+                                                os.path.join(
+                                                    config.SETTINGS["song_directory"],
+                                                    details[1],
                                                 )
-                                                details += [
-                                                    (song_data[x[0]].value or f"No {x[1]}")
-                                                    for x in (
-                                                        ("artist", "Artist"),
-                                                        ("album", "Album"),
-                                                        ("albumartist", "Album Artist"),
-                                                    )
-                                                ]
-                                                if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
-                                                    player_output.playlist.insert(
-                                                        player_output.scroller.pos + 1,
-                                                        details,
-                                                    )
-                                                else:
-                                                    player_output.playlist.append(details)
-                                                if loop:
-                                                    if reshuffle:
-                                                        next_playlist.insert(randint(0, len(next_playlist) - 1), details)
-                                                    else:
-                                                        if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
-                                                            next_playlist.insert(
-                                                                player_output.scroller.pos + 1,
-                                                                details,
-                                                            )
-                                                        else:
-                                                            next_playlist.append(details)
-                                                player_output.scroller.num_lines += 1
+                                            )
+                                            details += [
+                                                (song_data[x[0]].value or f"No {x[1]}")
+                                                for x in (
+                                                    ("artist", "Artist"),
+                                                    ("album", "Album"),
+                                                    ("albumartist", "Album Artist"),
+                                                )
+                                            ]
+                                            if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
+                                                player_output.playlist.insert(
+                                                    player_output.scroller.pos + 1,
+                                                    details,
+                                                )
+                                                inserted_pos = player_output.scroller.pos + 1
+                                                if player_output.i > player_output.scroller.pos:
+                                                    player_output.i += 1
+                                            else:
+                                                player_output.playlist.append(details)
+                                                inserted_pos = len(player_output.playlist) - 1
 
-                                                player_output.prompting = None
-                                                curses.curs_set(False)
-                                                player_output.scroller.resize(screen_size[0] - 2)
+                                            if loop:
+                                                if reshuffle >= 0:
+                                                    next_playlist.insert(randint(max(0, inserted_pos-reshuffle), min(len(playlist)-1, inserted_pos+reshuffle)), details)
+                                                elif reshuffle == -1:
+                                                    next_playlist.insert(randint(0, len(playlist) - 1), details)
+                                                # else:
+                                                #     if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
+                                                #         next_playlist.insert(
+                                                #             player_output.scroller.pos + 1,
+                                                #             details,
+                                                #         )
+                                                #     else:
+                                                #         next_playlist.append(details)
 
-                                                player_output.output(playback.curr_pos)
-                                                break
+                                            player_output.scroller.num_lines += 1
+
+                                            player_output.prompting = None
+                                            curses.curs_set(False)
+                                            player_output.scroller.resize(screen_size[0] - 2)
+
+                                            player_output.output(playback.curr_pos)
+                                            break
                             elif (
                                 "|" not in player_output.prompting[0]
                                 and player_output.prompting[2]
@@ -859,7 +889,7 @@ def _play(
             stats_file.truncate()
         # endregion
 
-        if player_output.ending:
+        if player_output.ending and not player_output.restarting:
             return
 
         if next_song == -1:
@@ -871,7 +901,7 @@ def _play(
                 if loop:
                     next_next_playlist = next_playlist[:]
                     if reshuffle:
-                        shuffle(next_next_playlist)
+                        helpers.bounded_shuffle(next_next_playlist, reshuffle)
                     player_output.playlist, next_playlist = (
                         next_playlist,
                         next_next_playlist,
@@ -939,6 +969,17 @@ def cli():
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
 
+    try:
+        response = requests.get('https://pypi.org/pypi/maestro-music/json', timeout=5)
+        latest_version = response.json()["info"]["version"]
+        if latest_version != VERSION:
+            click.secho(
+                f"A new version of maestro-cli is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
+                fg="yellow",
+            )
+    except:  # pylint: disable=bare-except
+        pass
+
 
 @cli.command()
 @click.argument("path_", metavar="PATH_OR_URL")
@@ -981,7 +1022,7 @@ def cli():
     "format_",
     type=click.Choice(["wav", "mp3", "flac", "ogg"]),
     help="Specify the format of the song if downloading from YouTube, YouTube Music, or Spotify URL.",
-    default="flac",
+    default="mp3",
     show_default=True,
 )
 @click.option(
@@ -1146,11 +1187,11 @@ def add(
             if recurse:
                 for dirpath, _, fnames in os.walk(path_):
                     for fname in fnames:
-                        if os.path.splitext(fname)[1] in config.EXTS:
+                        if os.path.splitext(fname)[1].lower() in config.EXTS:
                             paths.append(os.path.join(dirpath, fname))
             else:
                 for fname in os.listdir(path_):
-                    if os.path.splitext(fname)[1] in config.EXTS:
+                    if os.path.splitext(fname)[1].lower() in config.EXTS:
                         full_path = os.path.join(path_, fname)
                         if os.path.isfile(full_path):
                             paths.append(full_path)
@@ -1246,7 +1287,7 @@ def add(
             song_data.save()
 
     for path in paths:
-        ext = os.path.splitext(path)[1]
+        ext = os.path.splitext(path)[1].lower()
         if not os.path.isdir(path) and ext not in config.EXTS:
             click.secho(f"'{ext}' is not supported.", fg="red")
             return
@@ -1549,11 +1590,27 @@ def untag(song_ids, tags, all_):
 @cli.command()
 @click.argument("tags", nargs=-1)
 @click.option(
+    "-e",
+    "--exclude-tags",
+    "exclude_tags",
+    help="Exclude songs with these tags.",
+    multiple=True,
+)
+@click.option(
     "-s",
     "--shuffle",
     "shuffle_",
-    type=click.IntRange(0, 2),
-    help="0: shuffle once, 1: shuffle every loop, 2: shuffle every loop except for the first one.",
+    type=click.IntRange(-1, None),
+    default=0,
+    help="How to shuffle the playlist on the first run. -1: random shuffle, 0: no shuffle, any other integer N: random shuffle with the constraint that each song is no farther than N spots away from its starting position.",
+)
+@click.option(
+    "-r",
+    "--reshuffle",
+    "reshuffle",
+    type=click.IntRange(-1, None),
+    default=0,
+    help="How to shuffle the playlist on every run after the first. -1: random reshuffle, 0: no reshuffle, any other integer N: random reshuffle with the constraint that each song is no farther than N spots away from its previous position.",
 )
 @click.option(
     "-R/-nR",
@@ -1615,7 +1672,9 @@ def untag(song_ids, tags, all_):
 )
 def play(
     tags,
+    exclude_tags,
     shuffle_,
+    reshuffle,
     reverse,
     only,
     volume,
@@ -1667,6 +1726,7 @@ def play(
     """
     playlist = []
     songs_not_found = []
+    exclude_tags = set(exclude_tags)
 
     if only:
         only = set(only)
@@ -1722,6 +1782,10 @@ def play(
                                 playlist.append(details)
 
     for details in playlist:
+        if exclude_tags & set(details[2].split(",")):
+            details[0] = -1
+            continue
+
         song_data = music_tag.load_file(
             os.path.join(config.SETTINGS["song_directory"], details[1])
         )
@@ -1731,22 +1795,10 @@ def play(
             (song_data["albumartist"].value or "No Album Artist"),
         ]
 
-    if shuffle_ == 0:
-        shuffle_ = True
-        reshuffle = False
-    elif shuffle_ == 1:
-        shuffle_ = True
-        reshuffle = True
-    elif shuffle_ == 2:
-        shuffle_ = False
-        reshuffle = True
-    else:  # shuffle_ = None
-        shuffle_ = False
-        reshuffle = False
+    playlist = list(filter(lambda x: x[0] != -1, playlist))
 
-    if shuffle_:
-        shuffle(playlist)
-    elif reverse:
+    helpers.bounded_shuffle(playlist, shuffle_)
+    if reverse:
         playlist.reverse()
 
     if not playlist:
@@ -1949,12 +2001,21 @@ def search(phrase, searching_for_tags):
 @cli.command(name="list")
 @click.argument("search_tags", metavar="TAGS", nargs=-1)
 @click.option(
+    "-e",
+    "--exclude-tags",
+    "exclude_tags",
+    multiple=True,
+    help="Exclude songs (or tags if '-T/--tags' is passed) matching these tags.",
+)
+@click.option(
     "-s",
     "--sort",
     "sort_",
     type=click.Choice(
         (
             "none",
+            "id",
+            "i",
             "name",
             "n",
             "secs-listened",
@@ -1965,7 +2026,7 @@ def search(phrase, searching_for_tags):
             "t",
         )
     ),
-    help="Sort by name, seconds listened, or times listened (seconds/song duration). Greatest first.",
+    help="Sort by song ID, song name, seconds listened, duration or times listened (seconds listened divided by song duration). Increasing order.",
     default="none",
     show_default=True,
 )
@@ -1974,7 +2035,7 @@ def search(phrase, searching_for_tags):
     "--reverse/--no-reverse",
     "reverse_",
     default=False,
-    help="Reverse the sorting order (greatest first).",
+    help="Reverse the sorting order (decreasing instead of increasing).",
 )
 @click.option(
     "-T/-nT",
@@ -1997,7 +2058,7 @@ def search(phrase, searching_for_tags):
     default=False,
     help="Shows songs that match all tags instead of any tag. Ignored if '-t/--tag' is passed.",
 )
-def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
+def list_(search_tags, exclude_tags, listing_tags, year, sort_, top, reverse_, match_all):
     """List the entries for all songs.
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
@@ -2035,10 +2096,20 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
     if search_tags:
         search_tags = set(search_tags)
 
+    if exclude_tags:
+        exclude_tags = set(exclude_tags)
+
     num_lines = 0
     songs_not_found = []
 
     if listing_tags:
+        if sort_ in ("id", "i"):
+            click.secho(
+                "Warning: cannot sort tags by ID. Defaulting to no sorting order.",
+                fg="yellow",
+            )
+            sort_ = "none"
+
         with (
             open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
             open(stats_path, "r", encoding="utf-8") as stats_file,
@@ -2067,7 +2138,7 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 song_id = int(song_id)
                 if tag_string:
                     for tag in tag_string.split(","):
-                        if not search_tags or tag in search_tags:
+                        if (not search_tags or tag in search_tags) and (not exclude_tags or tag not in exclude_tags):
                             tags[tag] = (
                                 tags[tag][0] + stats[song_id],
                                 tags[tag][1]
@@ -2090,13 +2161,10 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                     sort_key = lambda t: t[1][1]
                 elif sort_ in ("times-listened", "t"):
                     sort_key = lambda t: t[1][0] / t[1][1]
-                tag_items.sort(
-                    key=sort_key,
-                    reverse=not reverse_,
-                )
-            else:
-                if not reverse_:
-                    tag_items.reverse()
+                tag_items.sort(key=sort_key)
+
+            if reverse_:
+                tag_items.reverse()
 
             for tag, (listen_time, total_duration) in tag_items:
                 click.echo(
@@ -2152,6 +2220,10 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                     if not search_tags & tags:  # intersection
                         lines[i] = ""
                         continue
+            if exclude_tags:
+                if exclude_tags & tags:
+                    lines[i] = ""
+                    continue
 
             time_listened = stats[song_id]
             lines[i] = tuple(details) + (
@@ -2164,6 +2236,8 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
         lines = [line for line in lines if line]
 
         if sort_ != "none":
+            if sort_ in ("id", "i"):
+                sort_key = lambda t: int(t[0])
             if sort_ in ("name", "n"):
                 sort_key = lambda t: t[1]
             elif sort_ in ("secs-listened", "s"):
@@ -2172,13 +2246,10 @@ def list_(search_tags, listing_tags, year, sort_, top, reverse_, match_all):
                 sort_key = lambda t: float(t[-1])
             elif sort_ in ("times-listened", "t"):
                 sort_key = lambda t: float(t[-2]) / float(t[-1])
-            lines.sort(
-                key=sort_key,
-                reverse=not reverse_,
-            )
-        else:
-            if not reverse_:
-                lines.reverse()
+            lines.sort(key=sort_key)
+
+        if reverse_:
+            lines.reverse()
 
         for details in lines:
             helpers.print_entry(details)
@@ -2491,8 +2562,12 @@ def clip_(song_id, start, end, editor):
         song_path = os.path.join(config.SETTINGS["song_directory"], song_name)
         duration = music_tag.load_file(song_path)["#length"].value
 
+        # print_to_logfile(end, duration)
+
         if end is None:
             end = duration
+
+        # print_to_logfile('\t', end, duration)
 
         if start > duration:
             click.secho(
@@ -2509,7 +2584,9 @@ def clip_(song_id, start, end, editor):
             return
 
         if editor:
-            start, end = curses.wrapper(helpers.clip_editor, details, start, end)
+            start, end = curses.wrapper(
+                helpers.clip_editor, details, start, end
+            )
             if start is None:
                 click.secho(f"No change in clip for {song_name}.", fg="green")
                 return
@@ -2586,16 +2663,16 @@ def unclip(song_ids, all_, force):
 
 @cli.command()
 @click.argument("song_ids", type=int, required=True, nargs=-1)
-@click.option("-p", "--pairs", type=str, required=False)
+@click.option("-m", "--metadata", "pairs", type=str, required=False)
 def metadata(song_ids, pairs):
     """
     View or edit the metadata for a song or songs.
 
-    If the -p/--pairs option is not passed, prints the metadata for each song ID
-    in SONG_IDS.
+    If the -m/--metadata option is not passed, prints the metadata for each song
+    ID in SONG_IDS.
 
     If the option is passed, sets the metadata for the each song ID in SONG_IDS
-    to the key-value pairs in -p/--pairs. The option should be passed as a
+    to the key-value pairs in -m/--metadata. The option should be passed as a
     string of the form 'key1:value1|key2:value2|...'.
 
     Possible editable metadata keys are: album, albumartist, artist, artwork,
@@ -2670,9 +2747,9 @@ def metadata(song_ids, pairs):
 @click.argument("directory", type=click.Path(file_okay=False), required=False)
 def dir_(directory):
     """
-    Change the directory where maestro looks for songs.
-    NOTE: This does not move any songs. It only changes where maestro looks for
-    songs. You will have to move the songs yourself.
+    Change the directory where maestro looks for songs. NOTE: This does not move
+    any songs. It only changes where maestro looks for songs. You will have to
+    move the songs yourself.
 
     If no argument is passed, prints the current directory.
     """

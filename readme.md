@@ -54,7 +54,7 @@ Here are some instructions:
 
 [https://www.tecmint.com/install-ffmpeg-in-linux/](https://www.tecmint.com/install-ffmpeg-in-linux/)
 
-### Known Installation Issues
+### Troubleshooting
 
 If you have any issues, before trying the below fixes, make sure you have the latest version of `pip` installed:
 ```
@@ -65,38 +65,6 @@ Also, if you have `conda`, see if running the following fixes your issue before 
 ```
 conda install libsndfile ffmpeg cffi
 ```
-
-`maestro-cli` uses [just_playback](https://github.com/cheofusi/just_playback) to play sound, which uses a C library called [miniaudio](https://github.com/mackron/miniaudio). Unfortunately, the creators did not provide wheels, so installation of `just_playback` and therefore `maestro-cli` usually fails if there's any (compatibility or otherwise) problems with your C/C++ compiler. Here are platforms where there are known issues:
-
-#### Apple Silicon
-
-There's a problem with the flag `-march=native` for older versions of the `clang` compiler. I manually removed this from the `just_playback` code and built an Apple Silicon-compatible version. Just check out the `dependency_builds/` folder in this repo, and look for the wheel that says `arm64`. Download it, then run
-```
-pip install PATH_TO_DOWNLOADED_ARM64_WHEEL
-```
-and *now* `pip install maestro-music` should work.
-
-#### Windows
-
-If you get this error on a 64-bit Windows
-```
-error: Microsoft Visual C++ 14.0 or greater is required. Get it with "Microsoft C++ Build Tools": https://visualstudio.microsoft.com/visual-cpp-build-tools/
-```
-you need Visual C++ Build Tools. If it's not possible to install them (e.g. no administrator permissions), you can try one of the pre-built wheels of `just_playback` in the `dependency_builds` folder (might not work):
-```
-pip install PATH_TO_DOWNLOADED_WIN64_WHEEL
-```
-There are wheels for Python 3.10 and 3.12 for AMD64 systems.
-
-#### Linux
-
-If you have issues (especially if you get `Illegal instruction (core dumped)` when running `maestro play`, even after installing succesfully), try:
- * upgrading pip: `pip install --upgrade pip`
- * uninstalling `just_playback`: `pip uninstall just_playback`
- * reinstalling `just_playback` with the `--no-binary` flag: `pip install just_playback --no-binary just_playback --force-reinstall --upgrade`
-
-Also check this out: [https://github.com/cheofusi/just_playback/issues/21](https://github.com/cheofusi/just_playback/issues/21) ... and good luck 💀.
-
 
 #### If all else fails ...
 You could uninstall and reinstall.

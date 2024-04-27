@@ -5,6 +5,7 @@ log.txt
 *.egg
 __pycache__
 *.code-workspace
+**/*.env
 
 todo.md
 test_songs/

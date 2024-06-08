@@ -51,6 +51,7 @@ MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
 SETTINGS_FILE = os.path.join(MAESTRO_DIR, "settings.json")
 DEFAULT_SETTINGS = {
     "song_directory": os.path.join(MAESTRO_DIR, "songs/"),
+    "last_version_sync": 0,
     # "data_outlets": {
     #     "file": [],
     #     "serial": [],
@@ -86,7 +87,7 @@ MIN_VOLUME_BAR_WIDTH, MAX_VOLUME_BAR_WIDTH = 10, 40
 FPS = 60
 
 STEP_SIZE = 512  # librosa default
-SAMPLE_RATE = STEP_SIZE * FPS
+VIS_SAMPLE_RATE = STEP_SIZE * FPS
 
 VERTICAL_BLOCKS = {
     0: " ",
@@ -104,6 +105,13 @@ WAVEFORM_HEIGHT = 6  # should also divide 80
 
 VIS_FLATTEN_FACTOR = 3  # higher = more flattening; 1 = no flattening
 WAVEFORM_FLATTEN_FACTOR = 20
+# endregion
+
+# region stream
+STREAM_PIPE = "/tmp/maestro_stream"
+
+STREAM_SAMPLE_RATE = 32000
+STREAM_CHUNK_SIZE = 4096
 # endregion
 
 # endregion

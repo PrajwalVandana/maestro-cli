@@ -1,4 +1,6 @@
-import config  # pylint: disable=wildcard-import,unused-wildcard-import
+from maestro import (
+    config,
+)  # pylint: disable=wildcard-import,unused-wildcard-import
 
 # region imports
 
@@ -60,8 +62,8 @@ def bounded_shuffle(lst, radius=-1):
         return
 
     index_at = list(range(n))
-    for i in range(n-1, 0, -1):
-        j = randint(max(0, index_at[i]-radius), i)
+    for i in range(n - 1, 0, -1):
+        j = randint(max(0, index_at[i] - radius), i)
         index_at[j], index_at[i] = index_at[i], index_at[j]
         lst[j], lst[i] = lst[i], lst[j]
 
@@ -90,12 +92,12 @@ class Scroller:
 
     @property
     def halfway(self):
-        return self.top + (self.win_size-1) // 2
+        return self.top + (self.win_size - 1) // 2
 
     def resize(self, win_size=None):
         if win_size is not None:
             self.win_size = win_size
-        self.top = max(0, self.pos - (self.win_size-1) // 2)
+        self.top = max(0, self.pos - (self.win_size - 1) // 2)
         self.top = max(0, min(self.num_lines - self.win_size, self.top))
 
 
@@ -126,7 +128,7 @@ def lerp(start, stop, t):
     return start + t * (stop - start)
 
 
-@jit
+@jit(forceobj=True)
 def bin_average(arr, n, include_remainder=False, func=np.max):
     remainder = arr.shape[1] % n
     if remainder == 0:
@@ -148,7 +150,7 @@ def bin_average(arr, n, include_remainder=False, func=np.max):
     return avg_head
 
 
-@jit
+@jit(forceobj=True)
 def render(
     num_bins,
     freqs,
@@ -179,9 +181,11 @@ def render(
         bin_average(
             freqs[:, :, frame],
             num_bins,
-            (freqs.shape[-2] % num_bins) > num_bins / 2
-            if include_remainder is None
-            else include_remainder,
+            (
+                (freqs.shape[-2] % num_bins) > num_bins / 2
+                if include_remainder is None
+                else include_remainder
+            ),
             func=func,
         )
         / 80
@@ -224,9 +228,16 @@ def render(
     return res
 
 
-class PlayerOutput:
+class PlaybackHandler:
     def __init__(
-        self, stdscr, playlist, volume, clip_mode, update_discord, visualize
+        self,
+        stdscr,
+        playlist,
+        volume,
+        clip_mode,
+        update_discord,
+        visualize,
+        stream,
     ):
         self.stdscr = stdscr
         self.scroller = Scroller(
@@ -238,6 +249,16 @@ class PlayerOutput:
         self.clip_mode = clip_mode
         self.update_discord = update_discord
         self.visualize = visualize  # want to visualize
+        self.stream = stream  # want to streams
+
+        self.playback = None
+        self.pos_changed = False
+        self.last_timestamp = 0
+
+        self.mac_now_playing = None
+        self.can_mac_now_playing = False
+        self.update_now_playing = False
+
         self.can_visualize = LIBROSA is not None  # can generate visualization
         self.can_show_visualization = (
             self.visualize
@@ -245,16 +266,28 @@ class PlayerOutput:
             # space to show visualization
             and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
         )
-        if self.visualize and self.can_visualize:
-            self.visualizer_data = {}
+
+        if self.visualize or self.stream:
+            self.audio_data = {}  # dict(song_id: (vis data, stream datas))
             t = threading.Thread(
-                target=self._load_visualizer_data,
+                target=self._audio_processing_loop,
                 daemon=True,
             )
             t.start()
         else:
-            self.visualizer_data = None
+            self.audio_data = None
         self.compiled = None
+
+        if self.stream:
+            if not os.path.exists(config.STREAM_PIPE):
+                os.mkfifo(config.STREAM_PIPE)
+            self.stream_pipe = open(config.STREAM_PIPE, "wb")
+
+            t = threading.Thread(
+                target=self._streaming_loop,
+                daemon=True,
+            )
+            t.start()
 
         self.looping_current_song = config.LOOP_MODES["none"]
         self.duration = 0
@@ -265,52 +298,133 @@ class PlayerOutput:
         self.clip = (0, 0)
         self.discord_connected = multiprocessing.Value("i", 2)
 
-    def _load_visualizer_data(self):
+    def _load_audio(self, path, sr):
+        # shape = (# channels, # frames)
+        audio_data = LIBROSA.load(path, mono=False, sr=sr)[0]
+
+        if len(audio_data.shape) == 1:  # mono -> stereo
+            audio_data = np.repeat([audio_data], 2, axis=0)
+        elif audio_data.shape[0] == 1:  # mono -> stereo
+            audio_data = np.repeat(audio_data, 2, axis=0)
+        elif audio_data.shape[0] == 6:  # 5.1 -> stereo
+            audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
+
+        return audio_data
+
+    def _audio_processing_loop(self):
         while True:
             cur_song_ids = set(
                 map(lambda x: x[0], self.playlist[self.i : self.i + 5])
             )
             keys_to_delete = []
-            for k in self.visualizer_data:
+            for k in self.audio_data:
                 if k not in cur_song_ids:
                     keys_to_delete.append(k)
             for k in keys_to_delete:
-                del self.visualizer_data[k]
+                del self.audio_data[k]
 
             for i in range(self.i, min(self.i + 5, len(self.playlist))):
                 song_id = self.playlist[i][0]
-                if song_id in self.visualizer_data:
+                if song_id in self.audio_data:
                     continue
                 song_path = os.path.join(
                     config.SETTINGS["song_directory"], self.playlist[i][1]
                 )
-                # shape = (# channels, # frames)
-                audio_data = LIBROSA.load(
-                    song_path, mono=False, sr=config.SAMPLE_RATE
-                )[0]
 
-                if len(audio_data.shape) == 1:  # mono -> stereo
-                    audio_data = np.repeat([audio_data], 2, axis=0)
-                elif audio_data.shape[0] == 1:  # mono -> stereo
-                    audio_data = np.repeat(audio_data, 2, axis=0)
-                elif audio_data.shape[0] == 6:  # 5.1 -> stereo
-                    audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
-
-                self.visualizer_data[song_id] = (
-                    LIBROSA.amplitude_to_db(
-                        np.abs(LIBROSA.stft(audio_data)),
-                        ref=np.max,
-                    )
-                    + 80
+                self.audio_data[song_id] = (
+                    (
+                        LIBROSA.amplitude_to_db(
+                            np.abs(
+                                LIBROSA.stft(
+                                    self._load_audio(
+                                        song_path,
+                                        sr=config.VIS_SAMPLE_RATE,
+                                    )
+                                )
+                            ),
+                            ref=np.max,
+                        )
+                        + 80
+                        if self.visualize and self.can_visualize
+                        else None
+                    ),
+                    (
+                        np.int16(
+                            self._load_audio(
+                                song_path, sr=config.STREAM_SAMPLE_RATE
+                            )
+                            * (2**15 - 1)
+                        )  # convert to 16-bit PCM
+                        if self.stream
+                        else None
+                    ),
                 )
 
             sleep(1)
+
+    def _streaming_loop(self):
+        print_to_logfile(
+            type(self.audio_data),
+            self.song_id in self.audio_data,
+            self.playback,
+        )
+        while True:
+            if (
+                self.audio_data is not None
+                and self.song_id in self.audio_data
+                and self.playback is not None
+            ):
+                # print_to_logfile("writing to stream pipe")
+                print_to_logfile(self.song_id)
+                for fpos in range(
+                    int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE) * 2,
+                    self.audio_data[self.song_id][1].shape[1],
+                    config.STREAM_CHUNK_SIZE,
+                ):
+                    # print_to_logfile(
+                    #     fpos,
+                    #     fpos + config.STREAM_CHUNK_SIZE,
+                    # )
+                    try:
+                        chunk = (
+                            self.audio_data[self.song_id][1][
+                                :,
+                                fpos : fpos + config.STREAM_CHUNK_SIZE,
+                            ]
+                            # self.audio_data[self.song_id][1]
+                            .reshape((-1,), order="F").tobytes()
+                        )
+                        self.stream_pipe.write(chunk)
+                    except OSError as e:
+                        print_to_logfile(e)
+                        raise e
+                    if self.pos_changed:
+                        self.pos_changed = False
+                        break
+                # print_to_logfile("wrote to stream pipe")
+                # sleep(
+                #     len(chunk) / (config.STREAM_SAMPLE_RATE)
+                # )  # x2 for stereo
+            # sleep(0.01)
+
+    @property
+    def song_id(self):
+        return self.playlist[self.i][0]
 
     @property
     def song_path(self):
         return os.path.join(
             config.SETTINGS["song_directory"], self.playlist[self.i][1]
         )
+
+    def seek(self, pos):
+        if self.playback is not None:
+            self.playback.seek(pos)
+            self.pos_changed = True
+            if self.can_mac_now_playing and self.mac_now_playing is not None:
+                self.mac_now_playing.pos = round(pos)
+                self.update_now_playing = True
+            self.last_timestamp = pos
 
     def prompting_delete_char(self):
         if self.prompting[1] > 0:
@@ -320,6 +434,9 @@ class PlayerOutput:
                 self.prompting[1] - 1,
                 self.prompting[2],
             )
+
+    def update_screen(self):
+        self.output(self.playback.curr_pos)
 
     def output(self, pos):
         self.can_show_visualization = (
@@ -373,12 +490,12 @@ class PlayerOutput:
         visualize_message = ""
         visualize_color = 12
         if self.visualize:
-            if self.visualizer_data is None and self.can_visualize:
+            if self.audio_data is None and self.can_visualize:
                 t = threading.Thread(
-                    target=self._load_visualizer_data,
+                    target=self._audio_processing_loop,
                     daemon=True,
                 )
-                self.visualizer_data = {}
+                self.audio_data = {}
                 t.start()
 
             if not self.can_visualize:
@@ -387,7 +504,7 @@ class PlayerOutput:
             elif not self.can_show_visualization:
                 visualize_message = "Window too small for visualization."
                 visualize_color = 14
-            elif self.playlist[self.i][0] not in self.visualizer_data:
+            elif self.playlist[self.i][0] not in self.audio_data:
                 visualize_message = "Loading visualization..."
                 visualize_color = 12
             elif not self.compiled:
@@ -708,7 +825,7 @@ class PlayerOutput:
                 ),
                 0,
             )
-            if self.playlist[self.i][0] not in self.visualizer_data:
+            if self.playlist[self.i][0] not in self.audio_data:
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
@@ -722,13 +839,14 @@ class PlayerOutput:
 
                     def thread_func():
                         # print_to_logfile("Compiling...")
+                        vdata = self.audio_data[self.playlist[self.i][0]][0]
                         render(
                             self.stdscr.getmaxyx()[1],
-                            self.visualizer_data[self.playlist[self.i][0]],
+                            vdata,
                             min(
                                 round(pos * config.FPS),
                                 # fmt: off
-                                self.visualizer_data[self.playlist[self.i][0]].shape[2] - 1,
+                                vdata.shape[2] - 1,
                             ),
                             config.VISUALIZER_HEIGHT,
                         )
@@ -744,13 +862,14 @@ class PlayerOutput:
                     ).rstrip()
                 )
             elif self.compiled:
+                vdata = self.audio_data[self.playlist[self.i][0]][0]
                 rendered_lines = render(
                     self.stdscr.getmaxyx()[1],
-                    self.visualizer_data[self.playlist[self.i][0]],
+                    vdata,
                     min(
                         round(pos * config.FPS),
                         # fmt: off
-                        self.visualizer_data[self.playlist[self.i][0]].shape[2] - 1,
+                        vdata.shape[2] - 1,
                     ),
                     config.VISUALIZER_HEIGHT,
                 )
@@ -1249,7 +1368,7 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
 def print_to_logfile(*args, **kwargs):
     if "file" in kwargs:
         raise ValueError("file kwargs not allowed for 'print_to_logfile'")
-    print(*args, **kwargs, file=open("log.txt", "a", encoding="utf-8"))
+    print(*args, **kwargs, file=open("log.log", "a", encoding="utf-8"))
 
 
 def multiprocessing_put_word(q, word):

@@ -75,7 +75,7 @@ WARNING: this will delete all your songs! You should probably back up your `~/.m
 
 ## Platforms
 
-Tested heavily on macOS Monterey, lightly on Windows and Linux. `maestro-cli` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!). You can also join the [Discord server](https://discord.gg/AW8fh2QEav) and ask for help there.
+Tested heavily on macOS Monterey and Ventura (12/13), lightly on Windows 10 and (Ubuntu) Linux. `maestro-cli` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!). You can also join the [Discord server](https://discord.gg/AW8fh2QEav) and ask for help there.
 
 Supports `.mp3`, `.wav`, `.flac`, and `.ogg` (Ogg Vorbis).
 

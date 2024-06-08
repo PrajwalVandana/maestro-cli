@@ -1,5 +1,12 @@
-from setuptools import setup
+from os.path import normpath
 
+from setuptools import setup, find_packages
+
+
+d = {}
+with open(normpath("maestro/__version__.py"), encoding="utf-8") as f:
+    exec(f.read(), d)  # pylint: disable=exec-used
+VERSION = d["VERSION"]
 
 MAC_DEPS = [
     dep + "; sys_platform == 'darwin'"
@@ -17,7 +24,7 @@ MAC_DEPS = [
 
 setup(
     name="maestro-music",
-    version="1.1.0",
+    version=VERSION,
     author="Prajwal Vandana",
     url="https://github.com/PrajwalVandana/maestro-cli",
     description="A simple command line tool to play songs (or any audio files, really).",
@@ -40,14 +47,19 @@ setup(
         "audio-visualization",
         "audio-visualizer",
     ],
-    py_modules=[
-        "maestro",
-        "mac_presence",
-        "icon",
-        "helpers",
-        "config",
-        "__version__",
-    ],
+    # py_modules=[
+    #     "maestro" + f
+    #     for f in [
+    #         "maestro",
+    #         "mac_presence",
+    #         "icon",
+    #         "helpers",
+    #         "config",
+    #         "__version__",
+    #     ]
+    # ],
+    # py_modules=["maestro"],
+    packages=find_packages(include=["maestro", "maestro.*"]),
     install_requires=[
         "click",
         "just_playback",
@@ -57,6 +69,7 @@ setup(
         "spotdl",
         "ytmusicapi",
         "librosa",
+        "soundfile",
         "numba",
         "numpy",
         "windows-curses; sys_platform == 'win32'",
@@ -64,7 +77,7 @@ setup(
     + MAC_DEPS,
     entry_points={
         "console_scripts": [
-            "maestro = maestro:cli",
+            "maestro = maestro.maestro:cli",
         ],
     },
 )

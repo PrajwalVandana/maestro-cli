@@ -7,10 +7,6 @@ import requests
 import subprocess
 import sys
 
-# import threading
-# import tkthread
-# tkthread.patch()
-
 import click
 import music_tag
 
@@ -20,8 +16,8 @@ from random import randint
 from shutil import move, copy
 from time import sleep, time
 
-from icon import img
-from __version__ import VERSION
+from maestro.icon import img
+from maestro.__version__ import VERSION
 
 from just_playback import Playback
 
@@ -33,6 +29,7 @@ try:
 except ImportError:
     can_update_discord = False
 
+can_mac_now_playing = False
 if sys.platform == "darwin":
     try:
         # pylint: disable=no-name-in-module,import-error
@@ -55,20 +52,21 @@ if sys.platform == "darwin":
         cover_img = img
 
         can_mac_now_playing = True
-    except Exception as e:  # pylint: disable=bare-except,broad-except
-        # print(e, file=open("log.txt", "a"))
-        can_mac_now_playing = False
+    except (
+        Exception  # pylint: disable=bare-except,broad-except
+    ) as mac_import_err:
+        pass
 
-import config
-import helpers
+from maestro import config
+from maestro import helpers
 
-from helpers import print_to_logfile  # pylint: disable=unused-import
+from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
 # endregion
 
 # region utility functions/classes
 
-if sys.platform == "darwin" and can_mac_now_playing:
+if can_mac_now_playing:
 
     class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
         def applicationDidFinishLaunching_(self, _aNotification):
@@ -104,7 +102,9 @@ def read_from_queue(queue):
     return res
 
 
-def discord_presence_loop(song_name_queue, artist_queue, album_queue, discord_connected):
+def discord_presence_loop(
+    song_name_queue, artist_queue, album_queue, discord_connected
+):
     try:
         discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
         discord_rpc.connect()
@@ -178,9 +178,8 @@ def _play(
     reshuffle,
     update_discord,
     visualize,
+    stream,
 ):
-    global can_mac_now_playing  # pylint: disable=global-statement
-
     helpers.init_curses(stdscr)
 
     if loop:
@@ -189,11 +188,11 @@ def _play(
     else:
         next_playlist = None
 
-    player_output = helpers.PlayerOutput(
-        stdscr, playlist, volume, clip_mode, update_discord, visualize
+    player = helpers.PlaybackHandler(
+        stdscr, playlist, volume, clip_mode, update_discord, visualize, stream
     )
 
-    if player_output.update_discord:
+    if player.update_discord:
         discord_title_queue = multiprocessing.SimpleQueue()
         discord_artist_queue = multiprocessing.SimpleQueue()
         discord_album_queue = multiprocessing.SimpleQueue()
@@ -204,16 +203,19 @@ def _play(
                 discord_title_queue,
                 discord_artist_queue,
                 discord_album_queue,
-                player_output.discord_connected,
+                player.discord_connected,
             ),
         )
         discord_presence_process.start()
 
-    if sys.platform == "darwin" and can_mac_now_playing:
-        mac_now_playing.title_queue = Queue()
-        mac_now_playing.artist_queue = Queue()
-        mac_now_playing.q = Queue()
-        mac_now_playing.cover = cover_img
+    if can_mac_now_playing:
+        player.can_mac_now_playing = True
+        player.mac_now_playing = mac_now_playing
+
+        player.mac_now_playing.title_queue = Queue()
+        player.mac_now_playing.artist_queue = Queue()
+        player.mac_now_playing.q = Queue()
+        player.mac_now_playing.cover = cover_img
 
         ns_application = NSApplication.sharedApplication()
         # logo_ns_image = NSImage.alloc().initByReferencingFile_(
@@ -234,153 +236,169 @@ def _play(
         )
         app_helper_process.start()
 
+    if stream:
+        # fmt: off
+        ffmpeg_command = [
+            "ffmpeg",
+            "-re",  # Read input at native frame rate
+            "-f", "s16le",  # Raw PCM 16-bit little-endian audio
+            "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
+            "-ac", "2",  # Set the number of audio channels to 2 (stereo)
+            "-i", config.STREAM_PIPE,  # Input from named pipe
+            # '-i', 'pipe:0',  # Input from stdin
+            "-f", "mp3",  # Output format
+            "icecast://source:hackme@localhost:5500/stream",  # Icecast URL
+        ]
+        # fmt: on
+        # ffmpeg_process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE)
+
+        # if not os.path.exists(config.STREAM_PIPE):
+        #     os.mkfifo(config.STREAM_PIPE)
+
+        # stream_pipe = open(config.STREAM_PIPE, "wb")
+
+        # with open(config.STREAM_PIPE, "wb") as stream_pipe:
+        #     print_to_logfile("stream pipe opened")
+        #     stream_pipe.write(
+        #         player.visualizer_data[player.playlist[player.i][0]][1].reshape(
+        #             (-1,), order="F"
+        #         )
+        #     )
+
     prev_volume = volume
-    while player_output.i in range(len(player_output.playlist)):
-        song_id = player_output.playlist[player_output.i][0]
-        song_path = os.path.join(
-            config.SETTINGS["song_directory"],
-            player_output.playlist[player_output.i][1],
-        )
+    while player.i in range(len(player.playlist)):
+        player.playback = Playback()
+        player.playback.load_file(player.song_path)
 
-        playback = Playback()
-        playback.load_file(song_path)
-
-        clip_string = player_output.playlist[player_output.i][3]
+        clip_string = player.playlist[player.i][3]
         if clip_string:
-            player_output.clip = tuple(
-                map(float, player_output.playlist[player_output.i][3].split())
+            player.clip = tuple(
+                map(float, player.playlist[player.i][3].split())
             )
         else:
-            player_output.clip = 0, playback.duration
+            player.clip = 0, player.playback.duration
 
-        player_output.paused = False
-        player_output.duration = full_duration = playback.duration
+        player.paused = False
+        player.duration = full_duration = player.playback.duration
 
-        if sys.platform == "darwin" and can_mac_now_playing:
-            mac_now_playing.paused = False
-            mac_now_playing.pos = 0
-            mac_now_playing.length = player_output.duration
+        if player.can_mac_now_playing:
+            player.mac_now_playing.paused = False
+            player.mac_now_playing.pos = 0
+            player.mac_now_playing.length = player.duration
 
             helpers.multiprocessing_put_word(
-                mac_now_playing.title_queue,
-                player_output.playlist[player_output.i][1],
+                player.mac_now_playing.title_queue,
+                player.playlist[player.i][1],
             )
             helpers.multiprocessing_put_word(
-                mac_now_playing.artist_queue,
-                player_output.playlist[player_output.i][-3],
+                player.mac_now_playing.artist_queue,
+                player.playlist[player.i][-3],
             )
 
-            update_now_playing = True
+            player.update_now_playing = True
 
-        if player_output.update_discord:
+        if player.update_discord:
             helpers.multiprocessing_put_word(
-                discord_title_queue, player_output.playlist[player_output.i][1]
+                discord_title_queue, player.playlist[player.i][1]
             )
             helpers.multiprocessing_put_word(
                 discord_artist_queue,
-                player_output.playlist[player_output.i][-3],
+                player.playlist[player.i][-3],
             )
             helpers.multiprocessing_put_word(
                 discord_album_queue,
-                player_output.playlist[player_output.i][-2],
+                player.playlist[player.i][-2],
             )
 
-        playback.play()
+        player.playback.play()
 
-        if player_output.clip_mode:
-            clip_start, clip_end = player_output.clip
-            player_output.duration = clip_end - clip_start
-            playback.seek(clip_start)
-            if sys.platform == "darwin" and can_mac_now_playing:
-                mac_now_playing.pos = round(playback.curr_pos)
+        if player.clip_mode:
+            clip_start, clip_end = player.clip
+            player.duration = clip_end - clip_start
+            player.seek(clip_start)
 
         start_time = pause_start = time()
-        playback.set_volume(player_output.volume)
+        player.playback.set_volume(player.volume)
 
-        last_timestamp = playback.curr_pos
+        player.last_timestamp = player.playback.curr_pos
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
-        player_output.restarting = False
+        player.restarting = False
         while True:
-            if not playback.active or (
-                player_output.clip_mode
-                and playback.curr_pos > player_output.clip[1]
+            if not player.playback.active or (
+                player.clip_mode and player.playback.curr_pos > player.clip[1]
             ):
-                next_song = not player_output.looping_current_song
+                next_song = not player.looping_current_song
                 break
 
             # fade in first 2 seconds of clip
             if (
-                player_output.clip_mode
+                player.clip_mode
                 and clip_start != 0  # if clip doesn't start at beginning
                 and clip_end - clip_start > 5  # if clip is longer than 5 secs
-                and playback.curr_pos < clip_start + 2
+                and player.playback.curr_pos < clip_start + 2
             ):
-                playback.set_volume(
-                    player_output.volume * (playback.curr_pos - clip_start) / 2
+                player.playback.set_volume(
+                    player.volume * (player.playback.curr_pos - clip_start) / 2
                 )
             else:
-                playback.set_volume(player_output.volume)
+                player.playback.set_volume(player.volume)
 
-            if sys.platform == "darwin" and can_mac_now_playing:
+            if player.can_mac_now_playing:
                 try:
-                    if update_now_playing:
-                        mac_now_playing.update()
-                        update_now_playing = False
+                    if player.update_now_playing:
+                        player.mac_now_playing.update()
+                        player.update_now_playing = False
                     NSRunLoop.currentRunLoop().runUntilDate_(
                         NSDate.dateWithTimeIntervalSinceNow_(0.05)
                     )
                 except:  # pylint: disable=bare-except
-                    can_mac_now_playing = False
+                    player.can_mac_now_playing = False
 
             if (
-                sys.platform == "darwin"
-                and can_mac_now_playing
-                and not mac_now_playing.q.empty()
+                player.can_mac_now_playing
+                and not player.mac_now_playing.q.empty()
             ):
-                c = mac_now_playing.q.get()
+                c = player.mac_now_playing.q.get()
                 if c in "nN":
-                    if (
-                        player_output.i == len(player_output.playlist) - 1
-                        and not loop
-                    ):
+                    if player.i == len(player.playlist) - 1 and not loop:
                         pass
                     else:
                         next_song = 1
-                        playback.stop()
+                        player.playback.stop()
                         break
                 elif c in "bB":
-                    if player_output.i == 0:
+                    if player.i == 0:
                         pass
                     else:
                         next_song = -1
-                        playback.stop()
+                        player.playback.stop()
                         break
                 elif c in "rR":
-                    playback.stop()
+                    player.playback.stop()
                     next_song = 0
                     break
                 elif c in "qQ":
-                    player_output.ending = True
+                    player.ending = True
                     break
                 elif c == " ":
-                    player_output.paused = not player_output.paused
+                    player.paused = not player.paused
 
-                    if player_output.paused:
-                        playback.pause()
+                    if player.paused:
+                        player.playback.pause()
                         pause_start = time()
                     else:
-                        playback.resume()
+                        player.playback.resume()
                         start_time += time() - pause_start
 
-                    if sys.platform == "darwin" and can_mac_now_playing:
-                        mac_now_playing.paused = player_output.paused
-                        if player_output.paused:
-                            mac_now_playing.pause()
+                    if player.can_mac_now_playing:
+                        player.mac_now_playing.paused = player.paused
+                        if player.paused:
+                            player.mac_now_playing.pause()
                         else:
-                            mac_now_playing.resume()
-                        update_now_playing = True
+                            player.mac_now_playing.resume()
+                        player.update_now_playing = True
 
-                    player_output.output(playback.curr_pos)
+                    player.update_screen()
             else:
                 c = stdscr.getch()  # int
                 next_c = stdscr.getch()
@@ -397,150 +415,132 @@ def _play(
                     except (ValueError, OverflowError):
                         ch = None
 
-                    if player_output.prompting is None:
+                    if player.prompting is None:
                         if c == curses.KEY_LEFT:
-                            playback.seek(playback.curr_pos - config.SCRUB_TIME)
-                            if sys.platform == "darwin" and can_mac_now_playing:
-                                mac_now_playing.pos = round(playback.curr_pos)
-                                update_now_playing = True
-
-                            last_timestamp = playback.curr_pos
-                            player_output.output(playback.curr_pos)
+                            player.seek(player.playback.curr_pos - config.SCRUB_TIME)
+                            player.update_screen()
                         elif c == curses.KEY_RIGHT:
-                            playback.seek(playback.curr_pos + config.SCRUB_TIME)
-                            if sys.platform == "darwin" and can_mac_now_playing:
-                                mac_now_playing.pos = round(playback.curr_pos)
-                                update_now_playing = True
-
-                            last_timestamp = playback.curr_pos
-                            player_output.output(playback.curr_pos)
+                            player.seek(player.playback.curr_pos + config.SCRUB_TIME)
+                            player.update_screen()
                         elif c == curses.KEY_UP:
-                            player_output.scroller.scroll_backward()
-                            player_output.output(playback.curr_pos)
+                            player.scroller.scroll_backward()
+                            player.update_screen()
                         elif c == curses.KEY_DOWN:
-                            player_output.scroller.scroll_forward()
-                            player_output.output(playback.curr_pos)
+                            player.scroller.scroll_forward()
+                            player.update_screen()
                         elif c == curses.KEY_ENTER:
-                            player_output.i = player_output.scroller.pos - 1
+                            player.i = player.scroller.pos - 1
                             next_song = 1
-                            playback.stop()
+                            player.playback.stop()
                             break
                         elif c == curses.KEY_DC:
-                            selected_song = player_output.scroller.pos
-                            deleted_song_id = int(player_output.playlist[selected_song][0])
-                            del player_output.playlist[selected_song]
+                            selected_song = player.scroller.pos
+                            deleted_song_id = int(
+                                player.playlist[selected_song][0]
+                            )
+                            del player.playlist[selected_song]
 
                             if loop:
                                 if reshuffle:
                                     for i in range(len(next_playlist)):
-                                        if int(next_playlist[i][0]) == deleted_song_id:
+                                        if (
+                                            int(next_playlist[i][0])
+                                            == deleted_song_id
+                                        ):
                                             del next_playlist[i]
                                             break
                                 else:
                                     del next_playlist[selected_song]
 
-                            player_output.scroller.num_lines -= 1
+                            player.scroller.num_lines -= 1
                             if (
-                                selected_song == player_output.i
+                                selected_song == player.i
                             ):  # deleted current song
                                 next_song = 1
                                 # will be incremented to i
-                                player_output.scroller.pos = player_output.i - 1
-                                player_output.i -= 1
-                                playback.stop()
+                                player.scroller.pos = player.i - 1
+                                player.i -= 1
+                                player.playback.stop()
                                 break
                             # deleted song before current
-                            if selected_song < player_output.i:
-                                player_output.i -= 1
+                            if selected_song < player.i:
+                                player.i -= 1
+                            # deleted last song
+                            if selected_song == player.scroller.num_lines:
+                                player.scroller.pos -= 1
                         elif ch is not None:
                             if ch in "nN":
                                 if (
-                                    player_output.i
-                                    == len(player_output.playlist) - 1
+                                    player.i == len(player.playlist) - 1
                                     and not loop
                                 ):
                                     pass
                                 else:
                                     next_song = 1
-                                    playback.stop()
+                                    player.playback.stop()
                                     break
                             elif ch in "bB":
-                                if player_output.i == 0:
+                                if player.i == 0:
                                     pass
                                 else:
                                     next_song = -1
-                                    playback.stop()
+                                    player.playback.stop()
                                     break
                             elif ch in "rR":
-                                player_output.restarting = True
-                                playback.stop()
+                                player.restarting = True
+                                player.playback.stop()
                                 next_song = 0
                                 break
                             elif ch in "lL":
-                                player_output.looping_current_song = (
-                                    player_output.looping_current_song + 1
+                                player.looping_current_song = (
+                                    player.looping_current_song + 1
                                 ) % len(config.LOOP_MODES)
-                                player_output.output(playback.curr_pos)
+                                player.update_screen()
                             elif ch in "cC":
-                                player_output.clip_mode = (
-                                    not player_output.clip_mode
-                                )
-                                if player_output.clip_mode:
+                                player.clip_mode = not player.clip_mode
+                                if player.clip_mode:
                                     (
                                         clip_start,
                                         clip_end,
-                                    ) = player_output.clip
-                                    player_output.duration = (
-                                        clip_end - clip_start
-                                    )
+                                    ) = player.clip
+                                    player.duration = clip_end - clip_start
                                     if (
-                                        playback.curr_pos < clip_start
-                                        or playback.curr_pos > clip_end
+                                        player.playback.curr_pos < clip_start
+                                        or player.playback.curr_pos > clip_end
                                     ):
-                                        playback.seek(clip_start)
-                                        if (
-                                            sys.platform == "darwin"
-                                            and can_mac_now_playing
-                                        ):
-                                            mac_now_playing.pos = round(
-                                                playback.curr_pos
-                                            )
-                                            update_now_playing = True
-                                        last_timestamp = playback.curr_pos
+                                        player.seek(clip_start)
                                 else:
-                                    player_output.duration = full_duration
-                                player_output.output(playback.curr_pos)
+                                    player.duration = full_duration
+                                player.update_screen()
                             elif ch in "pP":
-                                player_output.scroller.pos = player_output.i
-                                player_output.scroller.resize()
-                                player_output.output(playback.curr_pos)
+                                player.scroller.pos = player.i
+                                player.scroller.resize()
+                                player.update_screen()
                             elif ch in "gG":
                                 if loop:
-                                    playback.stop()
-                                    player_output.i = (
-                                        len(player_output.playlist) - 1
-                                    )
+                                    player.playback.stop()
+                                    player.i = len(player.playlist) - 1
                                     next_song = 1
                                     break
                             elif ch in "eE":
-                                player_output.ending = not player_output.ending
-                                player_output.output(playback.curr_pos)
+                                player.ending = not player.ending
+                                player.update_screen()
                             elif ch in "qQ":
-                                player_output.ending = True
+                                player.ending = True
                                 break
                             elif ch in "dD":
-                                if player_output.update_discord:
-                                    player_output.update_discord = False
+                                if player.update_discord:
+                                    player.update_discord = False
                                     discord_presence_process.terminate()
                                 else:
-                                    player_output.update_discord = True
+                                    player.update_discord = True
 
                                     discord_title_queue = (
                                         multiprocessing.SimpleQueue()
                                     )
                                     helpers.multiprocessing_put_word(
                                         discord_title_queue,
-                                        player_output.playlist[player_output.i][1],
+                                        player.playlist[player.i][1],
                                     )
 
                                     discord_artist_queue = (
@@ -548,7 +548,7 @@ def _play(
                                     )
                                     helpers.multiprocessing_put_word(
                                         discord_artist_queue,
-                                        player_output.playlist[player_output.i][-3],
+                                        player.playlist[player.i][-3],
                                     )
 
                                     discord_album_queue = (
@@ -556,10 +556,10 @@ def _play(
                                     )
                                     helpers.multiprocessing_put_word(
                                         discord_album_queue,
-                                        player_output.playlist[player_output.i][-2],
+                                        player.playlist[player.i][-2],
                                     )
 
-                                    player_output.discord_connected = (
+                                    player.discord_connected = (
                                         multiprocessing.Value("i", 2)
                                     )
 
@@ -572,136 +572,123 @@ def _play(
                                                 discord_title_queue,
                                                 discord_artist_queue,
                                                 discord_album_queue,
-                                                player_output.discord_connected,
+                                                player.discord_connected,
                                             ),
                                         )
                                     )
                                     discord_presence_process.start()
                             elif ch in "iI":
-                                player_output.prompting = (
+                                player.prompting = (
                                     "",
                                     0,
                                     config.PROMPT_MODES["insert"],
                                 )
                                 curses.curs_set(True)
                                 screen_size = stdscr.getmaxyx()
-                                player_output.scroller.resize(
-                                    screen_size[0] - 3
-                                )
-                                player_output.output(playback.curr_pos)
+                                player.scroller.resize(screen_size[0] - 3)
+                                player.update_screen()
                             elif ch in "aA":
-                                player_output.prompting = (
+                                player.prompting = (
                                     "",
                                     0,
                                     config.PROMPT_MODES["add"],
                                 )
                                 curses.curs_set(True)
                                 screen_size = stdscr.getmaxyx()
-                                player_output.scroller.resize(
-                                    screen_size[0] - 3
-                                )
-                                player_output.output(playback.curr_pos)
+                                player.scroller.resize(screen_size[0] - 3)
+                                player.update_screen()
                             elif ch in "tT":
-                                player_output.prompting = (
+                                player.prompting = (
                                     "",
                                     0,
                                     config.PROMPT_MODES["tag"],
                                 )
                                 curses.curs_set(True)
                                 screen_size = stdscr.getmaxyx()
-                                player_output.scroller.resize(
-                                    screen_size[0] - 3
-                                )
-                                player_output.output(playback.curr_pos)
+                                player.scroller.resize(screen_size[0] - 3)
+                                player.update_screen()
                             elif ch in "mM":
-                                if player_output.volume == 0:
-                                    player_output.volume = prev_volume
+                                if player.volume == 0:
+                                    player.volume = prev_volume
                                 else:
-                                    player_output.volume = 0
-                                playback.set_volume(player_output.volume)
+                                    player.volume = 0
+                                player.playback.set_volume(player.volume)
 
-                                player_output.output(playback.curr_pos)
+                                player.update_screen()
                             elif ch in "vV":
-                                player_output.visualize = (
-                                    not player_output.visualize
-                                )
-                                player_output.output(playback.curr_pos)
+                                player.visualize = not player.visualize
+                                player.update_screen()
                             elif ch == " ":
-                                player_output.paused = not player_output.paused
+                                player.paused = not player.paused
 
-                                if player_output.paused:
-                                    playback.pause()
+                                if player.paused:
+                                    player.playback.pause()
                                     pause_start = time()
                                 else:
-                                    playback.resume()
+                                    player.playback.resume()
                                     start_time += time() - pause_start
 
-                                if (
-                                    sys.platform == "darwin"
-                                    and can_mac_now_playing
-                                ):
-                                    mac_now_playing.paused = (
-                                        player_output.paused
-                                    )
-                                    if player_output.paused:
-                                        mac_now_playing.pause()
+                                if player.can_mac_now_playing:
+                                    player.mac_now_playing.paused = player.paused
+                                    if player.paused:
+                                        player.mac_now_playing.pause()
                                     else:
-                                        mac_now_playing.resume()
-                                    update_now_playing = True
+                                        player.mac_now_playing.resume()
+                                    player.update_now_playing = True
 
-                                player_output.output(playback.curr_pos)
+                                player.update_screen()
                             elif ch == "[":
-                                player_output.volume = max(
-                                    0, player_output.volume - config.VOLUME_STEP
+                                player.volume = max(
+                                    0, player.volume - config.VOLUME_STEP
                                 )
-                                playback.set_volume(player_output.volume)
+                                player.playback.set_volume(player.volume)
 
-                                player_output.output(playback.curr_pos)
+                                player.update_screen()
 
-                                prev_volume = player_output.volume
+                                prev_volume = player.volume
                             elif ch == "]":
-                                player_output.volume = min(
-                                    1, player_output.volume + config.VOLUME_STEP
+                                player.volume = min(
+                                    1, player.volume + config.VOLUME_STEP
                                 )
-                                playback.set_volume(player_output.volume)
+                                player.playback.set_volume(player.volume)
 
-                                player_output.output(playback.curr_pos)
+                                player.update_screen()
 
-                                prev_volume = player_output.volume
+                                prev_volume = player.volume
                     else:
                         if c == curses.KEY_LEFT:
                             # pylint: disable=unsubscriptable-object
-                            player_output.prompting = (
-                                player_output.prompting[0],
-                                max(player_output.prompting[1] - 1, 0),
-                                player_output.prompting[2],
+                            player.prompting = (
+                                player.prompting[0],
+                                max(player.prompting[1] - 1, 0),
+                                player.prompting[2],
                             )
-                            player_output.output(playback.curr_pos)
+                            player.update_screen()
                         elif c == curses.KEY_RIGHT:
                             # pylint: disable=unsubscriptable-object
-                            player_output.prompting = (
-                                player_output.prompting[0],
+                            player.prompting = (
+                                player.prompting[0],
                                 min(
-                                    player_output.prompting[1] + 1,
-                                    len(player_output.prompting[0]),
+                                    player.prompting[1] + 1,
+                                    len(player.prompting[0]),
                                 ),
-                                player_output.prompting[2],
+                                player.prompting[2],
                             )
-                            player_output.output(playback.curr_pos)
+                            player.update_screen()
                         elif c == curses.KEY_UP:
-                            player_output.scroller.scroll_backward()
-                            player_output.output(playback.curr_pos)
+                            player.scroller.scroll_backward()
+                            player.update_screen()
                         elif c == curses.KEY_DOWN:
-                            player_output.scroller.scroll_forward()
-                            player_output.output(playback.curr_pos)
+                            player.scroller.scroll_forward()
+                            player.update_screen()
                         elif c == curses.KEY_DC:
                             # pylint: disable=unsubscriptable-object
-                            player_output.prompting_delete_char()
-                            player_output.output(playback.curr_pos)
+                            player.prompting_delete_char()
+                            player.update_screen()
                         elif c == curses.KEY_ENTER:
                             # pylint: disable=unsubscriptable-object
                             # fmt: off
-                            if player_output.prompting[0].isnumeric() and player_output.prompting[2] in (
+                            if player.prompting[0].isnumeric() and player.prompting[2] in (
                                 config.PROMPT_MODES["add"],
                                 config.PROMPT_MODES["insert"],
                             ):
@@ -713,7 +700,7 @@ def _play(
                                     for line in songs_file:
                                         details = line.strip().split("|")
                                         song_id = int(details[0])
-                                        if song_id == int(player_output.prompting[0]):
+                                        if song_id == int(player.prompting[0]):
                                             song_data = music_tag.load_file(
                                                 os.path.join(
                                                     config.SETTINGS["song_directory"],
@@ -728,17 +715,17 @@ def _play(
                                                     ("albumartist", "Album Artist"),
                                                 )
                                             ]
-                                            if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
-                                                player_output.playlist.insert(
-                                                    player_output.scroller.pos + 1,
+                                            if player.prompting[2] == config.PROMPT_MODES["insert"]:
+                                                player.playlist.insert(
+                                                    player.scroller.pos + 1,
                                                     details,
                                                 )
-                                                inserted_pos = player_output.scroller.pos + 1
-                                                if player_output.i > player_output.scroller.pos:
-                                                    player_output.i += 1
+                                                inserted_pos = player.scroller.pos + 1
+                                                if player.i > player.scroller.pos:
+                                                    player.i += 1
                                             else:
-                                                player_output.playlist.append(details)
-                                                inserted_pos = len(player_output.playlist) - 1
+                                                player.playlist.append(details)
+                                                inserted_pos = len(player.playlist) - 1
 
                                             if loop:
                                                 if reshuffle >= 0:
@@ -754,24 +741,24 @@ def _play(
                                                 #     else:
                                                 #         next_playlist.append(details)
 
-                                            player_output.scroller.num_lines += 1
+                                            player.scroller.num_lines += 1
 
-                                            player_output.prompting = None
+                                            player.prompting = None
                                             curses.curs_set(False)
-                                            player_output.scroller.resize(screen_size[0] - 2)
+                                            player.scroller.resize(screen_size[0] - 2)
 
-                                            player_output.output(playback.curr_pos)
+                                            player.update_screen()
                                             break
                             elif (
-                                "|" not in player_output.prompting[0]
-                                and player_output.prompting[2]
+                                "|" not in player.prompting[0]
+                                and player.prompting[2]
                                 == config.PROMPT_MODES["tag"]
                             ):
-                                tags = player_output.prompting[0].split(",")
+                                tags = player.prompting[0].split(",")
 
                                 tagging_ids = {}
-                                for i in range(len(player_output.playlist)):
-                                    tagging_ids[int(player_output.playlist[i][0])] = i
+                                for i in range(len(player.playlist)):
+                                    tagging_ids[int(player.playlist[i][0])] = i
 
                                 songs_file = open(
                                     config.SONGS_INFO_PATH,
@@ -793,7 +780,7 @@ def _play(
                                         ]
                                         details[2] = ",".join(new_tags)
                                         lines[i] = "|".join(details)
-                                        player_output.playlist[tagging_ids[song_id]][2] = details[2]
+                                        player.playlist[tagging_ids[song_id]][2] = details[2]
                                 songs_file.close()
 
                                 songs_file = open(
@@ -804,57 +791,82 @@ def _play(
                                 songs_file.write("\n".join(lines))
                                 songs_file.close()
 
-                                player_output.prompting = None
+                                player.prompting = None
                                 curses.curs_set(False)
-                                player_output.output(playback.curr_pos)
+                                player.update_screen()
                         elif c == 27:  # ESC key
-                            player_output.prompting = None
+                            player.prompting = None
                             curses.curs_set(False)
-                            player_output.scroller.resize(screen_size[0] - 2)
-                            player_output.output(playback.curr_pos)
+                            player.scroller.resize(screen_size[0] - 2)
+                            player.update_screen()
                         elif ch is not None:
-                            player_output.prompting = (
+                            player.prompting = (
                                 # pylint: disable=unsubscriptable-object
-                                player_output.prompting[0][
-                                    : player_output.prompting[1]
-                                ]
+                                player.prompting[0][: player.prompting[1]]
                                 + ch
-                                + player_output.prompting[0][
-                                    player_output.prompting[1] :
-                                ],
-                                player_output.prompting[1] + 1,
-                                player_output.prompting[2],
+                                + player.prompting[0][player.prompting[1] :],
+                                player.prompting[1] + 1,
+                                player.prompting[2],
                             )
-                            player_output.output(playback.curr_pos)
+                            player.update_screen()
 
-            if sys.platform == "darwin" and can_mac_now_playing:
-                if abs(mac_now_playing.pos - playback.curr_pos) > 1:
-                    playback.seek(mac_now_playing.pos)
-                    last_timestamp = mac_now_playing.pos
-                    update_now_playing = True
-                    player_output.output(playback.curr_pos)
+            if player.can_mac_now_playing:
+                if abs(player.mac_now_playing.pos - player.playback.curr_pos) > 1:
+                    player.seek(player.mac_now_playing.pos)
+                    player.update_screen()
                 else:
-                    mac_now_playing.pos = round(playback.curr_pos)
+                    player.mac_now_playing.pos = round(player.playback.curr_pos)
 
             progress_bar_width = stdscr.getmaxyx()[1] - 18
             frame_duration = min(
                 (
                     1
                     if progress_bar_width < config.MIN_PROGRESS_BAR_WIDTH
-                    else player_output.duration / (progress_bar_width * 8)
+                    else player.duration / (progress_bar_width * 8)
                 ),
-                1 / config.FPS if player_output.visualize else 1,
+                1 / config.FPS if player.visualize else 1,
             )
-            if abs(playback.curr_pos - last_timestamp) > frame_duration:
-                last_timestamp = playback.curr_pos
-                player_output.output(playback.curr_pos)
+            if abs(player.playback.curr_pos - player.last_timestamp) > frame_duration:
+                player.last_timestamp = player.playback.curr_pos
+                player.update_screen()
 
-            # sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
+            # if (
+            #     stream
+            #     and player.audio_data is not None
+            #     and song_id in player.audio_data
+            # ):
+            #     print_to_logfile("writing to stream pipe")
+            #     fpos = int(playback.curr_pos * config.STREAM_SAMPLE_RATE) * 2
+            #     print_to_logfile(
+            #         # playback.curr_pos,
+            #         fpos,
+            #         fpos + int(config.STREAM_SAMPLE_RATE * 0.02 * 2),
+            #     )
+            #     try:
+            #         # stream_pipe.writeframes(
+            #         #     player_output.visualizer_data[song_id][1].reshape((-1,), order="F")
+            #         # )
+            #         stream_pipe.write(
+            #             player.audio_data[song_id][1][
+            #                 :,
+            #                 fpos : fpos
+            #                 + int(config.STREAM_SAMPLE_RATE * 0.01 * 2),
+            #             ].reshape((-1,), order="F")
+            #         )
+            #     except OSError as e:
+            #         print_to_logfile(e)
+            #         raise e
+            #     print_to_logfile("wrote to stream pipe")
+
+            sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
+
+        player.pos_changed = True
 
         # region stats
-        time_listened = time() - start_time
-        if player_output.paused:
-            time_listened -= time() - pause_start
+        if player.paused:
+            time_listened = pause_start - start_time
+        else:
+            time_listened = time() - start_time
 
         with open(
             config.TOTAL_STATS_PATH, "r+", encoding="utf-8"
@@ -862,7 +874,7 @@ def _play(
             lines = stats_file.readlines()
             for j in range(len(lines)):
                 song_id, listened = lines[j].strip().split("|")
-                if song_id == player_output.playlist[player_output.i][0]:
+                if song_id == player.song_id:
                     listened = float(listened) + time_listened
                     lines[j] = f"{song_id}|{listened}\n"
                     break
@@ -878,7 +890,7 @@ def _play(
             lines = stats_file.readlines()
             for j in range(len(lines)):
                 song_id, listened = lines[j].strip().split("|")
-                if song_id == player_output.playlist[player_output.i][0]:
+                if song_id == player.song_id:
                     listened = float(listened) + time_listened
                     lines[j] = f"{song_id}|{listened}\n"
                     break
@@ -889,40 +901,40 @@ def _play(
             stats_file.truncate()
         # endregion
 
-        if player_output.ending and not player_output.restarting:
+        if player.ending and not player.restarting:
             return
 
         if next_song == -1:
-            if player_output.i == player_output.scroller.pos:
-                player_output.scroller.scroll_backward()
-            player_output.i -= 1
+            if player.i == player.scroller.pos:
+                player.scroller.scroll_backward()
+            player.i -= 1
         elif next_song == 1:
-            if player_output.i == len(player_output.playlist) - 1:
+            if player.i == len(player.playlist) - 1:
                 if loop:
                     next_next_playlist = next_playlist[:]
                     if reshuffle:
                         helpers.bounded_shuffle(next_next_playlist, reshuffle)
-                    player_output.playlist, next_playlist = (
+                    player.playlist, next_playlist = (
                         next_playlist,
                         next_next_playlist,
                     )
-                    player_output.i = -1
-                    player_output.scroller.pos = 0
+                    player.i = -1
+                    player.scroller.pos = 0
                 else:
                     return
             else:
-                if player_output.i == player_output.scroller.pos:
-                    player_output.scroller.scroll_forward()
-            player_output.i += 1
+                if player.i == player.scroller.pos:
+                    player.scroller.scroll_forward()
+            player.i += 1
         elif next_song == 0:
-            if player_output.looping_current_song == config.LOOP_MODES["one"]:
-                player_output.looping_current_song = config.LOOP_MODES["none"]
+            if player.looping_current_song == config.LOOP_MODES["one"]:
+                player.looping_current_song = config.LOOP_MODES["none"]
 
 
 # endregion
 
 
-@click.group(context_settings=dict(help_option_names=["-h", "--help"]))
+@click.group(context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
     """A command line interface for playing music."""
 
@@ -932,21 +944,17 @@ def cli():
     if not os.path.exists(config.SETTINGS_FILE):
         with open(config.SETTINGS_FILE, "x", encoding="utf-8") as f:
             json.dump(config.DEFAULT_SETTINGS, f)
+        config.SETTINGS = config.DEFAULT_SETTINGS
+    else:
+        with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
+            config.SETTINGS = json.load(f)
 
-    with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
-        settings = json.load(f)
+        for key in config.DEFAULT_SETTINGS:
+            if key not in config.SETTINGS:
+                config.SETTINGS[key] = config.DEFAULT_SETTINGS[key]
 
-    for key in config.DEFAULT_SETTINGS:
-        if key not in settings:
-            settings[key] = config.DEFAULT_SETTINGS[key]
-
-    with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
-        json.dump(settings, g)
-
-    config.SETTINGS = settings
-
-    if not os.path.exists(settings["song_directory"]):
-        os.makedirs(settings["song_directory"])
+    if not os.path.exists(config.SETTINGS["song_directory"]):
+        os.makedirs(config.SETTINGS["song_directory"])
 
     if not os.path.exists(config.SONGS_INFO_PATH):
         with open(config.SONGS_INFO_PATH, "x", encoding="utf-8") as _:
@@ -969,16 +977,24 @@ def cli():
             for line in g:
                 f.write(f"{line.strip().split('|')[0]}|0\n")
 
-    try:
-        response = requests.get('https://pypi.org/pypi/maestro-music/json', timeout=5)
-        latest_version = response.json()["info"]["version"]
-        if latest_version != VERSION:
-            click.secho(
-                f"A new version of maestro-cli is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
-                fg="yellow",
+    t = time()
+    if t - config.SETTINGS["last_version_sync"] > 24 * 60 * 60:  # 1 day
+        config.SETTINGS["last_version_sync"] = t
+        try:
+            response = requests.get(
+                "https://pypi.org/pypi/maestro-music/json", timeout=5
             )
-    except:  # pylint: disable=bare-except
-        pass
+            latest_version = response.json()["info"]["version"]
+            if latest_version != VERSION:
+                click.secho(
+                    f"A new version of maestro-cli is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
+                    fg="yellow",
+                )
+        except:  # pylint: disable=bare-except
+            pass
+
+    with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
+        json.dump(config.SETTINGS, g)
 
 
 @cli.command()
@@ -1670,6 +1686,7 @@ def untag(song_ids, tags, all_):
     default=False,
     help="Visualize the song being played. Ignored if required dependencies are not installed.",
 )
+@click.option("-S/-nS", "--stream/--no-stream", "stream", default=False)
 def play(
     tags,
     exclude_tags,
@@ -1683,6 +1700,7 @@ def play(
     discord,
     match_all,
     visualize,
+    stream,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your playlist, unless the '-M/--match-all' flag is passed, in which case
@@ -1814,6 +1832,7 @@ def play(
             reshuffle,
             discord and can_update_discord,
             visualize,
+            stream and helpers.LIBROSA is not None,
         )
 
     if songs_not_found:
@@ -2058,7 +2077,16 @@ def search(phrase, searching_for_tags):
     default=False,
     help="Shows songs that match all tags instead of any tag. Ignored if '-t/--tag' is passed.",
 )
-def list_(search_tags, exclude_tags, listing_tags, year, sort_, top, reverse_, match_all):
+def list_(
+    search_tags,
+    exclude_tags,
+    listing_tags,
+    year,
+    sort_,
+    top,
+    reverse_,
+    match_all,
+):
     """List the entries for all songs.
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
@@ -2138,7 +2166,9 @@ def list_(search_tags, exclude_tags, listing_tags, year, sort_, top, reverse_, m
                 song_id = int(song_id)
                 if tag_string:
                     for tag in tag_string.split(","):
-                        if (not search_tags or tag in search_tags) and (not exclude_tags or tag not in exclude_tags):
+                        if (not search_tags or tag in search_tags) and (
+                            not exclude_tags or tag not in exclude_tags
+                        ):
                             tags[tag] = (
                                 tags[tag][0] + stats[song_id],
                                 tags[tag][1]
@@ -2707,12 +2737,12 @@ def metadata(song_ids, pairs):
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
-        # ids_not_found = set(song_ids)
+        ids_not_found = set(song_ids)
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
             song_id = int(details[0])
             if song_id in song_ids:
-                # ids_not_found.remove(song_id)
+                ids_not_found.remove(song_id)
                 song_name = details[1]
                 song_path = os.path.join(
                     config.SETTINGS["song_directory"], song_name
@@ -2742,6 +2772,13 @@ def metadata(song_ids, pairs):
                         except:  # pylint: disable=bare-except
                             pass
 
+        if ids_not_found:
+            click.secho(
+                "Song IDs not found: "
+                + ", ".join(sorted(map(str, ids_not_found))),
+                fg="yellow",
+            )
+
 
 @cli.command(name="dir")
 @click.argument("directory", type=click.Path(file_okay=False), required=False)
@@ -2769,6 +2806,14 @@ def dir_(directory):
         settings_file.truncate()
 
     click.secho(f"Changed song directory to {directory}.", fg="green")
+
+
+@cli.command(name="version")
+def version():
+    """
+    Version of maestro-cli (PyPI version of the maestro-music package).
+    """
+    click.echo(f"maestro version: {VERSION}")
 
 
 # @cli.command(name="data-out")

@@ -1,11 +1,12 @@
 .vscode
 build
 *.egg-info
-log.txt
+**/*.log
 *.egg
 __pycache__
 *.code-workspace
 **/*.env
+.pylintrc
 
 todo.md
 test_songs/

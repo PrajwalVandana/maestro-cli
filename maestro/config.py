@@ -110,8 +110,8 @@ WAVEFORM_FLATTEN_FACTOR = 20
 # region stream
 STREAM_PIPE = "/tmp/maestro_stream"
 
-STREAM_SAMPLE_RATE = 32000
-STREAM_CHUNK_SIZE = 4096
+STREAM_SAMPLE_RATE = 44100
+STREAM_CHUNK_SIZE = 256
 # endregion
 
 # endregion

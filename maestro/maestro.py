@@ -45,12 +45,11 @@ if sys.platform == "darwin":
         # from MediaPlayer import MPNowPlayingInfoPropertyElapsedPlaybackTime
         from PyObjCTools import AppHelper
 
-        from mac_presence import MacNowPlaying
+        from maestro.mac_presence import MacNowPlaying
 
         # globals
         mac_now_playing = MacNowPlaying()
         cover_img = img
-
         can_mac_now_playing = True
     except (
         Exception  # pylint: disable=bare-except,broad-except
@@ -236,35 +235,6 @@ def _play(
         )
         app_helper_process.start()
 
-    if stream:
-        # fmt: off
-        ffmpeg_command = [
-            "ffmpeg",
-            "-re",  # Read input at native frame rate
-            "-f", "s16le",  # Raw PCM 16-bit little-endian audio
-            "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
-            "-ac", "2",  # Set the number of audio channels to 2 (stereo)
-            "-i", config.STREAM_PIPE,  # Input from named pipe
-            # '-i', 'pipe:0',  # Input from stdin
-            "-f", "mp3",  # Output format
-            "icecast://source:hackme@localhost:5500/stream",  # Icecast URL
-        ]
-        # fmt: on
-        # ffmpeg_process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE)
-
-        # if not os.path.exists(config.STREAM_PIPE):
-        #     os.mkfifo(config.STREAM_PIPE)
-
-        # stream_pipe = open(config.STREAM_PIPE, "wb")
-
-        # with open(config.STREAM_PIPE, "wb") as stream_pipe:
-        #     print_to_logfile("stream pipe opened")
-        #     stream_pipe.write(
-        #         player.visualizer_data[player.playlist[player.i][0]][1].reshape(
-        #             (-1,), order="F"
-        #         )
-        #     )
-
     prev_volume = volume
     while player.i in range(len(player.playlist)):
         player.playback = Playback()
@@ -351,7 +321,7 @@ def _play(
                     NSRunLoop.currentRunLoop().runUntilDate_(
                         NSDate.dateWithTimeIntervalSinceNow_(0.05)
                     )
-                except:  # pylint: disable=bare-except
+                except Exception as e:  # pylint: disable=bare-except
                     player.can_mac_now_playing = False
 
             if (
@@ -830,34 +800,6 @@ def _play(
                 player.last_timestamp = player.playback.curr_pos
                 player.update_screen()
 
-            # if (
-            #     stream
-            #     and player.audio_data is not None
-            #     and song_id in player.audio_data
-            # ):
-            #     print_to_logfile("writing to stream pipe")
-            #     fpos = int(playback.curr_pos * config.STREAM_SAMPLE_RATE) * 2
-            #     print_to_logfile(
-            #         # playback.curr_pos,
-            #         fpos,
-            #         fpos + int(config.STREAM_SAMPLE_RATE * 0.02 * 2),
-            #     )
-            #     try:
-            #         # stream_pipe.writeframes(
-            #         #     player_output.visualizer_data[song_id][1].reshape((-1,), order="F")
-            #         # )
-            #         stream_pipe.write(
-            #             player.audio_data[song_id][1][
-            #                 :,
-            #                 fpos : fpos
-            #                 + int(config.STREAM_SAMPLE_RATE * 0.01 * 2),
-            #             ].reshape((-1,), order="F")
-            #         )
-            #     except OSError as e:
-            #         print_to_logfile(e)
-            #         raise e
-            #     print_to_logfile("wrote to stream pipe")
-
             sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
 
         player.pos_changed = True
@@ -902,6 +844,7 @@ def _play(
         # endregion
 
         if player.ending and not player.restarting:
+            player.quit()
             return
 
         if next_song == -1:

@@ -9,6 +9,7 @@ import importlib
 import logging
 import multiprocessing
 import os
+import subprocess
 import threading
 import warnings
 
@@ -269,25 +270,46 @@ class PlaybackHandler:
 
         if self.visualize or self.stream:
             self.audio_data = {}  # dict(song_id: (vis data, stream datas))
-            t = threading.Thread(
+            self.audio_processing_thread = threading.Thread(
                 target=self._audio_processing_loop,
                 daemon=True,
             )
-            t.start()
+            self.audio_processing_thread.start()
         else:
             self.audio_data = None
         self.compiled = None
 
+        self.ffmpeg_process = None
         if self.stream:
-            if not os.path.exists(config.STREAM_PIPE):
-                os.mkfifo(config.STREAM_PIPE)
-            self.stream_pipe = open(config.STREAM_PIPE, "wb")
+            try:
+                # fmt: off
+                ffmpeg_command = [
+                    "ffmpeg",
+                    "-re",  # Read input at native frame rate
+                    "-f", "s16le",  # Raw PCM 16-bit little-endian audio
+                    "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
+                    "-ac", "2",  # Set the number of audio channels to 2 (stereo)
+                    # "-i", config.STREAM_PIPE,  # Input from named pipe
+                    '-i', 'pipe:',  # Input from stdin
+                    "-content_type", "application/ogg",
+                    "-f", "ogg",  # Output format
+                    "icecast://source:hackme@localhost:8000/stream.ogg",  # Icecast URL
+                ]
+                # fmt: on
+                self.ffmpeg_process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE , stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            t = threading.Thread(
-                target=self._streaming_loop,
-                daemon=True,
-            )
-            t.start()
+                # if not os.path.exists(config.STREAM_PIPE):
+                    # os.mkfifo(config.STREAM_PIPE)
+                self.stream_pipe = self.ffmpeg_process.stdin
+
+                self.streaming_thread = threading.Thread(
+                    target=self._streaming_loop,
+                    daemon=True,
+                )
+                self.streaming_thread.start()
+            except FileNotFoundError as err:
+                pass
+
 
         self.looping_current_song = config.LOOP_MODES["none"]
         self.duration = 0
@@ -353,7 +375,7 @@ class PlaybackHandler:
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
                             )
-                            * (2**15 - 1)
+                            * (2**15 - 1) * 0.5 #VOLUME
                         )  # convert to 16-bit PCM
                         if self.stream
                         else None
@@ -363,19 +385,24 @@ class PlaybackHandler:
             sleep(1)
 
     def _streaming_loop(self):
-        print_to_logfile(
-            type(self.audio_data),
-            self.song_id in self.audio_data,
-            self.playback,
-        )
+        # print_to_logfile(
+        #     type(self.audio_data),
+        #     self.song_id in self.audio_data,
+        #     self.playback,
+        # )
         while True:
+            # print_to_logfile(
+            #     type(self.audio_data),
+            #     self.song_id in self.audio_data,
+            #     self.playback,
+            # )
             if (
                 self.audio_data is not None
                 and self.song_id in self.audio_data
                 and self.playback is not None
             ):
                 # print_to_logfile("writing to stream pipe")
-                print_to_logfile(self.song_id)
+                #print_to_logfile(self.song_id)
                 for fpos in range(
                     int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE) * 2,
                     self.audio_data[self.song_id][1].shape[1],
@@ -395,9 +422,11 @@ class PlaybackHandler:
                             .reshape((-1,), order="F").tobytes()
                         )
                         self.stream_pipe.write(chunk)
+                        # ffmpeg_stdout, ffmpeg_stderr = self.ffmpeg_process.communicate(input=chunk)
+                        # print_to_logfile(ffmpeg_stdout, ffmpeg_stderr)
                     except OSError as e:
                         print_to_logfile(e)
-                        raise e
+
                     if self.pos_changed:
                         self.pos_changed = False
                         break
@@ -405,7 +434,7 @@ class PlaybackHandler:
                 # sleep(
                 #     len(chunk) / (config.STREAM_SAMPLE_RATE)
                 # )  # x2 for stereo
-            # sleep(0.01)
+            sleep(0.01)
 
     @property
     def song_id(self):
@@ -425,6 +454,10 @@ class PlaybackHandler:
                 self.mac_now_playing.pos = round(pos)
                 self.update_now_playing = True
             self.last_timestamp = pos
+
+    def quit(self):
+        if self.ffmpeg_process is not None:
+            self.ffmpeg_process.kill()
 
     def prompting_delete_char(self):
         if self.prompting[1] > 0:

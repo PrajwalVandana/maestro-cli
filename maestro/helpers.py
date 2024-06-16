@@ -9,6 +9,7 @@ import importlib
 import logging
 import multiprocessing
 import os
+import requests
 import subprocess
 import threading
 import warnings
@@ -16,8 +17,10 @@ import warnings
 logging.disable(logging.CRITICAL)
 
 import click
+import keyring
 import music_tag
 
+from getpass import getpass
 from shutil import copy, move
 from time import sleep
 from random import randint
@@ -229,6 +232,53 @@ def render(
     return res
 
 
+class FFmpegProcessHandler:
+    def __init__(self, username, password):
+        self.process = None
+        self.username = username
+        self.password = password
+
+    def start(self):
+        self.process = subprocess.Popen(
+            # fmt: off
+            [
+                "ffmpeg",
+                "-re",  # Read input at native frame rate
+                "-f", "s16le",  # Raw PCM 16-bit little-endian audio
+                "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
+                "-ac", "2",  # Set the number of audio channels to 2 (stereo)
+                '-i', 'pipe:',  # Input from stdin
+                # "-content_type", "application/mpeg",
+                "-f", "mp3",  # Output format
+                # '-bufsize', '64k',  # Reduce buffer size
+                # '-fflags', 'nobuffer',  # Disable buffering
+                # '-flush_packets', '1',  # Flush packets
+                # '-max_delay', '0',  # Set maximum delay to 0
+                # '-probesize', '32',  # Reduce probesize
+                # '-analyzeduration', '0',  # Reduce analyzeduration
+                # "-report",  # DEBUG
+                f"icecast://{self.username}:{self.password}@20.10.168.80:8000/{self.username}",  # Azure-hosted maestro Icecast URL
+                # f"icecast://{self.username}:{self.password}@localhost:5500/{self.username}",  # DEBUG: Local Icecast URL (dev)
+            ],
+            # fmt: on
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def terminate(self):
+        if self.process is not None:
+            self.process.terminate()
+
+    def restart(self):
+        self.terminate()
+        self.start()
+
+    def write(self, chunk):
+        if self.process is not None:
+            self.process.stdin.write(chunk)
+
+
 class PlaybackHandler:
     def __init__(
         self,
@@ -250,7 +300,9 @@ class PlaybackHandler:
         self.clip_mode = clip_mode
         self.update_discord = update_discord
         self.visualize = visualize  # want to visualize
-        self.stream = stream  # want to streams
+        self.stream = stream
+        if self.stream:
+            self.username, self.password = stream
 
         self.playback = None
         self.pos_changed = False
@@ -268,6 +320,7 @@ class PlaybackHandler:
             and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
         )
 
+        self.audio_data = None
         if self.visualize or self.stream:
             self.audio_data = {}  # dict(song_id: (vis data, stream datas))
             self.audio_processing_thread = threading.Thread(
@@ -275,41 +328,19 @@ class PlaybackHandler:
                 daemon=True,
             )
             self.audio_processing_thread.start()
-        else:
-            self.audio_data = None
         self.compiled = None
 
         self.ffmpeg_process = None
         if self.stream:
-            try:
-                # fmt: off
-                ffmpeg_command = [
-                    "ffmpeg",
-                    "-re",  # Read input at native frame rate
-                    "-f", "s16le",  # Raw PCM 16-bit little-endian audio
-                    "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
-                    "-ac", "2",  # Set the number of audio channels to 2 (stereo)
-                    # "-i", config.STREAM_PIPE,  # Input from named pipe
-                    '-i', 'pipe:',  # Input from stdin
-                    "-content_type", "application/ogg",
-                    "-f", "ogg",  # Output format
-                    "icecast://source:hackme@localhost:8000/stream.ogg",  # Icecast URL
-                ]
-                # fmt: on
-                self.ffmpeg_process = subprocess.Popen(ffmpeg_command, stdin=subprocess.PIPE , stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-                # if not os.path.exists(config.STREAM_PIPE):
-                    # os.mkfifo(config.STREAM_PIPE)
-                self.stream_pipe = self.ffmpeg_process.stdin
-
-                self.streaming_thread = threading.Thread(
-                    target=self._streaming_loop,
-                    daemon=True,
-                )
-                self.streaming_thread.start()
-            except FileNotFoundError as err:
-                pass
-
+            self.ffmpeg_process = FFmpegProcessHandler(
+                self.username, self.password
+            )
+            self.ffmpeg_process.start()
+            self.streaming_thread = threading.Thread(
+                target=self._streaming_loop,
+                daemon=True,
+            )
+            self.streaming_thread.start()
 
         self.looping_current_song = config.LOOP_MODES["none"]
         self.duration = 0
@@ -375,7 +406,8 @@ class PlaybackHandler:
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
                             )
-                            * (2**15 - 1) * 0.5 #VOLUME
+                            * (2**15 - 1)
+                            * 0.5  # reduce volume (avoid clipping)
                         )  # convert to 16-bit PCM
                         if self.stream
                         else None
@@ -385,11 +417,6 @@ class PlaybackHandler:
             sleep(1)
 
     def _streaming_loop(self):
-        # print_to_logfile(
-        #     type(self.audio_data),
-        #     self.song_id in self.audio_data,
-        #     self.playback,
-        # )
         while True:
             # print_to_logfile(
             #     type(self.audio_data),
@@ -400,14 +427,15 @@ class PlaybackHandler:
                 self.audio_data is not None
                 and self.song_id in self.audio_data
                 and self.playback is not None
+                and self.playback.curr_pos  # is 0 for a while after resuming
+                and not self.paused
             ):
-                # print_to_logfile("writing to stream pipe")
-                #print_to_logfile(self.song_id)
                 for fpos in range(
-                    int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE) * 2,
+                    int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE),
                     self.audio_data[self.song_id][1].shape[1],
                     config.STREAM_CHUNK_SIZE,
                 ):
+                    # print_to_logfile(self.playback.curr_pos)
                     # print_to_logfile(
                     #     fpos,
                     #     fpos + config.STREAM_CHUNK_SIZE,
@@ -418,22 +446,22 @@ class PlaybackHandler:
                                 :,
                                 fpos : fpos + config.STREAM_CHUNK_SIZE,
                             ]
-                            # self.audio_data[self.song_id][1]
-                            .reshape((-1,), order="F").tobytes()
+                            .reshape((-1,), order="F")
+                            .tobytes()
                         )
-                        self.stream_pipe.write(chunk)
-                        # ffmpeg_stdout, ffmpeg_stderr = self.ffmpeg_process.communicate(input=chunk)
-                        # print_to_logfile(ffmpeg_stdout, ffmpeg_stderr)
-                    except OSError as e:
-                        print_to_logfile(e)
+                        self.ffmpeg_process.write(chunk)
+                    # fmt: off
+                    except BrokenPipeError as e:  # pylint: disable=unused-variable
+                        # fmt: on
+                        if not self.ending:
+                            self.ffmpeg_process.restart()
 
                     if self.pos_changed:
+                        # print_to_logfile("pos changed")
                         self.pos_changed = False
                         break
-                # print_to_logfile("wrote to stream pipe")
-                # sleep(
-                #     len(chunk) / (config.STREAM_SAMPLE_RATE)
-                # )  # x2 for stereo
+                    if self.paused:
+                        break
             sleep(0.01)
 
     @property
@@ -457,7 +485,7 @@ class PlaybackHandler:
 
     def quit(self):
         if self.ffmpeg_process is not None:
-            self.ffmpeg_process.kill()
+            self.ffmpeg_process.terminate()
 
     def prompting_delete_char(self):
         if self.prompting[1] > 0:
@@ -876,11 +904,7 @@ class PlaybackHandler:
                         render(
                             self.stdscr.getmaxyx()[1],
                             vdata,
-                            min(
-                                round(pos * config.FPS),
-                                # fmt: off
-                                vdata.shape[2] - 1,
-                            ),
+                            min(round(pos * config.FPS), vdata.shape[2] - 1),
                             config.VISUALIZER_HEIGHT,
                         )
                         # print_to_logfile("Compiled!")
@@ -1294,6 +1318,79 @@ def clip_editor_output(
     stdscr.refresh()
 
 
+def get_username():
+    return keyring.get_password("maestro-music", "username")
+
+
+def get_password():
+    return keyring.get_password("maestro-music", "password")
+
+
+def signup(username=None, password=None, login_=True):
+    if username is None:
+        username = input("Username: ")
+
+    response = requests.get(
+        config.USER_EXISTS_URL, params={"user": username}, timeout=5
+    )
+    if response.status_code == 200:
+        click.secho(f"Username {username} already exists.", fg="red")
+        return
+
+    if password is None:
+        password = getpass("Password (8-1024 characters):")
+        if len(password) < 8 or len(password) > 1024:
+            click.secho("Passwords should be 8-1024 characters long.", fg="red")
+            return
+    confirm_password = getpass("Confirm password:")
+    if password != confirm_password:
+        click.secho("Passwords do not match.", fg="red")
+        return
+
+    response = requests.post(
+        config.SIGNUP_URL, auth=(username, password), timeout=5
+    )
+    if response.status_code == 201:
+        click.secho(f"Successfully signed up user '{username}'!", fg="green")
+        if login_:
+            login(username, password)
+    else:
+        click.secho(
+            f"Signup failed with status code {response.status_code}: {response.text}",
+            fg="red",
+        )
+
+
+def login(username=None, password=None):
+    if username is None:
+        username = input("Username: ")
+    current_username = keyring.get_password("maestro-music", "username")
+    if current_username == username:
+        click.secho(f"User '{username}' is already logged in.", fg="yellow")
+        return
+    if current_username is not None:
+        click.secho(
+            f"Logging in as user '{username}' will log out current user '{current_username}'.",
+            fg="yellow",
+        )
+
+    if password is None:
+        password = getpass("Password:")
+
+    response = requests.post(
+        config.LOGIN_URL, auth=(username, password), timeout=5
+    )
+    if response.status_code == 200:
+        click.secho(f"Successfully logged in user '{username}'!", fg="green")
+        keyring.set_password("maestro-music", "username", username)
+        keyring.set_password("maestro-music", "password", password)
+    else:
+        click.secho(
+            f"Login failed with status code {response.status_code}: {response.text}",
+            fg="red",
+        )
+
+
 def format_seconds(secs, show_decimal=False):
     """Format seconds into a string."""
     return f"{int(secs//60):02}:{int(secs%60):02}" + (
@@ -1399,12 +1496,17 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
 
 
 def print_to_logfile(*args, **kwargs):
-    if "file" in kwargs:
-        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
-    print(*args, **kwargs, file=open("log.log", "a", encoding="utf-8"))
+    if not config.SUPPRESS_LOGS:
+        if "file" in kwargs:
+            raise ValueError("file kwargs not allowed for 'print_to_logfile'")
+        print(*args, **kwargs, file=open("log.log", "a", encoding="utf-8"))
 
 
 def multiprocessing_put_word(q, word):
     for c in word:
         q.put(c)
     q.put("\n")
+
+
+def versiontuple(v):
+    return tuple(map(int, v.split(".")))

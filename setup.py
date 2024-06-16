@@ -59,20 +59,21 @@ setup(
     #     ]
     # ],
     # py_modules=["maestro"],
-    packages=find_packages(include=["maestro", "maestro.*"]),
+    packages=find_packages(include=["maestro"]),
     install_requires=[
-        "click",
-        "just_playback",
-        "music-tag",
-        "pypresence",
-        "yt-dlp",
-        "spotdl",
-        "ytmusicapi",
-        "librosa",
-        "soundfile",
-        "numba",
+        "click",  # CLI handling
+        "just_playback",  # Audio playback
+        "music-tag",  # Metadata handling
+        "pypresence",  # Discord Rich Presence
+        "yt-dlp",  # YouTube downloads
+        "spotdl",  # Spotify downloads
+        "ytmusicapi",  # Song recommendation (experimental)
+        "librosa",  # Audio processing
+        "numba",  # JIT compilation
         "numpy",
-        "windows-curses; sys_platform == 'win32'",
+        "windows-curses; sys_platform == 'win32'",  # Windows curses support
+        "keyring",  # Credential storage
+        # "bcrypt",  # Password hashing
     ]
     + MAC_DEPS,
     entry_points={

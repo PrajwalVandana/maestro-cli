@@ -1,6 +1,7 @@
 import os
 
 from datetime import date
+from urllib.parse import urljoin
 
 
 # region constants
@@ -108,10 +109,17 @@ WAVEFORM_FLATTEN_FACTOR = 20
 # endregion
 
 # region stream
-STREAM_PIPE = "/tmp/maestro_stream"
-
 STREAM_SAMPLE_RATE = 44100
 STREAM_CHUNK_SIZE = 256
 # endregion
+
+# region auth
+AUTH_SERVER = "http://maestro-music.vercel.app/auth/"
+USER_EXISTS_URL = urljoin(AUTH_SERVER, "user_exists")
+SIGNUP_URL = urljoin(AUTH_SERVER, "signup")
+LOGIN_URL = urljoin(AUTH_SERVER, "login")
+# endregion
+
+SUPPRESS_LOGS = False
 
 # endregion

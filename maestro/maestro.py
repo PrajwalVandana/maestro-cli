@@ -8,6 +8,7 @@ import subprocess
 import sys
 
 import click
+import keyring
 import music_tag
 
 from collections import defaultdict
@@ -36,6 +37,7 @@ if sys.platform == "darwin":
         from AppKit import (
             NSApp,
             NSApplication,
+            # NSApplicationDelegate,
             NSApplicationActivationPolicyProhibited,
             NSDate,
             NSObject,
@@ -91,6 +93,7 @@ if can_mac_now_playing:
 
 
 def read_from_queue(queue):
+    res = ""
     while not queue.empty():
         res = ""
         c = queue.get()
@@ -102,7 +105,7 @@ def read_from_queue(queue):
 
 
 def discord_presence_loop(
-    song_name_queue, artist_queue, album_queue, discord_connected
+    song_name_queue, artist_queue, album_queue, discord_connected, stream_username
 ):
     try:
         discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
@@ -125,6 +128,12 @@ def discord_presence_loop(
                         state=artist_name,
                         large_image="maestro-icon",
                         large_text=album_name,
+                        buttons=[
+                            {
+                                "label": "Listen Along",
+                                "url": f"http://20.10.168.80:8000/{stream_username}",
+                            }
+                        ] if stream_username else [],
                     )
                     song_name = ""
                     artist_name = ""
@@ -149,6 +158,12 @@ def discord_presence_loop(
                             state=artist_name,
                             large_image="maestro-icon",
                             large_text=album_name,
+                            buttons=[
+                                {
+                                    "label": "Listen Along",
+                                    "url": f"http://20.10.168.80:8000/{stream_username}",
+                                }
+                            ] if stream_username else [],
                         )
                         song_name = ""
                         artist_name = ""
@@ -203,6 +218,7 @@ def _play(
                 discord_artist_queue,
                 discord_album_queue,
                 player.discord_connected,
+                stream[0] if stream else None,
             ),
         )
         discord_presence_process.start()
@@ -321,7 +337,7 @@ def _play(
                     NSRunLoop.currentRunLoop().runUntilDate_(
                         NSDate.dateWithTimeIntervalSinceNow_(0.05)
                     )
-                except Exception as e:  # pylint: disable=bare-except
+                except:  # pylint: disable=bare-except
                     player.can_mac_now_playing = False
 
             if (
@@ -387,10 +403,14 @@ def _play(
 
                     if player.prompting is None:
                         if c == curses.KEY_LEFT:
-                            player.seek(player.playback.curr_pos - config.SCRUB_TIME)
+                            player.seek(
+                                player.playback.curr_pos - config.SCRUB_TIME
+                            )
                             player.update_screen()
                         elif c == curses.KEY_RIGHT:
-                            player.seek(player.playback.curr_pos + config.SCRUB_TIME)
+                            player.seek(
+                                player.playback.curr_pos + config.SCRUB_TIME
+                            )
                             player.update_screen()
                         elif c == curses.KEY_UP:
                             player.scroller.scroll_backward()
@@ -543,6 +563,7 @@ def _play(
                                                 discord_artist_queue,
                                                 discord_album_queue,
                                                 player.discord_connected,
+                                                stream[0] if stream else None,
                                             ),
                                         )
                                     )
@@ -599,7 +620,9 @@ def _play(
                                     start_time += time() - pause_start
 
                                 if player.can_mac_now_playing:
-                                    player.mac_now_playing.paused = player.paused
+                                    player.mac_now_playing.paused = (
+                                        player.paused
+                                    )
                                     if player.paused:
                                         player.mac_now_playing.pause()
                                     else:
@@ -781,7 +804,10 @@ def _play(
                             player.update_screen()
 
             if player.can_mac_now_playing:
-                if abs(player.mac_now_playing.pos - player.playback.curr_pos) > 1:
+                if (
+                    abs(player.mac_now_playing.pos - player.playback.curr_pos)
+                    > 1
+                ):
                     player.seek(player.mac_now_playing.pos)
                     player.update_screen()
                 else:
@@ -796,7 +822,10 @@ def _play(
                 ),
                 1 / config.FPS if player.visualize else 1,
             )
-            if abs(player.playback.curr_pos - player.last_timestamp) > frame_duration:
+            if (
+                abs(player.playback.curr_pos - player.last_timestamp)
+                > frame_duration
+            ):
                 player.last_timestamp = player.playback.curr_pos
                 player.update_screen()
 
@@ -845,6 +874,8 @@ def _play(
 
         if player.ending and not player.restarting:
             player.quit()
+            if player.update_discord:
+                discord_presence_process.terminate()
             return
 
         if next_song == -1:
@@ -884,9 +915,8 @@ def cli():
     if not os.path.exists(config.MAESTRO_DIR):
         os.makedirs(config.MAESTRO_DIR)
 
+    # ensure config.SETTINGS has all settings
     if not os.path.exists(config.SETTINGS_FILE):
-        with open(config.SETTINGS_FILE, "x", encoding="utf-8") as f:
-            json.dump(config.DEFAULT_SETTINGS, f)
         config.SETTINGS = config.DEFAULT_SETTINGS
     else:
         with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
@@ -928,14 +958,17 @@ def cli():
                 "https://pypi.org/pypi/maestro-music/json", timeout=5
             )
             latest_version = response.json()["info"]["version"]
-            if latest_version != VERSION:
+            if helpers.versiontuple(latest_version) > helpers.versiontuple(
+                VERSION
+            ):
                 click.secho(
-                    f"A new version of maestro-cli is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
+                    f"A new version of maestro is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
                     fg="yellow",
                 )
         except:  # pylint: disable=bare-except
             pass
 
+    # ensure config.SETTINGS_FILE is up to date
     with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
         json.dump(config.SETTINGS, g)
 
@@ -1283,7 +1316,10 @@ def add(
 @cli.command()
 @click.argument("ARGS", required=True, nargs=-1)
 @click.option(
-    "-F/-nF", "--force/--no-force", default=False, help="Force deletion."
+    "-F/-nF",
+    "--force/--no-force",
+    default=False,
+    help="Skip confirmation prompt.",
 )
 @click.option(
     "-T/-nT",
@@ -1561,7 +1597,7 @@ def untag(song_ids, tags, all_):
     "shuffle_",
     type=click.IntRange(-1, None),
     default=0,
-    help="How to shuffle the playlist on the first run. -1: random shuffle, 0: no shuffle, any other integer N: random shuffle with the constraint that each song is no farther than N spots away from its starting position.",
+    help="How to shuffle the queue on the first run. -1: random shuffle, 0: no shuffle, any other integer N: random shuffle with the constraint that each song is no farther than N spots away from its starting position.",
 )
 @click.option(
     "-r",
@@ -1569,7 +1605,7 @@ def untag(song_ids, tags, all_):
     "reshuffle",
     type=click.IntRange(-1, None),
     default=0,
-    help="How to shuffle the playlist on every run after the first. -1: random reshuffle, 0: no reshuffle, any other integer N: random reshuffle with the constraint that each song is no farther than N spots away from its previous position.",
+    help="How to shuffle the queue on every run after the first. -1: random reshuffle, 0: no reshuffle, any other integer N: random reshuffle with the constraint that each song is no farther than N spots away from its previous position.",
 )
 @click.option(
     "-R/-nR",
@@ -1599,7 +1635,7 @@ def untag(song_ids, tags, all_):
     "--loop/--no-loop",
     "loop",
     default=False,
-    help="Loop the playlist.",
+    help="Loop the queue.",
 )
 @click.option(
     "-C/-nC",
@@ -1646,42 +1682,42 @@ def play(
     stream,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
-    your playlist, unless the '-M/--match-all' flag is passed, in which case
+    your queue, unless the '-M/--match-all' flag is passed, in which case
     every tag must be matched.
 
     \b
-    \x1b[1mSPACE\x1b[0m  to pause/play
-    \x1b[1mb\x1b[0m  to go [b]ack to previous song
-    \x1b[1mr\x1b[0m  to [r]eplay song
-    \x1b[1mn\x1b[0m  to skip to [n]ext song
-    \x1b[1ml\x1b[0m  to [l]oop the current song once ('l' in status bar). press again to loop infinitely ('L' in status bar). press once again to turn off looping
-    \x1b[1mc\x1b[0m  to toggle [c]lip mode
-    \x1b[1mv\x1b[0m  to toggle [v]isualization
-    \x1b[1mLEFT\x1b[0m  to rewind 5s
-    \x1b[1mRIGHT\x1b[0m  to fast forward 5s
-    \x1b[1m[\x1b[0m  to decrease volume
-    \x1b[1m]\x1b[0m  to increase volume
-    \x1b[1mm\x1b[0m  to [m]ute/unmute
-    \x1b[1me\x1b[0m  to [e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)
-    \x1b[1mq\x1b[0m  to [q]uit the song player immediately
-    \x1b[1mUP/DOWN\x1b[0m  to scroll through the playlist (mouse scrolling should also work)
-    \x1b[1mp\x1b[0m  to sna[p] back to the currently playing song
-    \x1b[1mg\x1b[0m  to go to the next pa[g]e/loop of the playlist (ignored if not repeating playlist)
-    \x1b[1mBACKSPACE/DELETE\x1b[0m  delete the selected (not necessarily currently playing!) song from the queue
-    \x1b[1md\x1b[0m  to toggle [D]iscord rich presence
-    \x1b[1ma\x1b[0m  to [a]dd a song (by ID) to the end of the playlist. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
-    \x1b[1mi\x1b[0m  to [i]nsert a song (by ID) in the playlist after the selected song. Opens a prompt like 'a'.
-    \x1b[1mt\x1b[0m  to add a [t]ag to all songs in the playlist. Opens a prompt to enter the tag: ENTER to confirm, ESC to cancel.
+    \x1b[1mSPACE\x1b[0m\tpause/play
+    \x1b[1mb\x1b[0m\t\tgo [b]ack to previous song
+    \x1b[1mr\x1b[0m\t\t[r]eplay song
+    \x1b[1mn\x1b[0m\t\tskip to [n]ext song
+    \x1b[1ml\x1b[0m\t\t[l]oop the current song once ('l' in status bar). press again to loop infinitely ('L' in status bar). press once again to turn off looping
+    \x1b[1mc\x1b[0m\t\ttoggle [c]lip mode
+    \x1b[1mv\x1b[0m\t\ttoggle [v]isualization
+    \x1b[1mLEFT\x1b[0m\trewind 5s
+    \x1b[1mRIGHT\x1b[0m\tfast forward 5s
+    \x1b[1m[\x1b[0m\t\tdecrease volume
+    \x1b[1m]\x1b[0m\t\tincrease volume
+    \x1b[1mm\x1b[0m\t\t[m]ute/unmute
+    \x1b[1me\x1b[0m\t\t[e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)
+    \x1b[1mq\x1b[0m\t\t[q]uit the song player immediately
+    \x1b[1mUP/DOWN\x1b[0m\tto scroll through the queue (mouse scrolling should also work)
+    \x1b[1mp\x1b[0m\t\tsna[p] back to the currently [p]laying song
+    \x1b[1mg\x1b[0m\t\tgo to the next pa[g]e/loop of the queue (ignored if not repeating queue)
+    \x1b[1mBACKSPACE/DELETE\x1b[0m\tdelete the selected (not necessarily currently playing!) song from the queue
+    \x1b[1md\x1b[0m\t\ttoggle [D]iscord rich presence
+    \x1b[1ma\x1b[0m\t\t[a]dd a song (by ID) to the end of the queue. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
+    \x1b[1mi\x1b[0m\t\t[i]nsert a song (by ID) in the queue after the selected song. Opens a prompt like 'a'.
+    \x1b[1mt\x1b[0m\t\tadd a [t]ag to all songs in the queue. Opens a prompt like 'a'.
 
     \b
     song color indicates mode:
-        \x1b[1;34mblue\x1b[0m     normal
-        \x1b[1;33myellow\x1b[0m   looping current song (once or repeatedly)
+        \x1b[1;34mblue\x1b[0m\t\tnormal
+        \x1b[1;33myellow\x1b[0m\tlooping current song (once or repeatedly)
 
     \b
     progress bar color indicates status:
-        \x1b[1;33myellow\x1b[0m   normal (or current song doesn't have a clip)
-        \x1b[1;35mmagenta\x1b[0m  playing clip
+        \x1b[1;33myellow\x1b[0m\tnormal (or current song doesn't have a clip)
+        \x1b[1;35mmagenta\x1b[0m\tplaying clip
 
     For the color vision deficient, both modes also have indicators in the status bar.
     """
@@ -1766,6 +1802,17 @@ def play(
         click.secho("No songs found matching tag criteria.", fg="red")
     else:
         volume /= 100
+        if stream:
+            username = helpers.get_username()
+            password = helpers.get_password()
+            if username is None or password is None:
+                if username is None:
+                    click.secho("Username not found.", fg="red")
+                if password is None:
+                    click.secho("Password not found.", fg="red")
+                click.secho("Please log in using 'maestro login'.", fg="red")
+                return
+
         curses.wrapper(
             _play,
             playlist,
@@ -1775,7 +1822,7 @@ def play(
             reshuffle,
             discord and can_update_discord,
             visualize,
-            stream and helpers.LIBROSA is not None,
+            (username, password) if stream else None,
         )
 
     if songs_not_found:
@@ -1892,11 +1939,9 @@ def rename(original, new_name, renaming_tag):
     help="Searches for matching tags instead of song names.",
 )
 def search(phrase, searching_for_tags):
-    """Searches for songs that contain PHRASE. All songs starting with PHRASE
-    will appear before songs containing but not starting with PHRASE. This
-    search is case-insensitive.
-
-    If the '-T' flag is passed, searches for tags instead of song names."""
+    """Search for song names (or tags with '-T' flag) that contain PHRASE. All
+    songs/tags starting with PHRASE will appear before songs/tags containing but
+    not starting with PHRASE. This search is case-insensitive."""
     phrase = phrase.lower()
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
@@ -2585,7 +2630,13 @@ def clip_(song_id, start, end, editor):
     default=False,
     help="Remove clips for all songs. Ignores SONG_IDS.",
 )
-@click.option("-F/-nF", "--force/--no-force", "force", default=False)
+@click.option(
+    "-F/-nF",
+    "--force/--no-force",
+    "force",
+    default=False,
+    help="Skip confirmation prompt.",
+)
 def unclip(song_ids, all_, force):
     """
     Remove clips for specific song(s).
@@ -2754,191 +2805,69 @@ def dir_(directory):
 @cli.command(name="version")
 def version():
     """
-    Version of maestro-cli (PyPI version of the maestro-music package).
+    Currently installed maestro version (PyPI version of the `maestro-music`
+    package).
     """
     click.echo(f"maestro version: {VERSION}")
 
 
-# @cli.command(name="data-out")
-# @click.argument(
-#     "paths",
-#     type=click.Path(dir_okay=False, file_okay=True),
-#     required=False,
-#     nargs=-1,
-# )
-# @click.option(
-#     "-R/-nR",
-#     "--remove/--no-remove",
-#     "remove_",
-#     default=False,
-#     help="Remove the data outlets at PATHS instead of adding it. If no PATHS are passed, removes all data outlets.",
-# )
-# @click.option(
-#     "-s",
-#     "--serial",
-#     type=click.Path(dir_okay=True, file_okay=False),
-#     required=False,
-#     multiple=True,
-# )
-# @click.option(
-#     "-F/-nF",
-#     "--force/--no-force",
-#     "force",
-#     default=False,
-#     help="Don't prompt for confirmation when removing all data outlets. Ignored if '-R/--remove' is not passed.",
-# )
-# def data_out(paths, serial, remove_, force):
-#     """
-#     Add, remove, or edit a data outlet.
+@cli.command(name="login")
+@click.argument("username", required=False, default=None, type=str)
+def login(username):
+    """
+    Log in to maestro. Currently the login system is only used for listen-along
+    streaming, but may be used for other features in the future. The USERNAME
+    argument is optional; if not passed, you will be prompted for your username.
 
-#     Data outlets are text files or serial ports that are updated with the
-#     current audio data when `maestro play` is running. This can be used as input
-#     for external visualizers or other plugins/programs.
+    Will log out from existing username if a new one is passed.
+    """
+    helpers.login(username)
 
-#     To add a text file, pass the path to the file as an argument (PATHS).
-#     Multiple paths can be passed.
 
-#     To add a serial port, pass the '-s' flag with the path to the serial port.
-#     This can be passed multiple times to add multiple serial ports.
+@cli.command(name="logout")
+@click.option(
+    "-f/-nF",
+    "--force/--no-force",
+    "force",
+    default=False,
+    help="Skip confirmation prompt.",
+)
+def logout(force):
+    """
+    Log out of maestro. Currently the login system is only used for listen-along
+    streaming, but may be used for other features in the future.
+    """
+    if not force:
+        click.echo("Are you sure you want to log out? [y/n] ", nl=False)
+        if input().lower() != "y":
+            return
 
-#     If no data outlets are passed and -R/--remove is not passed, prints the
-#     current data outlets. If no data outlets are passed and -R/--remove is
-#     passed, removes all data outlets (prompts for confirmation unless
-#     -F/--force is passed).
-#     """
-#     if remove_:
-#         if paths or serial:
-#             valid_paths = set(paths)
-#             for path in paths:
-#                 i = config.SETTINGS["data_outlets"]["file"].index(path)
-#                 if i == -1:
-#                     click.secho(f"No data outlet found at {path}.", fg="yellow")
-#                     valid_paths.remove(path)
-#                     continue
-#                 config.SETTINGS["data_outlets"]["file"].pop(i)
+    try:
+        username = keyring.get_password("maestro-music", "username")
+        keyring.delete_password("maestro-music", "username")
+        click.secho(f"Logged out user '{username}'.", fg="green")
+    except keyring.errors.PasswordDeleteError:
+        click.secho("No user logged in.", fg="red")
 
-#             valid_serial_ports = set(serial)
-#             for port in serial:
-#                 i = config.SETTINGS["data_outlets"]["serial"].index(port)
-#                 if i == -1:
-#                     click.secho(
-#                         f"No data outlet found at serial port {port}.",
-#                         fg="yellow",
-#                     )
-#                     valid_serial_ports.remove(port)
-#                     continue
-#                 config.SETTINGS["data_outlets"]["serial"].pop(i)
+    try:
+        keyring.delete_password("maestro-music", "password")
+        click.secho("Deleted password.", fg="green")
+    except keyring.errors.PasswordDeleteError:
+        click.secho("No password saved.", fg="red")
 
-#             with open(
-#                 config.SETTINGS_FILE, "r+", encoding="utf-8"
-#             ) as settings_file:
-#                 settings = json.load(settings_file)
-#                 settings["data_outlets"] = config.SETTINGS["data_outlets"]
-#                 settings_file.seek(0)
-#                 json.dump(settings, settings_file)
-#                 settings_file.truncate()
 
-#             if valid_paths:
-#                 click.secho("Removed files:", fg="green")
-#             for path in valid_paths:
-#                 click.secho(f"\t{path}", fg="green")
+@cli.command(name="signup")
+@click.argument("username", required=False, default=None, type=str)
+@click.option("-l/-nL", "--login/--no-login", "login_", default=True)
+def signup(username, login_):
+    """
+    Create a new maestro account. Currently the login system is only used for
+    listen-along streaming, but may be used for other features in the future.
 
-#             if valid_serial_ports:
-#                 click.secho("Removed serial ports:", fg="green")
-#             for port in valid_serial_ports:
-#                 click.secho(f"\t{port}", fg="green")
-#         else:
-#             if not force:
-#                 click.echo(
-#                     "Are you sure you want to remove all data outlets? This cannot be undone. [y/n] ",
-#                     nl=False,
-#                 )
-#                 if input().lower() != "y":
-#                     return
+    The USERNAME argument is optional; if not passed, you will be prompted for
+    a username.
 
-#             outlets = []
-#             for lst in config.SETTINGS["data_outlets"].values():
-#                 outlets += lst
-#             if not outlets:
-#                 click.secho("No data outlets found.", fg="yellow")
-#                 return
-
-#             config.SETTINGS["data_outlets"] = config.DEFAULT_SETTINGS[
-#                 "data_outlets"
-#             ]
-#             with open(
-#                 config.SETTINGS_FILE, "r+", encoding="utf-8"
-#             ) as settings_file:
-#                 settings = json.load(settings_file)
-#                 settings["data_outlets"] = config.SETTINGS["data_outlets"]
-#                 settings_file.seek(0)
-#                 json.dump(settings, settings_file)
-#                 settings_file.truncate()
-
-#             click.secho("Removed all data outlets.", fg="green")
-
-#         return
-
-#     if not paths and not serial:
-#         if not config.SETTINGS["data_outlets"]:
-#             click.secho("No data outlets found.", fg="yellow")
-#             return
-
-#         files = config.SETTINGS["data_outlets"]["file"]
-#         ports = config.SETTINGS["data_outlets"]["serial"]
-
-#         if not files and not ports:
-#             click.secho("No data outlets found.", fg="yellow")
-#             return
-
-#         if files:
-#             click.echo("Files:")
-#             for path in config.SETTINGS["data_outlets"]["file"]:
-#                 click.echo(f"\t{path}")
-#         if ports:
-#             click.echo("Serial ports:")
-#             for port in config.SETTINGS["data_outlets"]["serial"]:
-#                 click.echo(f"\t{port}")
-
-#         return
-
-#     if paths or serial:
-#         valid_paths = set(paths)
-#         for path in paths:
-#             if path in config.SETTINGS["data_outlets"]["file"]:
-#                 click.secho(
-#                     f"Data outlet already exists at file '{path}'.", fg="yellow"
-#                 )
-#                 valid_paths.remove(path)
-#                 continue
-#             config.SETTINGS["data_outlets"]["file"].append(path)
-
-#         valid_serial_ports = set(serial)
-#         for port in serial:
-#             if port in config.SETTINGS["data_outlets"]["serial"]:
-#                 click.secho(
-#                     f"Data outlet already exists at serial port '{port}'.",
-#                     fg="yellow",
-#                 )
-#                 valid_serial_ports.remove(port)
-#                 continue
-#             config.SETTINGS["data_outlets"]["serial"].append(port)
-
-#         with open(
-#             config.SETTINGS_FILE, "r+", encoding="utf-8"
-#         ) as settings_file:
-#             settings = json.load(settings_file)
-#             settings["data_outlets"] = config.SETTINGS["data_outlets"]
-#             settings_file.seek(0)
-#             json.dump(settings, settings_file)
-#             settings_file.truncate()
-
-#         if valid_paths:
-#             click.secho("Added files:", fg="green")
-#         for path in valid_paths:
-#             click.secho(f"\t{path}", fg="green")
-
-#         if valid_serial_ports:
-#             click.secho("Added serial ports:", fg="green")
-#         for port in valid_serial_ports:
-#             click.secho(f"\t{port}", fg="green")
+    If the '-nL/--no-login' flag is passed, you will not be logged in after
+    creating the account. You can still log in later using 'maestro login'.
+    """
+    helpers.signup(username, None, login_)

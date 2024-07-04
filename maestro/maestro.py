@@ -105,13 +105,18 @@ def read_from_queue(queue):
 
 
 def discord_presence_loop(
-    song_name_queue, artist_queue, album_queue, discord_connected, stream_username
+    song_name_queue,
+    artist_queue,
+    album_queue,
+    discord_connected,
+    stream_username,
 ):
     try:
         discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
         discord_rpc.connect()
         discord_connected.value = 1
-    except:  # pylint: disable=bare-except
+    except Exception as e:  # pylint: disable=broad-except
+        # print_to_logfile(e)
         discord_connected.value = 0
 
     while True:
@@ -128,12 +133,16 @@ def discord_presence_loop(
                         state=artist_name,
                         large_image="maestro-icon",
                         large_text=album_name,
-                        buttons=[
-                            {
-                                "label": "Listen Along",
-                                "url": f"http://20.10.168.80:8000/{stream_username}",
-                            }
-                        ] if stream_username else [],
+                        buttons=(
+                            [
+                                {
+                                    "label": "Listen Along",
+                                    "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
+                                }
+                            ]
+                            if stream_username
+                            else []
+                        ),
                     )
                     song_name = ""
                     artist_name = ""
@@ -158,12 +167,16 @@ def discord_presence_loop(
                             state=artist_name,
                             large_image="maestro-icon",
                             large_text=album_name,
-                            buttons=[
-                                {
-                                    "label": "Listen Along",
-                                    "url": f"http://20.10.168.80:8000/{stream_username}",
-                                }
-                            ] if stream_username else [],
+                            buttons=(
+                                [
+                                    {
+                                        "label": "Listen Along",
+                                        "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
+                                    }
+                                ]
+                                if stream_username
+                                else []
+                            ),
                         )
                         song_name = ""
                         artist_name = ""
@@ -203,26 +216,13 @@ def _play(
         next_playlist = None
 
     player = helpers.PlaybackHandler(
-        stdscr, playlist, volume, clip_mode, update_discord, visualize, stream
+        stdscr,
+        playlist,
+        volume,
+        clip_mode,
+        visualize,
+        stream,
     )
-
-    if player.update_discord:
-        discord_title_queue = multiprocessing.SimpleQueue()
-        discord_artist_queue = multiprocessing.SimpleQueue()
-        discord_album_queue = multiprocessing.SimpleQueue()
-        discord_presence_process = multiprocessing.Process(
-            daemon=True,
-            target=discord_presence_loop,
-            args=(
-                discord_title_queue,
-                discord_artist_queue,
-                discord_album_queue,
-                player.discord_connected,
-                stream[0] if stream else None,
-            ),
-        )
-        discord_presence_process.start()
-
     if can_mac_now_playing:
         player.can_mac_now_playing = True
         player.mac_now_playing = mac_now_playing
@@ -250,6 +250,21 @@ def _play(
             target=app_helper_loop,
         )
         app_helper_process.start()
+    if update_discord:
+        player.initialize_discord_attrs()
+
+        discord_presence_process = multiprocessing.Process(
+            daemon=True,
+            target=discord_presence_loop,
+            args=(
+                player.discord_queues["title"],
+                player.discord_queues["artist"],
+                player.discord_queues["album"],
+                player.discord_connected,
+                stream[0] if stream else None,
+            ),
+        )
+        discord_presence_process.start()
 
     prev_volume = volume
     while player.i in range(len(player.playlist)):
@@ -266,36 +281,7 @@ def _play(
 
         player.paused = False
         player.duration = full_duration = player.playback.duration
-
-        if player.can_mac_now_playing:
-            player.mac_now_playing.paused = False
-            player.mac_now_playing.pos = 0
-            player.mac_now_playing.length = player.duration
-
-            helpers.multiprocessing_put_word(
-                player.mac_now_playing.title_queue,
-                player.playlist[player.i][1],
-            )
-            helpers.multiprocessing_put_word(
-                player.mac_now_playing.artist_queue,
-                player.playlist[player.i][-3],
-            )
-
-            player.update_now_playing = True
-
-        if player.update_discord:
-            helpers.multiprocessing_put_word(
-                discord_title_queue, player.playlist[player.i][1]
-            )
-            helpers.multiprocessing_put_word(
-                discord_artist_queue,
-                player.playlist[player.i][-3],
-            )
-            helpers.multiprocessing_put_word(
-                discord_album_queue,
-                player.playlist[player.i][-2],
-            )
-
+        player.update_metadata()
         player.playback.play()
 
         if player.clip_mode:
@@ -329,7 +315,7 @@ def _play(
             else:
                 player.playback.set_volume(player.volume)
 
-            if player.can_mac_now_playing:
+            if player.can_mac_now_playing:  # Mac Now Playing event loop
                 try:
                     if player.update_now_playing:
                         player.mac_now_playing.update()
@@ -523,35 +509,8 @@ def _play(
                                     player.update_discord = False
                                     discord_presence_process.terminate()
                                 else:
-                                    player.update_discord = True
-
-                                    discord_title_queue = (
-                                        multiprocessing.SimpleQueue()
-                                    )
-                                    helpers.multiprocessing_put_word(
-                                        discord_title_queue,
-                                        player.playlist[player.i][1],
-                                    )
-
-                                    discord_artist_queue = (
-                                        multiprocessing.SimpleQueue()
-                                    )
-                                    helpers.multiprocessing_put_word(
-                                        discord_artist_queue,
-                                        player.playlist[player.i][-3],
-                                    )
-
-                                    discord_album_queue = (
-                                        multiprocessing.SimpleQueue()
-                                    )
-                                    helpers.multiprocessing_put_word(
-                                        discord_album_queue,
-                                        player.playlist[player.i][-2],
-                                    )
-
-                                    player.discord_connected = (
-                                        multiprocessing.Value("i", 2)
-                                    )
+                                    player.initialize_discord_attrs()
+                                    player.update_discord_metadata()
 
                                     # start new process
                                     discord_presence_process = (
@@ -559,9 +518,9 @@ def _play(
                                             daemon=True,
                                             target=discord_presence_loop,
                                             args=(
-                                                discord_title_queue,
-                                                discord_artist_queue,
-                                                discord_album_queue,
+                                                player.discord_queues["title"],
+                                                player.discord_queues["artist"],
+                                                player.discord_queues["album"],
                                                 player.discord_connected,
                                                 stream[0] if stream else None,
                                             ),
@@ -803,7 +762,9 @@ def _play(
                             )
                             player.update_screen()
 
-            if player.can_mac_now_playing:
+            if (
+                player.can_mac_now_playing
+            ):  # sync Mac Now Playing pos with playback pos
                 if (
                     abs(player.mac_now_playing.pos - player.playback.curr_pos)
                     > 1
@@ -2172,7 +2133,7 @@ def list_(
 
             if sort_ != "none":
                 if sort_ in ("name", "n"):
-                    sort_key = lambda t: t[0]
+                    sort_key = lambda t: t[0].lower()
                 elif sort_ in ("secs-listened", "s"):
                     sort_key = lambda t: t[1][0]
                 elif sort_ in ("duration", "d"):
@@ -2257,7 +2218,7 @@ def list_(
             if sort_ in ("id", "i"):
                 sort_key = lambda t: int(t[0])
             if sort_ in ("name", "n"):
-                sort_key = lambda t: t[1]
+                sort_key = lambda t: t[1].lower()
             elif sort_ in ("secs-listened", "s"):
                 sort_key = lambda t: float(t[-2])
             elif sort_ in ("duration", "d"):
@@ -2580,13 +2541,8 @@ def clip_(song_id, start, end, editor):
         song_path = os.path.join(config.SETTINGS["song_directory"], song_name)
         duration = music_tag.load_file(song_path)["#length"].value
 
-        # print_to_logfile(end, duration)
-
         if end is None:
             end = duration
-
-        # print_to_logfile('\t', end, duration)
-
         if start > duration:
             click.secho(
                 "START must not be more than the song duration.", fg="red"

@@ -22,8 +22,9 @@ import music_tag
 
 from getpass import getpass
 from shutil import copy, move
-from time import sleep
+from time import sleep, time
 from random import randint
+from urllib.parse import quote_plus
 
 from just_playback import Playback
 
@@ -138,19 +139,13 @@ def bin_average(arr, n, include_remainder=False, func=np.max):
     if remainder == 0:
         return func(arr.reshape(arr.shape[0], -1, n), axis=1)
 
-    # print_to_logfile(
-    #     typeof(arr[:, :-remainder].reshape(arr.shape[0], -1, n)),
-    #     typeof(arr[:, -remainder:].reshape(arr.shape[0], -1, remainder)),
-    # )
     avg_head = func(arr[:, :-remainder].reshape(arr.shape[0], -1, n), axis=1)
     if include_remainder:
         avg_tail = func(
             arr[:, -remainder:].reshape(arr.shape[0], -1, remainder), axis=1
         )
-        # print_to_logfile(typeof(avg_tail))
         return np.concatenate((avg_head, avg_tail), axis=1)
 
-    # print_to_logfile(typeof(avg_head))
     return avg_head
 
 
@@ -249,6 +244,7 @@ class FFmpegProcessHandler:
                 "-ac", "2",  # Set the number of audio channels to 2 (stereo)
                 '-i', 'pipe:',  # Input from stdin
                 # "-content_type", "application/mpeg",
+                # "-c:a", "aac",  # Set the audio codec to AAC
                 "-f", "mp3",  # Output format
                 # '-bufsize', '64k',  # Reduce buffer size
                 # '-fflags', 'nobuffer',  # Disable buffering
@@ -256,9 +252,8 @@ class FFmpegProcessHandler:
                 # '-max_delay', '0',  # Set maximum delay to 0
                 # '-probesize', '32',  # Reduce probesize
                 # '-analyzeduration', '0',  # Reduce analyzeduration
-                # "-report",  # DEBUG
-                f"icecast://{self.username}:{self.password}@20.10.168.80:8000/{self.username}",  # Azure-hosted maestro Icecast URL
-                # f"icecast://{self.username}:{self.password}@localhost:5500/{self.username}",  # DEBUG: Local Icecast URL (dev)
+                "-report",  # DEBUG
+                f"icecast://{self.username}:{self.password}@{config.ICECAST_SERVER}:8000/{self.username}",  # Azure-hosted maestro Icecast URL
             ],
             # fmt: on
             stdin=subprocess.PIPE,
@@ -286,7 +281,6 @@ class PlaybackHandler:
         playlist,
         volume,
         clip_mode,
-        update_discord,
         visualize,
         stream,
     ):
@@ -298,7 +292,7 @@ class PlaybackHandler:
         self.i = 0
         self.volume = volume
         self.clip_mode = clip_mode
-        self.update_discord = update_discord
+        self.update_discord = False
         self.visualize = visualize  # want to visualize
         self.stream = stream
         if self.stream:
@@ -306,11 +300,21 @@ class PlaybackHandler:
 
         self.playback = None
         self.pos_changed = False
+        self.paused = False
         self.last_timestamp = 0
+        self.looping_current_song = config.LOOP_MODES["none"]
+        self.duration = 0
+        self.restarting = False
+        self.ending = False
+        self.prompting: None | tuple = None
+        self.clip = (0, 0)
 
-        self.mac_now_playing = None
         self.can_mac_now_playing = False
+        self.mac_now_playing = None
         self.update_now_playing = False
+
+        self.discord_connected = multiprocessing.Value("i", 2)
+        self.discord_queues = {}
 
         self.can_visualize = LIBROSA is not None  # can generate visualization
         self.can_show_visualization = (
@@ -322,7 +326,7 @@ class PlaybackHandler:
 
         self.audio_data = None
         if self.visualize or self.stream:
-            self.audio_data = {}  # dict(song_id: (vis data, stream datas))
+            self.audio_data = {}  # dict(song_id: (vis data, stream data))
             self.audio_processing_thread = threading.Thread(
                 target=self._audio_processing_loop,
                 daemon=True,
@@ -336,20 +340,12 @@ class PlaybackHandler:
                 self.username, self.password
             )
             self.ffmpeg_process.start()
+            self.stream_metadata_changed = False
             self.streaming_thread = threading.Thread(
                 target=self._streaming_loop,
                 daemon=True,
             )
             self.streaming_thread.start()
-
-        self.looping_current_song = config.LOOP_MODES["none"]
-        self.duration = 0
-        self.paused = False
-        self.restarting = False
-        self.ending = False
-        self.prompting: None | tuple = None
-        self.clip = (0, 0)
-        self.discord_connected = multiprocessing.Value("i", 2)
 
     def _load_audio(self, path, sr):
         # shape = (# channels, # frames)
@@ -378,54 +374,102 @@ class PlaybackHandler:
 
             for i in range(self.i, min(self.i + 5, len(self.playlist))):
                 song_id = self.playlist[i][0]
-                if song_id in self.audio_data:
+
+                if self.song_id != song_id and (
+                    self.song_id not in self.audio_data
+                    or (
+                        self.visualize
+                        and self.audio_data[self.song_id][0] is None
+                    )
+                    or (
+                        self.stream and self.audio_data[self.song_id][1] is None
+                    )
+                ):
+                    break
+                if song_id in self.audio_data and (
+                    (
+                        self.audio_data[song_id][0] is not None
+                        or not self.visualize
+                    )
+                    and (
+                        self.audio_data[song_id][1] is not None
+                        or not self.stream
+                    )
+                ):
                     continue
+
                 song_path = os.path.join(
                     config.SETTINGS["song_directory"], self.playlist[i][1]
                 )
 
-                self.audio_data[song_id] = (
-                    (
-                        LIBROSA.amplitude_to_db(
-                            np.abs(
-                                LIBROSA.stft(
-                                    self._load_audio(
-                                        song_path,
-                                        sr=config.VIS_SAMPLE_RATE,
+                if song_id not in self.audio_data:
+                    self.audio_data[song_id] = [
+                        (
+                            LIBROSA.amplitude_to_db(
+                                np.abs(
+                                    LIBROSA.stft(
+                                        self._load_audio(
+                                            song_path,
+                                            sr=config.VIS_SAMPLE_RATE,
+                                        )
                                     )
+                                ),
+                                ref=np.max,
+                            )
+                            + 80
+                            if self.visualize and self.can_visualize
+                            else None
+                        ),
+                        (
+                            np.int16(
+                                self._load_audio(
+                                    song_path, sr=config.STREAM_SAMPLE_RATE
                                 )
-                            ),
-                            ref=np.max,
+                                * (2**15 - 1)
+                                * 0.5  # reduce volume (avoid clipping)
+                            )  # convert to 16-bit PCM
+                            if self.stream
+                            else None
+                        ),
+                    ]
+                else:
+                    if (
+                        self.audio_data[song_id][0] is None
+                        and self.visualize
+                        and self.can_visualize
+                    ):
+                        self.audio_data[song_id][0] = (
+                            LIBROSA.amplitude_to_db(
+                                np.abs(
+                                    LIBROSA.stft(
+                                        self._load_audio(
+                                            song_path,
+                                            sr=config.VIS_SAMPLE_RATE,
+                                        )
+                                    )
+                                ),
+                                ref=np.max,
+                            )
+                            + 80
                         )
-                        + 80
-                        if self.visualize and self.can_visualize
-                        else None
-                    ),
-                    (
-                        np.int16(
+                    if self.audio_data[song_id][1] is None and self.stream:
+                        self.audio_data[song_id][1] = np.int16(
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
                             )
                             * (2**15 - 1)
                             * 0.5  # reduce volume (avoid clipping)
                         )  # convert to 16-bit PCM
-                        if self.stream
-                        else None
-                    ),
-                )
 
             sleep(1)
 
     def _streaming_loop(self):
+        last_metadata_update_attempt = 0
         while True:
-            # print_to_logfile(
-            #     type(self.audio_data),
-            #     self.song_id in self.audio_data,
-            #     self.playback,
-            # )
             if (
                 self.audio_data is not None
                 and self.song_id in self.audio_data
+                and self.audio_data[self.song_id][1] is not None
                 and self.playback is not None
                 and self.playback.curr_pos  # is 0 for a while after resuming
                 and not self.paused
@@ -435,11 +479,6 @@ class PlaybackHandler:
                     self.audio_data[self.song_id][1].shape[1],
                     config.STREAM_CHUNK_SIZE,
                 ):
-                    # print_to_logfile(self.playback.curr_pos)
-                    # print_to_logfile(
-                    #     fpos,
-                    #     fpos + config.STREAM_CHUNK_SIZE,
-                    # )
                     try:
                         chunk = (
                             self.audio_data[self.song_id][1][
@@ -457,11 +496,45 @@ class PlaybackHandler:
                             self.ffmpeg_process.restart()
 
                     if self.pos_changed:
-                        # print_to_logfile("pos changed")
                         self.pos_changed = False
                         break
                     if self.paused:
                         break
+
+                    t = time()
+                    if (
+                        self.stream_metadata_changed
+                        and t - last_metadata_update_attempt > 5
+                    ):
+                        self.stream_metadata_changed = False
+                        try:
+                            response = requests.get(
+                                config.UPDATE_METADATA_URL,
+                                params={
+                                    "mount": self.username,
+                                    "song": self.song_title,
+                                    "artist": quote_plus(self.song_artist),
+                                    "album": quote_plus(self.song_album),
+                                    "albumartist": quote_plus(
+                                        self.album_artist
+                                    ),
+                                },
+                                auth=(self.username, self.password),
+                                timeout=5,
+                            )
+                            if response.ok:
+                                last_metadata_update_attempt = 0
+                            else:  # retry in 5 seconds
+                                self.stream_metadata_changed = True
+                                last_metadata_update_attempt = t
+                        except Exception as e:
+                            # print_to_logfile(e)
+                            self.stream_metadata_changed = True
+                            last_metadata_update_attempt = t
+            elif self.paused:  # send silence
+                self.ffmpeg_process.write(
+                    b"\x00" * 4 * config.STREAM_CHUNK_SIZE
+                )
             sleep(0.01)
 
     @property
@@ -473,6 +546,22 @@ class PlaybackHandler:
         return os.path.join(
             config.SETTINGS["song_directory"], self.playlist[self.i][1]
         )
+
+    @property
+    def song_title(self):
+        return os.path.splitext(self.playlist[self.i][1])[0]
+
+    @property
+    def song_artist(self):
+        return self.playlist[self.i][-3]
+
+    @property
+    def song_album(self):
+        return self.playlist[self.i][-2]
+
+    @property
+    def album_artist(self):
+        return self.playlist[self.i][-1]
 
     def seek(self, pos):
         if self.playback is not None:
@@ -498,6 +587,53 @@ class PlaybackHandler:
 
     def update_screen(self):
         self.output(self.playback.curr_pos)
+
+    def update_discord_metadata(self):
+        if self.update_discord:
+            multiprocessing_put_word(
+                self.discord_queues["title"],
+                self.song_title,
+            )
+            multiprocessing_put_word(
+                self.discord_queues["artist"],
+                self.song_artist,
+            )
+            multiprocessing_put_word(
+                self.discord_queues["album"],
+                self.song_album,
+            )
+
+    def update_mac_now_playing_metadata(self):
+        if self.can_mac_now_playing:
+            self.mac_now_playing.paused = False
+            self.mac_now_playing.pos = 0
+            self.mac_now_playing.length = self.duration
+
+            multiprocessing_put_word(
+                self.mac_now_playing.title_queue,
+                self.playlist[self.i][1],
+            )
+            multiprocessing_put_word(
+                self.mac_now_playing.artist_queue,
+                self.song_artist,
+            )
+
+            self.update_now_playing = True
+
+    def update_icecast_metadata(self):
+        if self.stream:
+            self.stream_metadata_changed = True
+
+    def update_metadata(self):
+        self.update_mac_now_playing_metadata()
+        self.update_discord_metadata()
+        self.update_icecast_metadata()
+
+    def initialize_discord_attrs(self):
+        self.update_discord = True
+        self.discord_queues["title"] = multiprocessing.Queue()
+        self.discord_queues["artist"] = multiprocessing.Queue()
+        self.discord_queues["album"] = multiprocessing.Queue()
 
     def output(self, pos):
         self.can_show_visualization = (
@@ -552,12 +688,12 @@ class PlaybackHandler:
         visualize_color = 12
         if self.visualize:
             if self.audio_data is None and self.can_visualize:
-                t = threading.Thread(
+                self.audio_processing_thread = threading.Thread(
                     target=self._audio_processing_loop,
                     daemon=True,
                 )
                 self.audio_data = {}
-                t.start()
+                self.audio_processing_thread.start()
 
             if not self.can_visualize:
                 visualize_message = "Librosa is required for visualization."
@@ -565,7 +701,7 @@ class PlaybackHandler:
             elif not self.can_show_visualization:
                 visualize_message = "Window too small for visualization."
                 visualize_color = 14
-            elif self.playlist[self.i][0] not in self.audio_data:
+            elif self.song_id not in self.audio_data:
                 visualize_message = "Loading visualization..."
                 visualize_color = 12
             elif not self.compiled:
@@ -665,7 +801,7 @@ class PlaybackHandler:
 
         length_so_far = addstr_fit_to_width(
             self.stdscr,
-            ("| " if self.paused else "> ") + f"({self.playlist[self.i][0]}) ",
+            ("| " if self.paused else "> ") + f"({self.song_id}) ",
             screen_width,
             length_so_far,
             curses.color_pair(song_display_color + 10),
@@ -748,7 +884,7 @@ class PlaybackHandler:
 
         song_data_length_so_far = addstr_fit_to_width(
             self.stdscr,
-            self.playlist[self.i][-3] + " - ",
+            self.song_artist + " - ",
             screen_width,
             0,
             curses.color_pair(12),
@@ -757,7 +893,7 @@ class PlaybackHandler:
         try:
             song_data_length_so_far = addstr_fit_to_width(
                 self.stdscr,
-                self.playlist[self.i][-2],
+                self.song_album,
                 screen_width,
                 song_data_length_so_far,
                 curses.color_pair(12) | curses.A_ITALIC,
@@ -765,7 +901,7 @@ class PlaybackHandler:
         except:  # pylint: disable=bare-except
             song_data_length_so_far = addstr_fit_to_width(
                 self.stdscr,
-                self.playlist[self.i][-2],
+                self.song_album,
                 screen_width,
                 song_data_length_so_far,
                 curses.color_pair(12),
@@ -773,7 +909,7 @@ class PlaybackHandler:
 
         addstr_fit_to_width(
             self.stdscr,
-            f" ({self.playlist[self.i][-1]})",
+            f" ({self.album_artist})",
             screen_width,
             song_data_length_so_far,
             curses.color_pair(12),
@@ -886,7 +1022,10 @@ class PlaybackHandler:
                 ),
                 0,
             )
-            if self.playlist[self.i][0] not in self.audio_data:
+            if (
+                self.song_id not in self.audio_data
+                or self.audio_data[self.song_id][0] is None
+            ):
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
@@ -895,19 +1034,16 @@ class PlaybackHandler:
                 )
             elif not self.compiled:
                 if self.compiled is None:
-                    # print_to_logfile("Starting compilation...")
                     self.compiled = False
 
                     def thread_func():
-                        # print_to_logfile("Compiling...")
-                        vdata = self.audio_data[self.playlist[self.i][0]][0]
+                        vdata = self.audio_data[self.song_id][0]
                         render(
                             self.stdscr.getmaxyx()[1],
                             vdata,
                             min(round(pos * config.FPS), vdata.shape[2] - 1),
                             config.VISUALIZER_HEIGHT,
                         )
-                        # print_to_logfile("Compiled!")
                         self.compiled = True
 
                     t = threading.Thread(target=thread_func, daemon=True)
@@ -919,7 +1055,7 @@ class PlaybackHandler:
                     ).rstrip()
                 )
             elif self.compiled:
-                vdata = self.audio_data[self.playlist[self.i][0]][0]
+                vdata = self.audio_data[self.song_id][0]
                 rendered_lines = render(
                     self.stdscr.getmaxyx()[1],
                     vdata,

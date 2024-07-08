@@ -4,6 +4,7 @@ from maestro import (
 
 # region imports
 
+import base64
 import curses
 import importlib
 import logging
@@ -243,15 +244,9 @@ class FFmpegProcessHandler:
                 "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
                 "-ac", "2",  # Set the number of audio channels to 2 (stereo)
                 '-i', 'pipe:',  # Input from stdin
-                # "-content_type", "application/mpeg",
                 # "-c:a", "aac",  # Set the audio codec to AAC
+                # "-profile:a", "aac_low",  # Set the AAC profile to low complexity
                 "-f", "mp3",  # Output format
-                # '-bufsize', '64k',  # Reduce buffer size
-                # '-fflags', 'nobuffer',  # Disable buffering
-                # '-flush_packets', '1',  # Flush packets
-                # '-max_delay', '0',  # Set maximum delay to 0
-                # '-probesize', '32',  # Reduce probesize
-                # '-analyzeduration', '0',  # Reduce analyzeduration
                 "-report",  # DEBUG
                 f"icecast://{self.username}:{self.password}@{config.ICECAST_SERVER}:8000/{self.username}",  # Azure-hosted maestro Icecast URL
             ],
@@ -474,6 +469,7 @@ class PlaybackHandler:
                 and self.playback.curr_pos  # is 0 for a while after resuming
                 and not self.paused
             ):
+                song_data = music_tag.load_file(self.song_path)
                 for fpos in range(
                     int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE),
                     self.audio_data[self.song_id][1].shape[1],
@@ -508,7 +504,16 @@ class PlaybackHandler:
                     ):
                         self.stream_metadata_changed = False
                         try:
-                            response = requests.get(
+                            thumbnail = (
+                                base64.urlsafe_b64encode(
+                                    song_data["artwork"].first.raw_thumbnail(
+                                        [1024, 1024]
+                                    )
+                                )
+                                if "artwork" in song_data
+                                else None
+                            )
+                            response1 = requests.get(
                                 config.UPDATE_METADATA_URL,
                                 params={
                                     "mount": self.username,
@@ -522,13 +527,22 @@ class PlaybackHandler:
                                 auth=(self.username, self.password),
                                 timeout=5,
                             )
-                            if response.ok:
+                            response2 = requests.post(
+                                config.UPDATE_ARTWORK_URL,
+                                data=thumbnail,
+                                params={
+                                    "mount": self.username,
+                                },
+                                auth=(self.username, self.password),
+                                timeout=5,
+                            )
+                            if response1.ok and response2.ok:
                                 last_metadata_update_attempt = 0
                             else:  # retry in 5 seconds
                                 self.stream_metadata_changed = True
                                 last_metadata_update_attempt = t
                         except Exception as e:
-                            # print_to_logfile(e)
+                            print_to_logfile(e)
                             self.stream_metadata_changed = True
                             last_metadata_update_attempt = t
             elif self.paused:  # send silence

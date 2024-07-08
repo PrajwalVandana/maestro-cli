@@ -973,7 +973,7 @@ def cli():
     "-f",
     "--format",
     "format_",
-    type=click.Choice(["wav", "mp3", "flac", "ogg"]),
+    type=click.Choice(["wav", "mp3", "flac", "vorbis"]),
     help="Specify the format of the song if downloading from YouTube, YouTube Music, or Spotify URL.",
     default="mp3",
     show_default=True,
@@ -1064,12 +1064,6 @@ def add(
             return
 
         if youtube:
-            if format_ == "ogg":
-                click.secho(
-                    "Cannot download songs from YouTube as '.ogg'. Please choose a different format.",
-                    fg="red",
-                )
-                return
             subprocess.run(
                 list(
                     filter(
@@ -1082,6 +1076,8 @@ def add(
                             format_,
                             "--no-playlist" if not playlist_ else "",
                             "--embed-metadata",
+                            "--embed-thumbnail",  # FIXME: format-dependent
+                            # "--write-thumbnail",
                             "-o",
                             os.path.join(
                                 config.MAESTRO_DIR, "%(title)s.%(ext)s"
@@ -1092,12 +1088,8 @@ def add(
                 check=True,
             )
         else:
-            if format_ == "wav":
-                click.secho(
-                    "Cannot download songs from Spotify as '.wav'. Please choose a different format.",
-                    fg="red",
-                )
-                return
+            if format_ == "vorbis":  # for spotdl only
+                format_ = "ogg"
 
             cwd = os.getcwd()
             os.chdir(config.MAESTRO_DIR)
@@ -1121,7 +1113,7 @@ def add(
 
         paths = []
         for fname in os.listdir(config.MAESTRO_DIR):
-            for f in [".wav", ".mp3", ".flac", ".ogg"]:
+            for f in config.EXTS:
                 if fname.endswith(f):
                     raw_path = os.path.join(config.MAESTRO_DIR, fname)
                     sanitized_path = raw_path.replace("|", "-")
@@ -1327,7 +1319,7 @@ def remove(args, force, tag):
                     )
                     if os.path.exists(song_path):
                         os.remove(song_path)
-                    else:
+                    elif not force:
                         click.secho(
                             f"Warning: Song file '{song_name}' (ID {song_id}) not found. Would you still like to delete the song from the database? [y/n] ",
                             fg="yellow",

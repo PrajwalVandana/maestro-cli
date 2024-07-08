@@ -39,6 +39,8 @@ setup(
         "music-player",
         "cli",
         "ogg",
+        "vorbis",
+        "ogg vorbis",
         "flac",
         "mp3",
         "wav",
@@ -64,6 +66,7 @@ setup(
         "click",  # CLI handling
         "just_playback",  # Audio playback
         "music-tag",  # Metadata handling
+        "pillow",  # Image processing (for album art)
         "pypresence",  # Discord Rich Presence
         "yt-dlp",  # YouTube downloads
         "spotdl",  # Spotify downloads
@@ -73,7 +76,6 @@ setup(
         "numpy",
         "windows-curses; sys_platform == 'win32'",  # Windows curses support
         "keyring",  # Credential storage
-        # "bcrypt",  # Password hashing
     ]
     + MAC_DEPS,
     entry_points={

@@ -119,12 +119,13 @@ MAESTRO_SITE = "https://maestro-music.vercel.app/"
 # endregion
 
 # region auth
-AUTH_SERVER = "http://maestro-music.vercel.app/auth/"
-# AUTH_SERVER = "http://localhost:5001/auth/"  # DEBUG
+# AUTH_SERVER = "http://maestro-music.vercel.app/api/"
+AUTH_SERVER = "http://localhost:5001/api/"  # DEBUG
 USER_EXISTS_URL = urljoin(AUTH_SERVER, "user_exists")
 SIGNUP_URL = urljoin(AUTH_SERVER, "signup")
 LOGIN_URL = urljoin(AUTH_SERVER, "login")
 UPDATE_METADATA_URL = urljoin(AUTH_SERVER, "update_metadata")
+UPDATE_ARTWORK_URL = urljoin(AUTH_SERVER, "update_artwork")
 # endregion
 
 SUPPRESS_LOGS = False  # DEBUG

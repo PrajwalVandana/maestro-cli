@@ -4,7 +4,6 @@ from maestro import (
 
 # region imports
 
-import base64
 import curses
 import importlib
 import logging
@@ -284,7 +283,7 @@ class PlaybackHandler:
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
         )
         self.playlist = playlist
-        self.i = 0
+        self._i = 0
         self.volume = volume
         self.clip_mode = clip_mode
         self.update_discord = False
@@ -501,7 +500,7 @@ class PlaybackHandler:
                     if (
                         self.stream_metadata_changed
                         and t - last_metadata_update_attempt > 5
-                    ):
+                    ):  # update metadata
                         self.stream_metadata_changed = False
                         try:
                             response1 = requests.post(
@@ -520,15 +519,15 @@ class PlaybackHandler:
                             )
                             response2 = requests.post(
                                 config.UPDATE_ARTWORK_URL,
-                                data=(
-                                    base64.urlsafe_b64encode(
+                                files={
+                                    "artwork": (
                                         song_data[
                                             "artwork"
                                         ].first.raw_thumbnail([600, 600])
+                                        if "artwork" in song_data
+                                        else None
                                     )
-                                    if "artwork" in song_data
-                                    else None
-                                ),
+                                },
                                 params={
                                     "mount": self.username,
                                 },
@@ -549,6 +548,15 @@ class PlaybackHandler:
                     b"\x00" * 4 * config.STREAM_CHUNK_SIZE
                 )
             sleep(0.01)
+
+    @property
+    def i(self):
+        return self._i
+
+    @i.setter
+    def i(self, i):
+        self._i = i
+        self.pos_changed = True
 
     @property
     def song_id(self):
@@ -1144,21 +1152,12 @@ def embed_artwork(yt_dlp_info):
     for thumbnail in yt_dlp_info["thumbnails"][:-1]:
         if "height" in thumbnail and (
             thumbnail["height"] == thumbnail["width"]
-            and (
-                best_thumbnail["width"]
-                != best_thumbnail["height"]
-            )
+            and (best_thumbnail["width"] != best_thumbnail["height"])
             or (
                 thumbnail["height"] >= best_thumbnail["height"]
+                and (thumbnail["width"] >= best_thumbnail["width"])
                 and (
-                    thumbnail["width"]
-                    >= best_thumbnail["width"]
-                )
-                and (
-                    (
-                        best_thumbnail["width"]
-                        != best_thumbnail["height"]
-                    )
+                    (best_thumbnail["width"] != best_thumbnail["height"])
                     or thumbnail["width"] == thumbnail["height"]
                 )
             )
@@ -1169,9 +1168,7 @@ def embed_artwork(yt_dlp_info):
     response = requests.get(image_url, timeout=5)
     image_data = response.content
 
-    m = music_tag.load_file(
-        yt_dlp_info["requested_downloads"][0]["filepath"]
-    )
+    m = music_tag.load_file(yt_dlp_info["requested_downloads"][0]["filepath"])
     m["artwork"] = image_data
     m.save()
 

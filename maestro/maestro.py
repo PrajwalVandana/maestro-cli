@@ -113,8 +113,8 @@ def discord_presence_loop(
     stream_username,
 ):
     try:
-        discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
-        discord_rpc.connect()
+        discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
+        discord_rpc.start()
         discord_connected.value = 1
     except Exception as e:  # pylint: disable=broad-except,unused-variable
         # print_to_logfile(e)
@@ -126,13 +126,15 @@ def discord_presence_loop(
             song_name = read_from_queue(song_name_queue)
             artist_name = "by " + read_from_queue(artist_queue)
             album_name = read_from_queue(album_queue)
+            sleep(5)
 
             if discord_connected.value:
                 try:
-                    discord_rpc.update(
+                    discord_rpc.set_activity(
                         details=song_name,
                         state=artist_name,
-                        large_image=f"{config.MAESTRO_SITE}/api/get_artwork?mount={stream_username}",
+                        # add Unix time for cache bustings
+                        large_image=f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}",
                         large_text=album_name,
                         buttons=(
                             [
@@ -153,20 +155,19 @@ def discord_presence_loop(
                     discord_connected.value = 0
             else:
                 try:
-                    discord_rpc = pypresence.Presence(
-                        client_id=config.DISCORD_ID
-                    )
-                    discord_rpc.connect()
+                    discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
+                    discord_rpc.start()
                     discord_connected.value = 1
                 except:  # pylint: disable=bare-except
                     pass
 
                 if discord_connected.value:
                     try:
-                        discord_rpc.update(
+                        discord_rpc.set_activity(
                             details=song_name,
                             state=artist_name,
-                            large_image=f"{config.MAESTRO_SITE}/api/get_artwork?mount={stream_username}",
+                            # add Unix time for cache bustings
+                            large_image=f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}",
                             large_text=album_name,
                             buttons=(
                                 [
@@ -188,10 +189,8 @@ def discord_presence_loop(
         else:
             if not discord_connected.value:
                 try:
-                    discord_rpc = pypresence.Presence(
-                        client_id=config.DISCORD_ID
-                    )
-                    discord_rpc.connect()
+                    discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
+                    discord_rpc.start()
                     discord_connected.value = 1
                 except:  # pylint: disable=bare-except
                     pass
@@ -792,8 +791,6 @@ def _play(
                 player.update_screen()
 
             sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
-
-        player.pos_changed = True
 
         # region stats
         if player.paused:

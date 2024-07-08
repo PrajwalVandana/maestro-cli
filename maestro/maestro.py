@@ -110,6 +110,7 @@ def discord_presence_loop(
     artist_queue,
     album_queue,
     discord_connected,
+    artwork_uploaded,
     stream_username,
 ):
     try:
@@ -126,7 +127,10 @@ def discord_presence_loop(
             song_name = read_from_queue(song_name_queue)
             artist_name = "by " + read_from_queue(artist_queue)
             album_name = read_from_queue(album_queue)
-            sleep(5)
+
+            while not artwork_uploaded.value:
+                sleep(1)
+            # artwork_uploaded.value = 0  # NOTE: shouldn't be necessary
 
             if discord_connected.value:
                 try:
@@ -151,7 +155,8 @@ def discord_presence_loop(
                     artist_name = ""
                     album_name = ""
                     sleep(15)
-                except:  # pylint: disable=bare-except
+                except Exception as e:  # pylint: disable=bare-except
+                    print_to_logfile(e)
                     discord_connected.value = 0
             else:
                 try:
@@ -184,7 +189,8 @@ def discord_presence_loop(
                         artist_name = ""
                         album_name = ""
                         sleep(15)
-                    except:  # pylint: disable=bare-except
+                    except Exception as e:  # pylint: disable=bare-except
+                        print_to_logfile(e)
                         discord_connected.value = 0
         else:
             if not discord_connected.value:
@@ -261,6 +267,7 @@ def _play(
                 player.discord_queues["artist"],
                 player.discord_queues["album"],
                 player.discord_connected,
+                player.artwork_uploaded,
                 stream[0] if stream else None,
             ),
         )
@@ -522,6 +529,7 @@ def _play(
                                                 player.discord_queues["artist"],
                                                 player.discord_queues["album"],
                                                 player.discord_connected,
+                                                player.artwork_uploaded,
                                                 stream[0] if stream else None,
                                             ),
                                         )

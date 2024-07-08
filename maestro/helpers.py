@@ -308,6 +308,7 @@ class PlaybackHandler:
         self.update_now_playing = False
 
         self.discord_connected = multiprocessing.Value("i", 2)
+        self.artwork_uploaded = multiprocessing.Value("i", 0)  # bool
         self.discord_queues = {}
 
         self.can_visualize = LIBROSA is not None  # can generate visualization
@@ -335,6 +336,7 @@ class PlaybackHandler:
             )
             self.ffmpeg_process.start()
             self.stream_metadata_changed = False
+            self.artwork_uploaded.value = 0
             self.streaming_thread = threading.Thread(
                 target=self._streaming_loop,
                 daemon=True,
@@ -528,14 +530,23 @@ class PlaybackHandler:
                                         else None
                                     )
                                 },
+                                data={
+                                    "mime": (
+                                        song_data["artwork"].first.mime
+                                        if "artwork" in song_data
+                                        else None
+                                    )
+                                },
                                 params={
                                     "mount": self.username,
                                 },
                                 auth=(self.username, self.password),
                                 timeout=5,
                             )
-                            if response1.ok and response2.ok:
-                                last_metadata_update_attempt = 0
+                            if response2.ok:
+                                self.artwork_uploaded.value = 1
+                                if response1.ok:
+                                    last_metadata_update_attempt = 0
                             else:  # retry in 5 seconds
                                 self.stream_metadata_changed = True
                                 last_metadata_update_attempt = t
@@ -644,11 +655,12 @@ class PlaybackHandler:
     def update_icecast_metadata(self):
         if self.stream:
             self.stream_metadata_changed = True
+            self.artwork_uploaded.value = 0
 
     def update_metadata(self):
         self.update_mac_now_playing_metadata()
-        self.update_discord_metadata()
         self.update_icecast_metadata()
+        self.update_discord_metadata()
 
     def initialize_discord_attrs(self):
         self.update_discord = True

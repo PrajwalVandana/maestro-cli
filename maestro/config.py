@@ -113,14 +113,13 @@ STREAM_SAMPLE_RATE = 44100
 STREAM_CHUNK_SIZE = 256
 
 ICECAST_SERVER = "maestro-icecast.eastus2.cloudapp.azure.com"  # Azure-hosted VM Icecast server
-# ICECAST_SERVER = "localhost:5000"  # local Icecast server  # DEBUG
 
-MAESTRO_SITE = "https://maestro-music.vercel.app/"
+MAESTRO_SITE = "https://maestro-music.vercel.app"
 # endregion
 
 # region auth
-# AUTH_SERVER = "http://maestro-music.vercel.app/api/"
-AUTH_SERVER = "http://localhost:5001/api/"  # DEBUG
+AUTH_SERVER = "http://maestro-music.vercel.app/api/"
+# AUTH_SERVER = "http://localhost:5001/api/"  # DEBUG
 USER_EXISTS_URL = urljoin(AUTH_SERVER, "user_exists")
 SIGNUP_URL = urljoin(AUTH_SERVER, "signup")
 LOGIN_URL = urljoin(AUTH_SERVER, "login")

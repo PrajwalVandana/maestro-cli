@@ -247,7 +247,7 @@ class FFmpegProcessHandler:
                 # "-c:a", "aac",  # Set the audio codec to AAC
                 # "-profile:a", "aac_low",  # Set the AAC profile to low complexity
                 "-f", "mp3",  # Output format
-                "-report",  # DEBUG
+                # "-report",  # DEBUG
                 f"icecast://{self.username}:{self.password}@{config.ICECAST_SERVER}:8000/{self.username}",  # Azure-hosted maestro Icecast URL
             ],
             # fmt: on
@@ -504,18 +504,9 @@ class PlaybackHandler:
                     ):
                         self.stream_metadata_changed = False
                         try:
-                            thumbnail = (
-                                base64.urlsafe_b64encode(
-                                    song_data["artwork"].first.raw_thumbnail(
-                                        [1024, 1024]
-                                    )
-                                )
-                                if "artwork" in song_data
-                                else None
-                            )
-                            response1 = requests.get(
+                            response1 = requests.post(
                                 config.UPDATE_METADATA_URL,
-                                params={
+                                data={
                                     "mount": self.username,
                                     "song": self.song_title,
                                     "artist": quote_plus(self.song_artist),
@@ -529,7 +520,15 @@ class PlaybackHandler:
                             )
                             response2 = requests.post(
                                 config.UPDATE_ARTWORK_URL,
-                                data=thumbnail,
+                                data=(
+                                    base64.urlsafe_b64encode(
+                                        song_data[
+                                            "artwork"
+                                        ].first.raw_thumbnail([600, 600])
+                                    )
+                                    if "artwork" in song_data
+                                    else None
+                                ),
                                 params={
                                     "mount": self.username,
                                 },
@@ -1131,6 +1130,50 @@ def init_curses(stdscr):
         curses.set_escdelay(25)  # 25 ms
     except:  # pylint: disable=bare-except
         pass
+
+
+def embed_artwork(yt_dlp_info):
+    yt_dlp_info["thumbnails"].sort(key=lambda d: d["preference"])
+    best_thumbnail = yt_dlp_info["thumbnails"][-1]  # default thumbnail
+
+    if "width" not in best_thumbnail:
+        # diff so that any square thumbnail is chosen
+        best_thumbnail["width"] = 0
+        best_thumbnail["height"] = -1
+
+    for thumbnail in yt_dlp_info["thumbnails"][:-1]:
+        if "height" in thumbnail and (
+            thumbnail["height"] == thumbnail["width"]
+            and (
+                best_thumbnail["width"]
+                != best_thumbnail["height"]
+            )
+            or (
+                thumbnail["height"] >= best_thumbnail["height"]
+                and (
+                    thumbnail["width"]
+                    >= best_thumbnail["width"]
+                )
+                and (
+                    (
+                        best_thumbnail["width"]
+                        != best_thumbnail["height"]
+                    )
+                    or thumbnail["width"] == thumbnail["height"]
+                )
+            )
+        ):
+            best_thumbnail = thumbnail
+
+    image_url = best_thumbnail["url"]
+    response = requests.get(image_url, timeout=5)
+    image_data = response.content
+
+    m = music_tag.load_file(
+        yt_dlp_info["requested_downloads"][0]["filepath"]
+    )
+    m["artwork"] = image_data
+    m.save()
 
 
 def add_song(

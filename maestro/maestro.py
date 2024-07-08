@@ -21,6 +21,7 @@ from maestro.icon import img
 from maestro.__version__ import VERSION
 
 from just_playback import Playback
+from yt_dlp import YoutubeDL
 
 # import gui_helper
 
@@ -115,7 +116,7 @@ def discord_presence_loop(
         discord_rpc = pypresence.Presence(client_id=config.DISCORD_ID)
         discord_rpc.connect()
         discord_connected.value = 1
-    except Exception as e:  # pylint: disable=broad-except
+    except Exception as e:  # pylint: disable=broad-except,unused-variable
         # print_to_logfile(e)
         discord_connected.value = 0
 
@@ -131,7 +132,7 @@ def discord_presence_loop(
                     discord_rpc.update(
                         details=song_name,
                         state=artist_name,
-                        large_image="maestro-icon",
+                        large_image=f"{config.MAESTRO_SITE}/api/get_artwork?mount={stream_username}",
                         large_text=album_name,
                         buttons=(
                             [
@@ -165,7 +166,7 @@ def discord_presence_loop(
                         discord_rpc.update(
                             details=song_name,
                             state=artist_name,
-                            large_image="maestro-icon",
+                            large_image=f"{config.MAESTRO_SITE}/api/get_artwork?mount={stream_username}",
                             large_text=album_name,
                             buttons=(
                                 [
@@ -1064,29 +1065,32 @@ def add(
             return
 
         if youtube:
-            subprocess.run(
-                list(
-                    filter(
-                        bool,
-                        [
-                            "yt-dlp",
-                            path_,
-                            "-x",  # extract audio (necessary, needs ffmpeg)
-                            "--audio-format",
-                            format_,
-                            "--no-playlist" if not playlist_ else "",
-                            "--embed-metadata",
-                            "--embed-thumbnail",  # FIXME: format-dependent
-                            # "--write-thumbnail",
-                            "-o",
-                            os.path.join(
-                                config.MAESTRO_DIR, "%(title)s.%(ext)s"
-                            ),
-                        ],
-                    )
-                ),
-                check=True,
-            )
+            with YoutubeDL(
+                {
+                    "noplaylist": not playlist_,
+                    "postprocessors": [
+                        {
+                            "key": "FFmpegMetadata",
+                            "add_metadata": True,
+                        },
+                        {
+                            "key": "FFmpegExtractAudio",
+                            "preferredcodec": format_,
+                        },
+                    ],
+                    "outtmpl": {
+                        "default": os.path.join(
+                            config.MAESTRO_DIR, "%(title)s.%(ext)s"
+                        )
+                    },
+                }
+            ) as ydl:
+                info = ydl.extract_info(path_, download=True)
+                if "entries" in info:
+                    for e in info["entries"]:
+                        helpers.embed_artwork(e)
+                else:
+                    helpers.embed_artwork(info)
         else:
             if format_ == "vorbis":  # for spotdl only
                 format_ = "ogg"

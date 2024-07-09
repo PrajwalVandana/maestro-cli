@@ -607,6 +607,7 @@ class PlaybackHandler:
         self.output(self.playback.curr_pos)
 
     def update_discord_metadata(self):
+        sleep(1)  # wait for image to be uploaded
         if self.update_discord:
             multiprocessing_put_word(
                 self.discord_queues["title"],

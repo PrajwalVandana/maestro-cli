@@ -118,19 +118,19 @@ def discord_presence_loop(
         discord_rpc.start()
         discord_connected.value = 1
     except Exception as e:  # pylint: disable=broad-except,unused-variable
-        # print_to_logfile(e)
+        print_to_logfile(e)
         discord_connected.value = 0
 
     while True:
         song_name = ""
         if not song_name_queue.empty() or song_name:
-            song_name = read_from_queue(song_name_queue)
+            # minimum 2 characters (Discord requirement)
+            song_name = read_from_queue(song_name_queue).ljust(2)
             artist_name = "by " + read_from_queue(artist_queue)
-            album_name = read_from_queue(album_queue)
+            album_name = read_from_queue(album_queue).ljust(2)
 
             while not artwork_uploaded.value:
                 sleep(1)
-            # artwork_uploaded.value = 0  # NOTE: shouldn't be necessary
 
             if discord_connected.value:
                 try:

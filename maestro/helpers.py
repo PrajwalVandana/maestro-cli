@@ -530,13 +530,13 @@ class PlaybackHandler:
                                         else None
                                     )
                                 },
-                                data={
-                                    "mime": (
-                                        song_data["artwork"].first.mime
-                                        if "artwork" in song_data
-                                        else None
-                                    )
-                                },
+                                # data={
+                                #     "mime": (
+                                #         song_data["artwork"].first.mime
+                                #         if "artwork" in song_data
+                                #         else None
+                                #     )
+                                # },
                                 params={
                                     "mount": self.username,
                                 },
@@ -1698,10 +1698,9 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
 
 
 def print_to_logfile(*args, **kwargs):
-    if not config.SUPPRESS_LOGS:
-        if "file" in kwargs:
-            raise ValueError("file kwargs not allowed for 'print_to_logfile'")
-        print(*args, **kwargs, file=open("log.log", "a", encoding="utf-8"))
+    if "file" in kwargs:
+        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
+    print(*args, **kwargs, file=open(config.LOGFILE, "a", encoding="utf-8"))
 
 
 def multiprocessing_put_word(q, word):

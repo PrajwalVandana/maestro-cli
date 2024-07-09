@@ -50,6 +50,7 @@ METADATA_KEYS = (
 MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
 
 SETTINGS_FILE = os.path.join(MAESTRO_DIR, "settings.json")
+LOGFILE = os.path.join(MAESTRO_DIR, "maestro.log")
 DEFAULT_SETTINGS = {
     "song_directory": os.path.join(MAESTRO_DIR, "songs/"),
     "last_version_sync": 0,
@@ -126,7 +127,5 @@ LOGIN_URL = urljoin(AUTH_SERVER, "login")
 UPDATE_METADATA_URL = urljoin(AUTH_SERVER, "update_metadata")
 UPDATE_ARTWORK_URL = urljoin(AUTH_SERVER, "update_artwork")
 # endregion
-
-SUPPRESS_LOGS = False  # DEBUG
 
 # endregion

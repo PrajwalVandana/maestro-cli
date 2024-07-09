@@ -139,16 +139,16 @@ def discord_presence_loop(
                             else "maestro-icon"
                         ),
                         large_text=album_name,
-                        buttons=(
-                            [
-                                {
-                                    "label": "Listen Along",
-                                    "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
-                                }
-                            ]
-                            if stream_username
-                            else []
-                        ),
+                        # buttons=(
+                        #     [
+                        #         {
+                        #             "label": "Listen Along",
+                        #             "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
+                        #         }
+                        #     ]
+                        #     if stream_username
+                        #     else []
+                        # ),
                     )
                     song_name = ""
                     artist_name = ""
@@ -177,16 +177,16 @@ def discord_presence_loop(
                                 else "maestro-icon"
                             ),
                             large_text=album_name,
-                            buttons=(
-                                [
-                                    {
-                                        "label": "Listen Along",
-                                        "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
-                                    }
-                                ]
-                                if stream_username
-                                else []
-                            ),
+                            # buttons=(
+                            #     [
+                            #         {
+                            #             "label": "Listen Along",
+                            #             "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
+                            #         }
+                            #     ]
+                            #     if stream_username
+                            #     else []
+                            # ),
                         )
                         song_name = ""
                         artist_name = ""
@@ -583,8 +583,9 @@ def _play(
                             elif ch in "sS":
                                 player.stream = not player.stream
                                 if player.stream:
-                                    player.ffmpeg_process.start()
-                                    player.stream_metadata_changed = True
+                                    if player.username is not None:
+                                        player.stream_metadata_changed = True
+                                        player.ffmpeg_process.start()
                                 else:
                                     player.ffmpeg_process.terminate()
                                 player.update_screen()
@@ -955,7 +956,7 @@ def cli():
     if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:
         # move to backup
         backup_path = os.path.join(
-            config.MAESTRO_DIR, f"/old-logs/maestro-{int(time())}.log"
+            config.MAESTRO_DIR, f"old-logs/maestro-{int(time())}.log"
         )
         os.makedirs(os.path.dirname(backup_path), exist_ok=True)
         move(config.LOGFILE, backup_path)
@@ -1691,6 +1692,7 @@ def play(
     \x1b[1ma\x1b[0m\t\t[a]dd a song (by ID) to the end of the queue. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
     \x1b[1mi\x1b[0m\t\t[i]nsert a song (by ID) in the queue after the selected song. Opens a prompt like 'a'.
     \x1b[1mt\x1b[0m\t\tadd a [t]ag to all songs in the queue. Opens a prompt like 'a'.
+    \x1b[1ms\x1b[0m\t\ttoggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login
 
     \b
     song color indicates mode:

@@ -470,6 +470,7 @@ class PlaybackHandler:
         while True:
             if (
                 self.stream
+                and self.username is not None
                 and self.audio_data is not None
                 and self.song_id in self.audio_data
                 and self.audio_data[self.song_id][1] is not None
@@ -746,32 +747,41 @@ class PlaybackHandler:
 
         if self.stream:
             prefix = "  " if self.update_discord else ""
-            long_stream_message = (
-                prefix
-                + f"Streaming at {config.MAESTRO_SITE}/listen/{self.username}!"
-            )
-            short_stream_message = prefix + f"Streaming as {self.username}!"
-            if (
-                length_so_far
-                + len(long_stream_message)
-                + 2
-                + (len(visualize_message) if visualize_message else -2)
-                < screen_width
-            ):
-                length_so_far = addstr_fit_to_width(
-                    self.stdscr,
-                    long_stream_message,
-                    screen_width,
-                    length_so_far,
-                    curses.color_pair(16),
+            if self.username:
+                long_stream_message = (
+                    prefix
+                    + f"Streaming at {config.MAESTRO_SITE}/listen/{self.username}!"
                 )
+                short_stream_message = prefix + f"Streaming as {self.username}!"
+                if (
+                    length_so_far
+                    + len(long_stream_message)
+                    + 2
+                    + (len(visualize_message) if visualize_message else -2)
+                    < screen_width
+                ):
+                    length_so_far = addstr_fit_to_width(
+                        self.stdscr,
+                        long_stream_message,
+                        screen_width,
+                        length_so_far,
+                        curses.color_pair(16),
+                    )
+                else:
+                    length_so_far = addstr_fit_to_width(
+                        self.stdscr,
+                        short_stream_message,
+                        screen_width,
+                        length_so_far,
+                        curses.color_pair(16),
+                    )
             else:
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
-                    short_stream_message,
+                    prefix + "Please log in to stream.",
                     screen_width,
                     length_so_far,
-                    curses.color_pair(16),
+                    curses.color_pair(14),
                 )
 
         length_so_far = addstr_fit_to_width(

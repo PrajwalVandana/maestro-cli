@@ -308,7 +308,6 @@ class PlaybackHandler:
         self.update_now_playing = False
 
         self.discord_connected = multiprocessing.Value("i", 2)
-        self.artwork_uploaded = multiprocessing.Value("i", 0)  # bool
         self.discord_queues = {}
 
         self.can_visualize = LIBROSA is not None  # can generate visualization
@@ -336,7 +335,6 @@ class PlaybackHandler:
             )
             self.ffmpeg_process.start()
             self.stream_metadata_changed = False
-            self.artwork_uploaded.value = 0
             self.streaming_thread = threading.Thread(
                 target=self._streaming_loop,
                 daemon=True,
@@ -470,7 +468,6 @@ class PlaybackHandler:
                 and self.playback.curr_pos  # is 0 for a while after resuming
                 and not self.paused
             ):
-                song_data = music_tag.load_file(self.song_path)
                 for fpos in range(
                     int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE),
                     self.audio_data[self.song_id][1].shape[1],
@@ -505,7 +502,7 @@ class PlaybackHandler:
                     ):  # update metadata
                         self.stream_metadata_changed = False
                         try:
-                            response1 = requests.post(
+                            response = requests.post(
                                 config.UPDATE_METADATA_URL,
                                 data={
                                     "mount": self.username,
@@ -519,34 +516,8 @@ class PlaybackHandler:
                                 auth=(self.username, self.password),
                                 timeout=5,
                             )
-                            response2 = requests.post(
-                                config.UPDATE_ARTWORK_URL,
-                                files={
-                                    "artwork": (
-                                        song_data[
-                                            "artwork"
-                                        ].first.raw_thumbnail([600, 600])
-                                        if "artwork" in song_data
-                                        else None
-                                    )
-                                },
-                                # data={
-                                #     "mime": (
-                                #         song_data["artwork"].first.mime
-                                #         if "artwork" in song_data
-                                #         else None
-                                #     )
-                                # },
-                                params={
-                                    "mount": self.username,
-                                },
-                                auth=(self.username, self.password),
-                                timeout=5,
-                            )
-                            if response2.ok:
-                                self.artwork_uploaded.value = 1
-                                if response1.ok:
-                                    last_metadata_update_attempt = 0
+                            if response.ok:
+                                last_metadata_update_attempt = 0
                             else:  # retry in 5 seconds
                                 self.stream_metadata_changed = True
                                 last_metadata_update_attempt = t
@@ -574,14 +545,18 @@ class PlaybackHandler:
         return self.playlist[self.i][0]
 
     @property
+    def song_file(self):
+        return self.playlist[self.i][1]
+
+    @property
     def song_path(self):
         return os.path.join(
-            config.SETTINGS["song_directory"], self.playlist[self.i][1]
+            config.SETTINGS["song_directory"], self.song_file
         )
 
     @property
     def song_title(self):
-        return os.path.splitext(self.playlist[self.i][1])[0]
+        return os.path.splitext(self.song_file)[0]
 
     @property
     def song_artist(self):
@@ -635,15 +610,16 @@ class PlaybackHandler:
                 self.song_album,
             )
 
-    def update_mac_now_playing_metadata(self):
+    def update_mac_now_playing_metadata(self, cover=None):
         if self.can_mac_now_playing:
             self.mac_now_playing.paused = False
             self.mac_now_playing.pos = 0
             self.mac_now_playing.length = self.duration
+            self.mac_now_playing.cover = cover
 
             multiprocessing_put_word(
                 self.mac_now_playing.title_queue,
-                self.playlist[self.i][1],
+                self.song_title,
             )
             multiprocessing_put_word(
                 self.mac_now_playing.artist_queue,
@@ -655,12 +631,28 @@ class PlaybackHandler:
     def update_icecast_metadata(self):
         if self.stream:
             self.stream_metadata_changed = True
-            self.artwork_uploaded.value = 0
 
     def update_metadata(self):
-        self.update_mac_now_playing_metadata()
-        self.update_icecast_metadata()
-        self.update_discord_metadata()
+        song_data = music_tag.load_file(self.song_path)
+        img_data = (
+            song_data["artwork"].first.raw_thumbnail([600, 600])
+            if "artwork" in song_data
+            else None
+        )
+
+        def f():
+            self.update_mac_now_playing_metadata(img_data)
+            requests.post(
+                config.UPDATE_ARTWORK_URL,
+                files={"artwork": img_data},
+                params={"mount": self.username},
+                auth=(self.username, self.password),
+                timeout=5,
+            )
+            self.update_icecast_metadata()
+            self.update_discord_metadata()
+
+        threading.Thread(target=f, daemon=True).start()
 
     def initialize_discord_attrs(self):
         self.update_discord = True
@@ -841,7 +833,7 @@ class PlaybackHandler:
         )
         length_so_far = addstr_fit_to_width(
             self.stdscr,
-            f"{self.playlist[self.i][1]} ",
+            f"{self.song_file} ",
             screen_width,
             length_so_far,
             curses.color_pair(song_display_color + 10) | curses.A_BOLD,

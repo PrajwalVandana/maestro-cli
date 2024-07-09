@@ -1,12 +1,14 @@
 # BIG thanks to @othalan on StackOverflow for this
 # adapted from https://stackoverflow.com/questions/69965175/pyobjc-accessing-mpnowplayinginfocenter
 
+from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
+
 # pylint: disable=no-name-in-module,import-error
 from AppKit import (
     NSImage,
-    NSMakeRect,
+    # NSMakeRect,
     # NSCompositingOperationSourceOver,
-    NSCompositingOperationCopy,
+    # NSCompositingOperationCopy,
     # NSRunLoop,
     # NSDate,
 )
@@ -209,35 +211,31 @@ class MacNowPlaying:
 
         # Set basic track information
         nowplaying_info[MPMediaItemPropertyTitle] = self.title
-        # print("title: {}".format(self.title), file=open("log.txt", "a"))
         nowplaying_info[MPMediaItemPropertyArtist] = self.artist
-        # print("artist: {}".format(self.artist), file=open("log.txt", "a"))
         nowplaying_info[MPMediaItemPropertyPlaybackDuration] = self.length
-        # print("length: {}".format(self.length), file=open("log.txt", "a"))
         nowplaying_info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = self.pos
-        # print("pos: {}".format(self.pos), file=open("log.txt", "a"))
 
         if self.cover is not None:
-            # print("cover len: {}".format(len(self.cover)), file=open("log.txt", "a"))
+            # print_to_logfile("cover len: {}".format(len(self.cover)))
             img = NSImage.alloc().initWithData_(self.cover)
 
-            def resize(size):
-                new = NSImage.alloc().initWithSize_(size)
-                new.lockFocus()
-                img.drawInRect_fromRect_operation_fraction_(
-                    NSMakeRect(0, 0, size.width, size.height),
-                    NSMakeRect(0, 0, img.size().width, img.size().height),
-                    NSCompositingOperationCopy,
-                    1.0,
-                )
-                new.unlockFocus()
-                return new
+            # def resize(size):
+            #     new = NSImage.alloc().initWithSize_(size)
+            #     new.lockFocus()
+            #     img.drawInRect_fromRect_operation_fraction_(
+            #         NSMakeRect(0, 0, size.width, size.height),
+            #         NSMakeRect(0, 0, img.size().width, img.size().height),
+            #         NSCompositingOperationCopy,
+            #         1.0,
+            #     )
+            #     new.unlockFocus()
+            #     return new
 
             art = MPMediaItemArtwork.alloc().initWithBoundsSize_requestHandler_(
-                img.size(), resize
+                img.size(), lambda size: img
             )
 
-            # print("artwork size: {}".format(img.size()))
+            # print_to_logfile("artwork size: {}".format(img.size()))
             nowplaying_info[MPMediaItemPropertyArtwork] = self._cover = art
             self.cover = None
         else:

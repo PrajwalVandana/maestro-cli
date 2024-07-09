@@ -110,7 +110,6 @@ def discord_presence_loop(
     artist_queue,
     album_queue,
     discord_connected,
-    artwork_uploaded,
     stream_username,
 ):
     try:
@@ -122,23 +121,23 @@ def discord_presence_loop(
         discord_connected.value = 0
 
     while True:
-        song_name = ""
-        if not song_name_queue.empty() or song_name:
+        if not album_queue.empty():
             # minimum 2 characters (Discord requirement)
             song_name = read_from_queue(song_name_queue).ljust(2)
             artist_name = "by " + read_from_queue(artist_queue)
             album_name = read_from_queue(album_queue).ljust(2)
-
-            while not artwork_uploaded.value:
-                sleep(1)
 
             if discord_connected.value:
                 try:
                     discord_rpc.set_activity(
                         details=song_name,
                         state=artist_name,
-                        # add Unix time for cache bustings
-                        large_image=f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}",
+                        # add Unix time for cache busting
+                        large_image=(
+                            f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}"
+                            if stream_username
+                            else "maestro-icon"
+                        ),
                         large_text=album_name,
                         buttons=(
                             [
@@ -171,8 +170,12 @@ def discord_presence_loop(
                         discord_rpc.set_activity(
                             details=song_name,
                             state=artist_name,
-                            # add Unix time for cache bustings
-                            large_image=f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}",
+                            # add Unix time for cache busting
+                            large_image=(
+                                f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}"
+                                if stream_username
+                                else "maestro-icon"
+                            ),
                             large_text=album_name,
                             buttons=(
                                 [
@@ -211,7 +214,8 @@ def _play(
     reshuffle,
     update_discord,
     visualize,
-    stream,
+    username,
+    password,
 ):
     helpers.init_curses(stdscr)
 
@@ -227,7 +231,7 @@ def _play(
         volume,
         clip_mode,
         visualize,
-        stream,
+        (username, password) if username and password else None,
     )
     if can_mac_now_playing:
         player.can_mac_now_playing = True
@@ -267,8 +271,7 @@ def _play(
                 player.discord_queues["artist"],
                 player.discord_queues["album"],
                 player.discord_connected,
-                player.artwork_uploaded,
-                stream[0] if stream else None,
+                username,
             ),
         )
         discord_presence_process.start()
@@ -288,6 +291,7 @@ def _play(
 
         player.paused = False
         player.duration = full_duration = player.playback.duration
+
         player.update_metadata()
         player.playback.play()
 
@@ -529,8 +533,7 @@ def _play(
                                                 player.discord_queues["artist"],
                                                 player.discord_queues["album"],
                                                 player.discord_connected,
-                                                player.artwork_uploaded,
-                                                stream[0] if stream else None,
+                                                username,
                                             ),
                                         )
                                     )
@@ -1764,16 +1767,31 @@ def play(
         click.secho("No songs found matching tag criteria.", fg="red")
     else:
         volume /= 100
+
+        username = helpers.get_username()
+        password = helpers.get_password()
         if stream:
-            username = helpers.get_username()
-            password = helpers.get_password()
             if username is None or password is None:
                 if username is None:
                     click.secho("Username not found.", fg="red")
                 if password is None:
                     click.secho("Password not found.", fg="red")
-                click.secho("Please log in using 'maestro login'.", fg="red")
+                click.secho(
+                    "Please log in using 'maestro login' to stream.", fg="red"
+                )
                 return
+        elif discord:
+            if username is None or password is None:
+                if username is None:
+                    click.secho("Username not found.", fg="yellow")
+                if password is None:
+                    click.secho("Password not found.", fg="yellow")
+                click.secho(
+                    "Log in using 'maestro login' to enable album art in the Discord rich presence.",
+                    fg="yellow",
+                )
+                username = None
+                password = None
 
         curses.wrapper(
             _play,
@@ -1784,7 +1802,8 @@ def play(
             reshuffle,
             discord and can_update_discord,
             visualize,
-            (username, password) if stream else None,
+            username,
+            password,
         )
 
     if songs_not_found:
@@ -2772,9 +2791,9 @@ def version():
 @click.argument("username", required=False, default=None, type=str)
 def login(username):
     """
-    Log in to maestro. Currently the login system is only used for listen-along
-    streaming, but may be used for other features in the future. The USERNAME
-    argument is optional; if not passed, you will be prompted for your username.
+    Log in to maestro. Required for listen-along streaming and album covers in
+    the Discord rich presence. The USERNAME argument is optional; if not passed,
+    you will be prompted for your username.
 
     Will log out from existing username if a new one is passed.
     """
@@ -2791,8 +2810,7 @@ def login(username):
 )
 def logout(force):
     """
-    Log out of maestro. Currently the login system is only used for listen-along
-    streaming, but may be used for other features in the future.
+    Log out of maestro.
     """
     if not force:
         click.echo("Are you sure you want to log out? [y/n] ", nl=False)
@@ -2818,8 +2836,8 @@ def logout(force):
 @click.option("-l/-nL", "--login/--no-login", "login_", default=True)
 def signup(username, login_):
     """
-    Create a new maestro account. Currently the login system is only used for
-    listen-along streaming, but may be used for other features in the future.
+    Create a new maestro account. Required for listen-along streaming and
+    album covers in the Discord rich presence.
 
     The USERNAME argument is optional; if not passed, you will be prompted for
     a username.

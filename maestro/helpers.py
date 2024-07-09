@@ -1,3 +1,9 @@
+def print_to_logfile(*args, **kwargs):
+    if "file" in kwargs:
+        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
+    print(*args, **kwargs, file=open(config.LOGFILE, "a", encoding="utf-8"))
+
+
 from maestro import (
     config,
 )  # pylint: disable=wildcard-import,unused-wildcard-import
@@ -35,7 +41,7 @@ try:
     warnings.simplefilter("ignore", category=NumbaWarning)
 except:  # pylint: disable=bare-except
     jit = lambda x: x
-    # print("Numba not installed. Visualization will be slow.")
+    print_to_logfile("Numba not installed. Visualization will be slow.")
 
 try:
     import numpy as np
@@ -48,6 +54,7 @@ try:
     ):
         raise ImportError
 except ImportError:
+    print_to_logfile("Librosa not installed. Visualization will be disabled.")
     LIBROSA = None
 
 # endregion
@@ -486,6 +493,7 @@ class PlaybackHandler:
                     # fmt: off
                     except BrokenPipeError as e:  # pylint: disable=unused-variable
                         # fmt: on
+                        print_to_logfile("FFmpeg processs error:", e)
                         if not self.ending:
                             self.ffmpeg_process.restart()
 
@@ -522,7 +530,7 @@ class PlaybackHandler:
                                 self.stream_metadata_changed = True
                                 last_metadata_update_attempt = t
                         except Exception as e:
-                            print_to_logfile(e)
+                            print_to_logfile("Update metadata failed:", e)
                             self.stream_metadata_changed = True
                             last_metadata_update_attempt = t
             elif self.paused:  # send silence
@@ -550,9 +558,7 @@ class PlaybackHandler:
 
     @property
     def song_path(self):
-        return os.path.join(
-            config.SETTINGS["song_directory"], self.song_file
-        )
+        return os.path.join(config.SETTINGS["song_directory"], self.song_file)
 
     @property
     def song_title(self):
@@ -924,6 +930,7 @@ class PlaybackHandler:
                 curses.color_pair(12) | curses.A_ITALIC,
             )
         except:  # pylint: disable=bare-except
+            print_to_logfile("Failed to italicize text in curses.")
             song_data_length_so_far = addstr_fit_to_width(
                 self.stdscr,
                 self.song_album,
@@ -1687,12 +1694,6 @@ def print_entry(entry_list, highlight=None, show_song_info=None):
             f" ({album_artist if album_artist else 'No Album Artist'})",
             fg="bright_black",
         )
-
-
-def print_to_logfile(*args, **kwargs):
-    if "file" in kwargs:
-        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
-    print(*args, **kwargs, file=open(config.LOGFILE, "a", encoding="utf-8"))
 
 
 def multiprocessing_put_word(q, word):

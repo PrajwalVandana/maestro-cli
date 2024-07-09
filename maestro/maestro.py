@@ -19,6 +19,7 @@ from time import sleep, time
 
 from maestro.icon import img
 from maestro.__version__ import VERSION
+from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
 from just_playback import Playback
 from yt_dlp import YoutubeDL
@@ -29,6 +30,7 @@ can_update_discord = True
 try:
     import pypresence
 except ImportError:
+    print_to_logfile("pypresence not installed. Discord presence will be disabled.")
     can_update_discord = False
 
 can_mac_now_playing = False
@@ -57,12 +59,10 @@ if sys.platform == "darwin":
     except (
         Exception  # pylint: disable=bare-except,broad-except
     ) as mac_import_err:
-        pass
+        print_to_logfile("macOS import error:", mac_import_err)
 
 from maestro import config
 from maestro import helpers
-
-from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
 # endregion
 
@@ -117,7 +117,7 @@ def discord_presence_loop(
         discord_rpc.start()
         discord_connected.value = 1
     except Exception as e:  # pylint: disable=broad-except,unused-variable
-        print_to_logfile(e)
+        print_to_logfile("Discord connection error:", e)
         discord_connected.value = 0
 
     while True:
@@ -155,15 +155,15 @@ def discord_presence_loop(
                     album_name = ""
                     sleep(15)
                 except Exception as e:  # pylint: disable=bare-except
-                    print_to_logfile(e)
+                    print_to_logfile("Discord update error:", e)
                     discord_connected.value = 0
             else:
                 try:
                     discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
                     discord_rpc.start()
                     discord_connected.value = 1
-                except:  # pylint: disable=bare-except
-                    pass
+                except Exception as e:
+                    print_to_logfile("Discord connection error:", e)
 
                 if discord_connected.value:
                     try:
@@ -192,8 +192,8 @@ def discord_presence_loop(
                         artist_name = ""
                         album_name = ""
                         sleep(15)
-                    except Exception as e:  # pylint: disable=bare-except
-                        print_to_logfile(e)
+                    except Exception as e:
+                        print_to_logfile("Discord update error:", e)
                         discord_connected.value = 0
         else:
             if not discord_connected.value:
@@ -201,8 +201,8 @@ def discord_presence_loop(
                     discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
                     discord_rpc.start()
                     discord_connected.value = 1
-                except:  # pylint: disable=bare-except
-                    pass
+                except Exception as e:
+                    print_to_logfile("Discord connection error:", e)
 
 
 def _play(
@@ -326,7 +326,7 @@ def _play(
             else:
                 player.playback.set_volume(player.volume)
 
-            if player.can_mac_now_playing:  # Mac Now Playing event loop
+            if player.can_mac_now_playing:  # macOS Now Playing event loop
                 try:
                     if player.update_now_playing:
                         player.mac_now_playing.update()
@@ -334,7 +334,8 @@ def _play(
                     NSRunLoop.currentRunLoop().runUntilDate_(
                         NSDate.dateWithTimeIntervalSinceNow_(0.05)
                     )
-                except:  # pylint: disable=bare-except
+                except Exception as e:
+                    print_to_logfile("macOS Now Playing error:", e)
                     player.can_mac_now_playing = False
 
             if (
@@ -775,7 +776,7 @@ def _play(
 
             if (
                 player.can_mac_now_playing
-            ):  # sync Mac Now Playing pos with playback pos
+            ):  # sync macOS Now Playing pos with playback pos
                 if (
                     abs(player.mac_now_playing.pos - player.playback.curr_pos)
                     > 1
@@ -935,8 +936,8 @@ def cli():
                     f"A new version of maestro is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
                     fg="yellow",
                 )
-        except:  # pylint: disable=bare-except
-            pass
+        except Exception as e:
+            print_to_logfile("Failed to check for updates:", e)
 
     # ensure config.SETTINGS_FILE is up to date
     with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
@@ -1119,9 +1120,9 @@ def add(
                     ],
                     check=True,
                 )
-            except Exception as err:
+            except Exception as e:
                 os.chdir(cwd)
-                raise err
+                raise e
 
         paths = []
         for fname in os.listdir(config.MAESTRO_DIR):

@@ -113,13 +113,13 @@ WAVEFORM_FLATTEN_FACTOR = 20
 STREAM_SAMPLE_RATE = 44100
 STREAM_CHUNK_SIZE = 256
 
-ICECAST_SERVER = "maestro-icecast.eastus2.cloudapp.azure.com"  # Azure-hosted VM Icecast server
+ICECAST_SERVER = "maestro-icecast.eastus2.cloudapp.azure.com"  # Azure-hosted Icecast server
 
 MAESTRO_SITE = "https://maestro-music.vercel.app"
 # endregion
 
 # region auth
-AUTH_SERVER = "http://maestro-music.vercel.app/api/"
+AUTH_SERVER = f"{MAESTRO_SITE}/api/"
 # AUTH_SERVER = "http://localhost:5001/api/"  # DEBUG
 USER_EXISTS_URL = urljoin(AUTH_SERVER, "user_exists")
 SIGNUP_URL = urljoin(AUTH_SERVER, "signup")

@@ -580,6 +580,17 @@ def _play(
                             elif ch in "vV":
                                 player.visualize = not player.visualize
                                 player.update_screen()
+                            elif ch in "sS":
+                                player.stream = not player.stream
+                                print_to_logfile(
+                                    "Stream mode is now "
+                                    + ("on." if player.stream else "off.")
+                                )  # DEBUG
+                                if player.stream:
+                                    player.ffmpeg_process.start()
+                                else:
+                                    player.ffmpeg_process.terminate()
+                                player.update_screen()
                             elif ch == " ":
                                 player.paused = not player.paused
 

@@ -265,6 +265,7 @@ class FFmpegProcessHandler:
     def terminate(self):
         if self.process is not None:
             self.process.terminate()
+            self.process = None
 
     def restart(self):
         self.terminate()
@@ -297,7 +298,11 @@ class PlaybackHandler:
         self.visualize = visualize  # want to visualize
         self.stream = stream
         if self.stream:
-            self.username, self.password = stream
+            self.username, self.password = self.stream
+            self.stream = True
+        else:
+            self.username, self.password = None, None
+            self.stream = False
 
         self.playback = None
         self.pos_changed = False
@@ -326,27 +331,23 @@ class PlaybackHandler:
         )
 
         self.audio_data = None
-        if self.visualize or self.stream:
-            self.audio_data = {}  # dict(song_id: (vis data, stream data))
-            self.audio_processing_thread = threading.Thread(
-                target=self._audio_processing_loop,
-                daemon=True,
-            )
-            self.audio_processing_thread.start()
+        self.audio_data = {}  # dict(song_id: (vis data, stream data))
+        self.audio_processing_thread = threading.Thread(
+            target=self._audio_processing_loop,
+            daemon=True,
+        )
+        self.audio_processing_thread.start()
         self.compiled = None
 
-        self.ffmpeg_process = None
+        self.ffmpeg_process = FFmpegProcessHandler(self.username, self.password)
         if self.stream:
-            self.ffmpeg_process = FFmpegProcessHandler(
-                self.username, self.password
-            )
             self.ffmpeg_process.start()
-            self.stream_metadata_changed = False
-            self.streaming_thread = threading.Thread(
-                target=self._streaming_loop,
-                daemon=True,
-            )
-            self.streaming_thread.start()
+        self.stream_metadata_changed = False
+        self.streaming_thread = threading.Thread(
+            target=self._streaming_loop,
+            daemon=True,
+        )
+        self.streaming_thread.start()
 
     def _load_audio(self, path, sr):
         # shape = (# channels, # frames)
@@ -399,7 +400,7 @@ class PlaybackHandler:
                 ):
                     continue
 
-                song_path = os.path.join(
+                song_path = os.path.join(  # NOTE: NOT SAME AS self.song_path
                     config.SETTINGS["song_directory"], self.playlist[i][1]
                 )
 
@@ -468,7 +469,8 @@ class PlaybackHandler:
         last_metadata_update_attempt = 0
         while True:
             if (
-                self.audio_data is not None
+                self.stream
+                and self.audio_data is not None
                 and self.song_id in self.audio_data
                 and self.audio_data[self.song_id][1] is not None
                 and self.playback is not None
@@ -494,8 +496,6 @@ class PlaybackHandler:
                     except BrokenPipeError as e:  # pylint: disable=unused-variable
                         # fmt: on
                         print_to_logfile("FFmpeg processs error:", e)
-                        if not self.ending:
-                            self.ffmpeg_process.restart()
 
                     if self.pos_changed:
                         self.pos_changed = False
@@ -533,11 +533,13 @@ class PlaybackHandler:
                             print_to_logfile("Update metadata failed:", e)
                             self.stream_metadata_changed = True
                             last_metadata_update_attempt = t
-            elif self.paused:  # send silence
+            elif self.stream and self.paused:  # send silence
                 self.ffmpeg_process.write(
                     b"\x00" * 4 * config.STREAM_CHUNK_SIZE
                 )
             sleep(0.01)
+
+    # region properties
 
     @property
     def i(self):
@@ -575,6 +577,8 @@ class PlaybackHandler:
     @property
     def album_artist(self):
         return self.playlist[self.i][-1]
+
+    # endregion
 
     def seek(self, pos):
         if self.playback is not None:
@@ -648,13 +652,15 @@ class PlaybackHandler:
 
         def f():
             self.update_mac_now_playing_metadata(img_data)
-            requests.post(
+            response = requests.post(
                 config.UPDATE_ARTWORK_URL,
                 files={"artwork": img_data},
                 params={"mount": self.username},
                 auth=(self.username, self.password),
                 timeout=5,
             )
+            if not response.ok:
+                print_to_logfile("Failed to update artwork.")
             self.update_icecast_metadata()
             self.update_discord_metadata()
 
@@ -738,6 +744,37 @@ class PlaybackHandler:
             elif not self.compiled:
                 visualize_message = "Compiling renderer..."
                 visualize_color = 12
+
+        if self.stream:
+            prefix = "  " if self.update_discord else ""
+            long_stream_message = (
+                prefix
+                + f"Streaming at {config.MAESTRO_SITE}/listen/{self.username}!"
+            )
+            short_stream_message = prefix + f"Streaming as {self.username}!"
+            if (
+                length_so_far
+                + len(long_stream_message)
+                + 2
+                + (len(visualize_message) if visualize_message else -2)
+                < screen_width
+            ):
+                length_so_far = addstr_fit_to_width(
+                    self.stdscr,
+                    long_stream_message,
+                    screen_width,
+                    length_so_far,
+                    curses.color_pair(16),
+                )
+            else:
+                length_so_far = addstr_fit_to_width(
+                    self.stdscr,
+                    short_stream_message,
+                    screen_width,
+                    length_so_far,
+                    curses.color_pair(16),
+                )
+
         length_so_far = addstr_fit_to_width(
             self.stdscr,
             " " * (screen_width - length_so_far - len(visualize_message))

@@ -582,12 +582,9 @@ def _play(
                                 player.update_screen()
                             elif ch in "sS":
                                 player.stream = not player.stream
-                                print_to_logfile(
-                                    "Stream mode is now "
-                                    + ("on." if player.stream else "off.")
-                                )  # DEBUG
                                 if player.stream:
                                     player.ffmpeg_process.start()
+                                    player.stream_metadata_changed = True
                                 else:
                                     player.ffmpeg_process.terminate()
                                 player.update_screen()
@@ -953,6 +950,15 @@ def cli():
     # ensure config.SETTINGS_FILE is up to date
     with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
         json.dump(config.SETTINGS, g)
+
+    # ensure config.LOGFILE is not too large
+    if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:
+        # move to backup
+        backup_path = os.path.join(
+            config.MAESTRO_DIR, f"/old-logs/maestro-{int(time())}.log"
+        )
+        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
+        move(config.LOGFILE, backup_path)
 
 
 @cli.command()

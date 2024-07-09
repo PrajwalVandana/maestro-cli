@@ -639,8 +639,7 @@ class PlaybackHandler:
             self.update_now_playing = True
 
     def update_icecast_metadata(self):
-        if self.stream:
-            self.stream_metadata_changed = True
+        self.stream_metadata_changed = True
 
     def update_metadata(self):
         song_data = music_tag.load_file(self.song_path)

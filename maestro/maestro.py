@@ -30,7 +30,9 @@ can_update_discord = True
 try:
     import pypresence
 except ImportError:
-    print_to_logfile("pypresence not installed. Discord presence will be disabled.")
+    print_to_logfile(
+        "pypresence not installed. Discord presence will be disabled."
+    )
     can_update_discord = False
 
 can_mac_now_playing = False
@@ -112,6 +114,8 @@ def discord_presence_loop(
     discord_connected,
     stream_username,
 ):
+    IMAGE_URL = f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}"
+
     try:
         discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
         discord_rpc.start()
@@ -132,9 +136,8 @@ def discord_presence_loop(
                     discord_rpc.set_activity(
                         details=song_name,
                         state=artist_name,
-                        # add Unix time for cache busting
                         large_image=(
-                            f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}"
+                            f"{IMAGE_URL}?_={time()}"
                             if stream_username
                             else "maestro-icon"
                         ),
@@ -170,9 +173,8 @@ def discord_presence_loop(
                         discord_rpc.set_activity(
                             details=song_name,
                             state=artist_name,
-                            # add Unix time for cache busting
                             large_image=(
-                                f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}?_={time()}"
+                                f"{IMAGE_URL}?_={time()}"
                                 if stream_username
                                 else "maestro-icon"
                             ),
@@ -2060,11 +2062,18 @@ def search(phrase, searching_for_tags):
 )
 @click.option("-t", "--top", "top", type=int, help="Show the top n songs/tags.")
 @click.option(
-    "-M/-nM",
+    "-A/-nA",
     "--match-all/--no-match-all",
     "match_all",
     default=False,
     help="Shows songs that match all tags instead of any tag. Ignored if '-t/--tag' is passed.",
+)
+@click.option(
+    "-M/-nM",
+    "--show-metadata/--no-show-metadata",
+    "show_metadata",
+    default=False,
+    help="Show metadata for songs (artist, album, album artist). Ignored if '-T/--tag' is passed.",
 )
 def list_(
     search_tags,
@@ -2075,6 +2084,7 @@ def list_(
     top,
     reverse_,
     match_all,
+    show_metadata,
 ):
     """List the entries for all songs.
 
@@ -2233,15 +2243,15 @@ def list_(
             if search_tags:
                 if match_all:
                     if not search_tags <= tags:  # subset
-                        lines[i] = ""
+                        lines[i] = None
                         continue
                 else:
                     if not search_tags & tags:  # intersection
-                        lines[i] = ""
+                        lines[i] = None
                         continue
             if exclude_tags:
                 if exclude_tags & tags:
-                    lines[i] = ""
+                    lines[i] = None
                     continue
 
             time_listened = stats[song_id]
@@ -2271,7 +2281,7 @@ def list_(
             lines.reverse()
 
         for details in lines:
-            helpers.print_entry(details)
+            helpers.print_entry(details, show_song_info=show_metadata)
             num_lines += 1
             no_results = False
             if top is not None and num_lines == top:

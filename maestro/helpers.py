@@ -30,18 +30,21 @@ from getpass import getpass
 from shutil import copy, move
 from time import sleep, time
 from random import randint
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 
 from just_playback import Playback
 
 try:
     from numba import jit
-    from numba.core.errors import NumbaWarning
-
-    warnings.simplefilter("ignore", category=NumbaWarning)
 except:  # pylint: disable=bare-except
     jit = lambda x: x
     print_to_logfile("Numba not installed. Visualization will be slow.")
+try:
+    from numba.core.errors import NumbaWarning
+    warnings.simplefilter("ignore", category=NumbaWarning)
+except:  # pylint: disable=bare-except
+    pass
+
 
 try:
     import numpy as np
@@ -58,6 +61,10 @@ except ImportError:
     LIBROSA = None
 
 # endregion
+
+
+def is_safe_username(url):
+    return quote(url, safe="") == url if url else False
 
 
 def bounded_shuffle(lst, radius=-1):
@@ -273,7 +280,10 @@ class FFmpegProcessHandler:
 
     def write(self, chunk):
         if self.process is not None:
-            self.process.stdin.write(chunk)
+            try:
+                self.process.stdin.write(chunk)
+            except BrokenPipeError as e:  # pylint: disable=unused-variable
+                print_to_logfile("FFmpeg processs error:", e)
 
 
 class PlaybackHandler:
@@ -285,28 +295,23 @@ class PlaybackHandler:
         clip_mode,
         visualize,
         stream,
+        creds
     ):
         self.stdscr = stdscr
         self.scroller = Scroller(
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
         )
         self.playlist = playlist
-        self._i = 0
+        self.i = 0
         self.volume = volume
         self.clip_mode = clip_mode
         self.update_discord = False
         self.visualize = visualize  # want to visualize
         self.stream = stream
-        if self.stream:
-            self.username, self.password = self.stream
-            self.stream = True
-        else:
-            self.username, self.password = None, None
-            self.stream = False
+        self.username, self.password = creds
 
         self.playback = None
-        self.pos_changed = False
-        self.paused = False
+        self._paused = False
         self.last_timestamp = 0
         self.looping_current_song = config.LOOP_MODES["none"]
         self.duration = 0
@@ -339,6 +344,7 @@ class PlaybackHandler:
         self.audio_processing_thread.start()
         self.compiled = None
 
+        print_to_logfile(self.stream, self.username, self.password)
         self.ffmpeg_process = FFmpegProcessHandler(self.username, self.password)
         if self.stream:
             self.ffmpeg_process.start()
@@ -476,80 +482,66 @@ class PlaybackHandler:
                 and self.audio_data[self.song_id][1] is not None
                 and self.playback is not None
                 and self.playback.curr_pos  # is 0 for a while after resuming
-                and not self.paused
             ):
                 for fpos in range(
                     int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE),
                     self.audio_data[self.song_id][1].shape[1],
                     config.STREAM_CHUNK_SIZE,
                 ):
-                    try:
-                        chunk = (
-                            self.audio_data[self.song_id][1][
-                                :,
-                                fpos : fpos + config.STREAM_CHUNK_SIZE,
-                            ]
-                            .reshape((-1,), order="F")
-                            .tobytes()
-                        )
-                        self.ffmpeg_process.write(chunk)
-                    # fmt: off
-                    except BrokenPipeError as e:  # pylint: disable=unused-variable
-                        # fmt: on
-                        print_to_logfile("FFmpeg processs error:", e)
+                    self.ffmpeg_process.write(
+                        self.audio_data[self.song_id][1][
+                            :,
+                            fpos : fpos + config.STREAM_CHUNK_SIZE,
+                        ]
+                        .reshape((-1,), order="F")
+                        .tobytes()
+                        if not self.paused
+                        else b"\x00" * 4 * config.STREAM_CHUNK_SIZE
+                    )
 
-                    if self.pos_changed:
-                        self.pos_changed = False
-                        break
-                    if self.paused:
-                        break
+                    if self.stream_metadata_changed:
+                        t = time()
+                        if t - last_metadata_update_attempt > 5:
+                            self.stream_metadata_changed = False
+                            try:
+                                if not requests.post(
+                                    config.UPDATE_TIMESTAMP_URL,
+                                    params={"mount": self.username},
+                                    data={
+                                        "timestamp": self.playback.curr_pos,
+                                        "time_updated": time(),
+                                    },
+                                    auth=(self.username, self.password),
+                                    timeout=5,
+                                ).ok:
+                                    print_to_logfile(
+                                        "Failed to update timestamp."
+                                    )
 
-                    t = time()
-                    if (
-                        self.stream_metadata_changed
-                        and t - last_metadata_update_attempt > 5
-                    ):  # update metadata
-                        self.stream_metadata_changed = False
-                        try:
-                            response = requests.post(
-                                config.UPDATE_METADATA_URL,
-                                data={
-                                    "mount": self.username,
-                                    "song": self.song_title,
-                                    "artist": quote_plus(self.song_artist),
-                                    "album": quote_plus(self.song_album),
-                                    "albumartist": quote_plus(
-                                        self.album_artist
-                                    ),
-                                },
-                                auth=(self.username, self.password),
-                                timeout=5,
-                            )
-                            if response.ok:
-                                last_metadata_update_attempt = 0
-                            else:  # retry in 5 seconds
+                                response = self._update_stream_metadata()
+                                if response.ok:
+                                    last_metadata_update_attempt = 0
+                                else:
+                                    raise Exception(
+                                        f"HTTP error {response.status_code}: {response.text}"
+                                    )
+                            except Exception as e:  # retry in 5 seconds
+                                print_to_logfile("Update metadata failed:", e)
                                 self.stream_metadata_changed = True
                                 last_metadata_update_attempt = t
-                        except Exception as e:
-                            print_to_logfile("Update metadata failed:", e)
-                            self.stream_metadata_changed = True
-                            last_metadata_update_attempt = t
-            elif self.stream and self.paused:  # send silence
-                self.ffmpeg_process.write(
-                    b"\x00" * 4 * config.STREAM_CHUNK_SIZE
-                )
+                        break
             sleep(0.01)
 
     # region properties
 
     @property
-    def i(self):
-        return self._i
+    def paused(self):
+        return self._paused
 
-    @i.setter
-    def i(self, i):
-        self._i = i
-        self.pos_changed = True
+    @paused.setter
+    def paused(self, value):
+        self._paused = value
+        self.stream_metadata_changed = True
 
     @property
     def song_id(self):
@@ -584,7 +576,7 @@ class PlaybackHandler:
     def seek(self, pos):
         if self.playback is not None:
             self.playback.seek(pos)
-            self.pos_changed = True
+            self.stream_metadata_changed = True
             if self.can_mac_now_playing and self.mac_now_playing is not None:
                 self.mac_now_playing.pos = round(pos)
                 self.update_now_playing = True
@@ -640,7 +632,32 @@ class PlaybackHandler:
 
             self.update_now_playing = True
 
-    def update_icecast_metadata(self):
+    def _update_stream_metadata(self):
+        return requests.post(
+            config.UPDATE_METADATA_URL,
+            data={
+                "mount": self.username,
+                "song": quote_plus(self.song_title),
+                "artist": quote_plus(self.song_artist),
+                "album": quote_plus(self.song_album),
+                "albumartist": quote_plus(self.album_artist),
+                "duration": self.duration,
+                "paused": int(self.paused),
+            },
+            auth=(self.username, self.password),
+            timeout=5,
+        )
+
+    def update_icecast_metadata(self, img_data):
+        if self.stream:
+            if not requests.post(
+                config.UPDATE_ARTWORK_URL,
+                params={"mount": self.username},
+                files={"artwork": img_data},
+                auth=(self.username, self.password),
+                timeout=5,
+            ).ok:
+                print_to_logfile("Failed to update artwork.")
         self.stream_metadata_changed = True
 
     def update_metadata(self):
@@ -653,16 +670,7 @@ class PlaybackHandler:
 
         def f():
             self.update_mac_now_playing_metadata(img_data)
-            response = requests.post(
-                config.UPDATE_ARTWORK_URL,
-                files={"artwork": img_data},
-                params={"mount": self.username},
-                auth=(self.username, self.password),
-                timeout=5,
-            )
-            if not response.ok:
-                print_to_logfile("Failed to update artwork.")
-            self.update_icecast_metadata()
+            self.update_icecast_metadata(img_data)
             self.update_discord_metadata()
 
         threading.Thread(target=f, daemon=True).start()
@@ -1578,6 +1586,16 @@ def signup(username=None, password=None, login_=True):
     if username is None:
         username = input("Username: ")
 
+    if not username:
+        click.secho("Username cannot be empty.", fg="red")
+        return
+    if not is_safe_username(username):
+        click.secho(
+            "Username must be URL-safe (no spaces or special characters).",
+            fg="red",
+        )
+        return
+
     response = requests.get(
         config.USER_EXISTS_URL, params={"user": username}, timeout=5
     )
@@ -1612,6 +1630,17 @@ def signup(username=None, password=None, login_=True):
 def login(username=None, password=None):
     if username is None:
         username = input("Username: ")
+
+    if not username:
+        click.secho("Username cannot be empty.", fg="red")
+        return
+    if not is_safe_username(username):
+        click.secho(
+            "Username must be URL-safe (no spaces or special characters).",
+            fg="red",
+        )
+        return
+
     current_username = keyring.get_password("maestro-music", "username")
     if current_username == username:
         click.secho(f"User '{username}' is already logged in.", fg="yellow")

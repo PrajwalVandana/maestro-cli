@@ -216,6 +216,7 @@ def _play(
     reshuffle,
     update_discord,
     visualize,
+    stream,
     username,
     password,
 ):
@@ -233,7 +234,8 @@ def _play(
         volume,
         clip_mode,
         visualize,
-        (username, password) if username and password else None,
+        stream,
+        (username, password) if username and password else (None, None),
     )
     if can_mac_now_playing:
         player.can_mac_now_playing = True
@@ -1159,7 +1161,7 @@ def add(
 
         move_ = True
 
-    if paths is None:
+    if paths is None:  # get all songs to be added
         if os.path.isdir(path_):
             paths = []
             if recurse:
@@ -1182,24 +1184,31 @@ def add(
         else:
             paths = [path_]
 
+    if not paths:
+        click.secho("No songs to add.", fg="red")
+        return
     if len(paths) > 1:
-        if clip is not None:
-            click.secho(
-                "Cannot pass '-c/--clip' option when adding multiple songs.",
-                fg="red",
-            )
+        if clip is not None or name is not None:
+            if clip is not None:
+                click.secho(
+                    "Cannot pass '-c/--clip' option when adding multiple songs.",
+                    fg="red",
+                )
+            if name is not None:
+                click.secho(
+                    "Cannot pass '-n/--name' option when adding multiple songs.",
+                    fg="red",
+                )
             return
 
-        if name is not None:
-            click.secho(
-                "Cannot pass '-n/--name' option when adding multiple songs.",
-                fg="red",
-            )
+    if len(paths) == 1 and name is not None:  # renaming
+        ext = os.path.splitext(paths[0])[1].lower()
+        if not os.path.isdir(paths[0]) and ext not in config.EXTS:
+            click.secho(f"'{ext}' is not supported.", fg="red")
             return
 
-    if len(paths) == 1 and name is not None:
         new_path = os.path.join(
-            config.MAESTRO_DIR, name + os.path.splitext(paths[0])[1]
+            config.MAESTRO_DIR, name + ext
         )
         # move/copy to config.MAESTRO_DIR (avoid name conflicts)
         if move_:
@@ -1240,9 +1249,8 @@ def add(
     else:
         start = end = None
 
-    # print(paths)
     if metadata_pairs is not None:
-        # convert from "key:value,key:value" to [("key", "value")]
+        # convert from "key:value|key:value" to [("key", "value")]
         metadata_pairs = [
             tuple(pair.strip().split(":")) for pair in metadata_pairs.split("|")
         ]
@@ -1268,7 +1276,7 @@ def add(
         ext = os.path.splitext(path)[1].lower()
         if not os.path.isdir(path) and ext not in config.EXTS:
             click.secho(f"'{ext}' is not supported.", fg="red")
-            return
+            continue
 
         for tag in tags:
             if "," in tag or "|" in tag:
@@ -1286,6 +1294,7 @@ def add(
 
             prepend_newline = lines and lines[-1][-1] != "\n"
 
+            # move/copy to config.MAESTRO_DIR, add to database
             helpers.add_song(
                 path,
                 tags,
@@ -1824,6 +1833,7 @@ def play(
             reshuffle,
             discord and can_update_discord,
             visualize,
+            stream,
             username,
             password,
         )

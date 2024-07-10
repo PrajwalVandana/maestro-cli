@@ -126,6 +126,7 @@ SIGNUP_URL = urljoin(AUTH_SERVER, "signup")
 LOGIN_URL = urljoin(AUTH_SERVER, "login")
 UPDATE_METADATA_URL = urljoin(AUTH_SERVER, "update_metadata")
 UPDATE_ARTWORK_URL = urljoin(AUTH_SERVER, "update_artwork")
+UPDATE_TIMESTAMP_URL = urljoin(AUTH_SERVER, "update_timestamp")
 # endregion
 
 # endregion

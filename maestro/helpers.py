@@ -1,7 +1,15 @@
+from time import sleep, time
+
+
 def print_to_logfile(*args, **kwargs):
     if "file" in kwargs:
         raise ValueError("file kwargs not allowed for 'print_to_logfile'")
-    print(*args, **kwargs, file=open(config.LOGFILE, "a", encoding="utf-8"))
+    print(
+        time(),
+        *args,
+        **kwargs,
+        file=open(config.LOGFILE, "a", encoding="utf-8"),
+    )
 
 
 from maestro import (
@@ -28,7 +36,6 @@ import music_tag
 
 from getpass import getpass
 from shutil import copy, move
-from time import sleep, time
 from random import randint
 from urllib.parse import quote, quote_plus
 
@@ -41,6 +48,7 @@ except:  # pylint: disable=bare-except
     print_to_logfile("Numba not installed. Visualization will be slow.")
 try:
     from numba.core.errors import NumbaWarning
+
     warnings.simplefilter("ignore", category=NumbaWarning)
 except:  # pylint: disable=bare-except
     pass
@@ -59,6 +67,16 @@ try:
 except ImportError:
     print_to_logfile("Librosa not installed. Visualization will be disabled.")
     LIBROSA = None
+
+
+can_update_discord = True
+try:
+    from pypresence import Client as DiscordRPCClient
+except ImportError:
+    print_to_logfile(
+        "pypresence not installed. Discord presence will be disabled."
+    )
+    can_update_discord = False
 
 # endregion
 
@@ -288,14 +306,7 @@ class FFmpegProcessHandler:
 
 class PlaybackHandler:
     def __init__(
-        self,
-        stdscr,
-        playlist,
-        volume,
-        clip_mode,
-        visualize,
-        stream,
-        creds
+        self, stdscr, playlist, volume, clip_mode, visualize, stream, creds
     ):
         self.stdscr = stdscr
         self.scroller = Scroller(
@@ -310,7 +321,7 @@ class PlaybackHandler:
         self.stream = stream
         self.username, self.password = creds
 
-        self.playback = None
+        self.playback = Playback()
         self._paused = False
         self.last_timestamp = 0
         self.looping_current_song = config.LOOP_MODES["none"]
@@ -344,11 +355,12 @@ class PlaybackHandler:
         self.audio_processing_thread.start()
         self.compiled = None
 
-        print_to_logfile(self.stream, self.username, self.password)
+        # print_to_logfile(self.stream, self.username, self.password)
         self.ffmpeg_process = FFmpegProcessHandler(self.username, self.password)
         if self.stream:
             self.ffmpeg_process.start()
-        self.stream_metadata_changed = False
+        self.break_stream_loop = False
+        self.img_data = None
         self.streaming_thread = threading.Thread(
             target=self._streaming_loop,
             daemon=True,
@@ -472,7 +484,6 @@ class PlaybackHandler:
             sleep(1)
 
     def _streaming_loop(self):
-        last_metadata_update_attempt = 0
         while True:
             if (
                 self.stream
@@ -488,48 +499,25 @@ class PlaybackHandler:
                     self.audio_data[self.song_id][1].shape[1],
                     config.STREAM_CHUNK_SIZE,
                 ):
-                    self.ffmpeg_process.write(
-                        self.audio_data[self.song_id][1][
-                            :,
-                            fpos : fpos + config.STREAM_CHUNK_SIZE,
-                        ]
-                        .reshape((-1,), order="F")
-                        .tobytes()
-                        if not self.paused
-                        else b"\x00" * 4 * config.STREAM_CHUNK_SIZE
-                    )
+                    try:
+                        self.ffmpeg_process.write(
+                            self.audio_data[self.song_id][1][
+                                :,
+                                fpos : fpos + config.STREAM_CHUNK_SIZE,
+                            ]
+                            .reshape((-1,), order="F")
+                            .tobytes()
+                            if not self.paused
+                            else b"\x00" * 4 * config.STREAM_CHUNK_SIZE
+                        )
+                    except KeyError as e:
+                        print_to_logfile("KeyError in streaming loop:", e)
+                        self.update_stream_metadata()
 
-                    if self.stream_metadata_changed:
-                        t = time()
-                        if t - last_metadata_update_attempt > 5:
-                            self.stream_metadata_changed = False
-                            try:
-                                if not requests.post(
-                                    config.UPDATE_TIMESTAMP_URL,
-                                    params={"mount": self.username},
-                                    data={
-                                        "timestamp": self.playback.curr_pos,
-                                        "time_updated": time(),
-                                    },
-                                    auth=(self.username, self.password),
-                                    timeout=5,
-                                ).ok:
-                                    print_to_logfile(
-                                        "Failed to update timestamp."
-                                    )
-
-                                response = self._update_stream_metadata()
-                                if response.ok:
-                                    last_metadata_update_attempt = 0
-                                else:
-                                    raise Exception(
-                                        f"HTTP error {response.status_code}: {response.text}"
-                                    )
-                            except Exception as e:  # retry in 5 seconds
-                                print_to_logfile("Update metadata failed:", e)
-                                self.stream_metadata_changed = True
-                                last_metadata_update_attempt = t
+                    if self.break_stream_loop:
+                        self.break_stream_loop = False
                         break
+
             sleep(0.01)
 
     # region properties
@@ -541,7 +529,7 @@ class PlaybackHandler:
     @paused.setter
     def paused(self, value):
         self._paused = value
-        self.stream_metadata_changed = True
+        self.threaded_update_icecast_metadata()
 
     @property
     def song_id(self):
@@ -574,9 +562,10 @@ class PlaybackHandler:
     # endregion
 
     def seek(self, pos):
+        pos = max(0, pos)
         if self.playback is not None:
             self.playback.seek(pos)
-            self.stream_metadata_changed = True
+            self.threaded_update_icecast_metadata()
             if self.can_mac_now_playing and self.mac_now_playing is not None:
                 self.mac_now_playing.pos = round(pos)
                 self.update_now_playing = True
@@ -599,7 +588,7 @@ class PlaybackHandler:
         self.output(self.playback.curr_pos)
 
     def update_discord_metadata(self):
-        sleep(1)  # wait for image to be uploaded
+        sleep(1)  # wait for image to be uploaded  # TODO: find better way
         if self.update_discord:
             multiprocessing_put_word(
                 self.discord_queues["title"],
@@ -614,12 +603,12 @@ class PlaybackHandler:
                 self.song_album,
             )
 
-    def update_mac_now_playing_metadata(self, cover=None):
+    def update_mac_now_playing_metadata(self):
         if self.can_mac_now_playing:
             self.mac_now_playing.paused = False
             self.mac_now_playing.pos = 0
             self.mac_now_playing.length = self.duration
-            self.mac_now_playing.cover = cover
+            self.mac_now_playing.cover = self.img_data
 
             multiprocessing_put_word(
                 self.mac_now_playing.title_queue,
@@ -632,7 +621,8 @@ class PlaybackHandler:
 
             self.update_now_playing = True
 
-    def _update_stream_metadata(self):
+    def _update_icecast_metadata(self):
+        self.break_stream_loop = True
         return requests.post(
             config.UPDATE_METADATA_URL,
             data={
@@ -648,29 +638,66 @@ class PlaybackHandler:
             timeout=5,
         )
 
-    def update_icecast_metadata(self, img_data):
-        if self.stream:
-            if not requests.post(
-                config.UPDATE_ARTWORK_URL,
-                params={"mount": self.username},
-                files={"artwork": img_data},
-                auth=(self.username, self.password),
-                timeout=5,
-            ).ok:
-                print_to_logfile("Failed to update artwork.")
-        self.stream_metadata_changed = True
+    def update_icecast_metadata(self):
+        success = False
+        last_metadata_update_attempt = 0
+        while not success:
+            t = time()
+            if t - last_metadata_update_attempt > 5:
+                try:
+                    response = self._update_icecast_metadata()
+                    if response.ok:
+                        last_metadata_update_attempt = 0
+                        success = True
+                    else:
+                        raise Exception(
+                            f"Icecast Server error {response.status_code}: {response.text}"
+                        )
+                except Exception as e:  # retry in 5 seconds
+                    print_to_logfile("Update metadata failed:", e)
+                    last_metadata_update_attempt = t
+            sleep(0.01)
+
+    def threaded_update_icecast_metadata(self):
+        threading.Thread(
+            target=self.update_icecast_metadata, daemon=True
+        ).start()
+
+    def update_stream_metadata(self):
+        if not requests.post(
+            config.UPDATE_ARTWORK_URL,
+            params={"mount": self.username},
+            files={"artwork": self.img_data},
+            auth=(self.username, self.password),
+            timeout=5,
+        ).ok:
+            print_to_logfile("Failed to update artwork.")
+
+        if not requests.post(
+            config.UPDATE_TIMESTAMP_URL,
+            params={"mount": self.username},
+            data={
+                "timestamp": self.playback.curr_pos,
+                "time_updated": time(),
+            },
+            auth=(self.username, self.password),
+            timeout=5,
+        ).ok:
+            print_to_logfile("Failed to update timestamp.")
+
+        self.threaded_update_icecast_metadata()
 
     def update_metadata(self):
-        song_data = music_tag.load_file(self.song_path)
-        img_data = (
-            song_data["artwork"].first.raw_thumbnail([600, 600])
-            if "artwork" in song_data
-            else None
-        )
-
         def f():
-            self.update_mac_now_playing_metadata(img_data)
-            self.update_icecast_metadata(img_data)
+            song_data = music_tag.load_file(self.song_path)
+            self.img_data = (
+                song_data["artwork"].first.raw_thumbnail([600, 600])
+                if "artwork" in song_data
+                else None
+            )
+
+            self.update_mac_now_playing_metadata()
+            self.update_stream_metadata()
             self.update_discord_metadata()
 
         threading.Thread(target=f, daemon=True).start()
@@ -1237,6 +1264,19 @@ def embed_artwork(yt_dlp_info):
     m = music_tag.load_file(yt_dlp_info["requested_downloads"][0]["filepath"])
     m["artwork"] = image_data
     m.save()
+
+
+def discord_join_event_handler(arg):
+    print_to_logfile("Join event:", arg)
+
+def connect_to_discord():
+    discord_rpc = DiscordRPCClient(client_id=config.DISCORD_ID)
+    discord_rpc.start()
+    # discord_rpc.register_event(
+    #     "ACTIVITY_JOIN",
+    #     discord_join_event_handler,
+    # )
+    return discord_rpc
 
 
 def add_song(

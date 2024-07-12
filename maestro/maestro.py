@@ -6,6 +6,7 @@ import os
 import requests
 import subprocess
 import sys
+import threading
 
 import click
 import keyring
@@ -21,19 +22,9 @@ from maestro.icon import img
 from maestro.__version__ import VERSION
 from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
-from just_playback import Playback
 from yt_dlp import YoutubeDL
 
 # import gui_helper
-
-can_update_discord = True
-try:
-    import pypresence
-except ImportError:
-    print_to_logfile(
-        "pypresence not installed. Discord presence will be disabled."
-    )
-    can_update_discord = False
 
 can_mac_now_playing = False
 if sys.platform == "darwin":
@@ -65,6 +56,8 @@ if sys.platform == "darwin":
 
 from maestro import config
 from maestro import helpers
+
+can_update_discord = helpers.can_update_discord
 
 # endregion
 
@@ -117,8 +110,7 @@ def discord_presence_loop(
     IMAGE_URL = f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}"
 
     try:
-        discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
-        discord_rpc.start()
+        discord_rpc = helpers.connect_to_discord()
         discord_connected.value = 1
     except Exception as e:  # pylint: disable=broad-except,unused-variable
         print_to_logfile("Discord connection error:", e)
@@ -142,6 +134,9 @@ def discord_presence_loop(
                             else "maestro-icon"
                         ),
                         large_text=album_name,
+                        # join=stream_username if stream_username else "",
+                        # party_id="test",
+                        # party_size=[1, 999],
                         # buttons=(
                         #     [
                         #         {
@@ -159,11 +154,10 @@ def discord_presence_loop(
                     sleep(15)
                 except Exception as e:  # pylint: disable=bare-except
                     print_to_logfile("Discord update error:", e)
-                    discord_connected.value = 0
+                    discord_connected.value = 1
             else:
                 try:
-                    discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
-                    discord_rpc.start()
+                    discord_rpc = helpers.connect_to_discord()
                     discord_connected.value = 1
                 except Exception as e:
                     print_to_logfile("Discord connection error:", e)
@@ -179,6 +173,9 @@ def discord_presence_loop(
                                 else "maestro-icon"
                             ),
                             large_text=album_name,
+                            # join=stream_username if stream_username else "",
+                            # party_id="test",
+                            # party_size=[1, 999],
                             # buttons=(
                             #     [
                             #         {
@@ -200,8 +197,7 @@ def discord_presence_loop(
         else:
             if not discord_connected.value:
                 try:
-                    discord_rpc = pypresence.Client(client_id=config.DISCORD_ID)
-                    discord_rpc.start()
+                    discord_rpc = helpers.connect_to_discord()
                     discord_connected.value = 1
                 except Exception as e:
                     print_to_logfile("Discord connection error:", e)
@@ -282,7 +278,6 @@ def _play(
 
     prev_volume = volume
     while player.i in range(len(player.playlist)):
-        player.playback = Playback()
         player.playback.load_file(player.song_path)
 
         clip_string = player.playlist[player.i][3]
@@ -293,7 +288,8 @@ def _play(
         else:
             player.clip = 0, player.playback.duration
 
-        player.paused = False
+        if player.paused:
+            player.paused = False
         player.duration = full_duration = player.playback.duration
 
         player.update_metadata()
@@ -588,7 +584,7 @@ def _play(
                                 player.stream = not player.stream
                                 if player.stream:
                                     if player.username is not None:
-                                        player.stream_metadata_changed = True
+                                        player.update_stream_metadata()
                                         player.ffmpeg_process.start()
                                 else:
                                     player.ffmpeg_process.terminate()
@@ -818,42 +814,49 @@ def _play(
             sleep(0.01)  # NOTE: so CPU usage doesn't fly through the roof
 
         # region stats
-        if player.paused:
-            time_listened = pause_start - start_time
-        else:
-            time_listened = time() - start_time
+        def stats_update(
+            cur_song, was_paused, start_time=start_time, pause_start=pause_start
+        ):
+            if was_paused:
+                time_listened = pause_start - start_time
+            else:
+                time_listened = time() - start_time
 
-        with open(
-            config.TOTAL_STATS_PATH, "r+", encoding="utf-8"
-        ) as stats_file:
-            lines = stats_file.readlines()
-            for j in range(len(lines)):
-                song_id, listened = lines[j].strip().split("|")
-                if song_id == player.song_id:
-                    listened = float(listened) + time_listened
-                    lines[j] = f"{song_id}|{listened}\n"
-                    break
+            with open(
+                config.TOTAL_STATS_PATH, "r+", encoding="utf-8"
+            ) as stats_file:
+                lines = stats_file.readlines()
+                for j in range(len(lines)):
+                    song_id, listened = lines[j].strip().split("|")
+                    if song_id == cur_song:
+                        listened = float(listened) + time_listened
+                        lines[j] = f"{song_id}|{listened}\n"
+                        break
 
-            # write out
-            stats_file.seek(0)
-            stats_file.write("".join(lines))
-            stats_file.truncate()
+                # write out
+                stats_file.seek(0)
+                stats_file.write("".join(lines))
+                stats_file.truncate()
 
-        with open(
-            config.CUR_YEAR_STATS_PATH, "r+", encoding="utf-8"
-        ) as stats_file:
-            lines = stats_file.readlines()
-            for j in range(len(lines)):
-                song_id, listened = lines[j].strip().split("|")
-                if song_id == player.song_id:
-                    listened = float(listened) + time_listened
-                    lines[j] = f"{song_id}|{listened}\n"
-                    break
+            with open(
+                config.CUR_YEAR_STATS_PATH, "r+", encoding="utf-8"
+            ) as stats_file:
+                lines = stats_file.readlines()
+                for j in range(len(lines)):
+                    song_id, listened = lines[j].strip().split("|")
+                    if song_id == cur_song:
+                        listened = float(listened) + time_listened
+                        lines[j] = f"{song_id}|{listened}\n"
+                        break
 
-            # write out
-            stats_file.seek(0)
-            stats_file.write("".join(lines))
-            stats_file.truncate()
+                # write out
+                stats_file.seek(0)
+                stats_file.write("".join(lines))
+                stats_file.truncate()
+
+        threading.Thread(
+            target=stats_update, args=(player.song_id, player.paused)
+        ).start()
         # endregion
 
         if player.ending and not player.restarting:
@@ -1207,9 +1210,7 @@ def add(
             click.secho(f"'{ext}' is not supported.", fg="red")
             return
 
-        new_path = os.path.join(
-            config.MAESTRO_DIR, name + ext
-        )
+        new_path = os.path.join(config.MAESTRO_DIR, name + ext)
         # move/copy to config.MAESTRO_DIR (avoid name conflicts)
         if move_:
             move(paths[0], new_path)

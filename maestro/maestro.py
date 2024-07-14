@@ -276,6 +276,7 @@ def _play(
 
         player.update_metadata()
         player.playback.play()
+        print_to_logfile("Changed song", player.playback.curr_pos)
 
         if player.clip_mode:
             clip_start, clip_end = player.clip

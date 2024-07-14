@@ -355,7 +355,7 @@ class PlaybackHandler:
         self.audio_processing_thread.start()
         self.compiled = None
 
-        # print_to_logfile(self.stream, self.username, self.password)
+        # (self.stream, self.username, self.password)
         self.ffmpeg_process = FFmpegProcessHandler(self.username, self.password)
         if self.stream:
             self.ffmpeg_process.start()
@@ -492,7 +492,9 @@ class PlaybackHandler:
                 and self.song_id in self.audio_data
                 and self.audio_data[self.song_id][1] is not None
                 and self.playback is not None
-                and self.playback.curr_pos  # is 0 for a while after resuming
+                # is 0 for a while after resuming, and is -1 if playback is
+                # inactive or file is not loaded
+                and self.playback.curr_pos > 0
             ):
                 for fpos in range(
                     int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE),
@@ -500,6 +502,11 @@ class PlaybackHandler:
                     config.STREAM_CHUNK_SIZE,
                 ):
                     try:
+                        print_to_logfile(
+                            self.song_id,
+                            fpos / config.STREAM_SAMPLE_RATE,
+                            self.playback.curr_pos,
+                        )
                         self.ffmpeg_process.write(
                             self.audio_data[self.song_id][1][
                                 :,
@@ -565,6 +572,7 @@ class PlaybackHandler:
         pos = max(0, pos)
         if self.playback is not None:
             self.playback.seek(pos)
+            self.break_stream_loop = True
             self.threaded_update_icecast_metadata()
             if self.can_mac_now_playing and self.mac_now_playing is not None:
                 self.mac_now_playing.pos = round(pos)
@@ -622,7 +630,7 @@ class PlaybackHandler:
             self.update_now_playing = True
 
     def _update_icecast_metadata(self):
-        self.break_stream_loop = True
+        # self.break_stream_loop = True
         return requests.post(
             config.UPDATE_METADATA_URL,
             data={
@@ -664,6 +672,7 @@ class PlaybackHandler:
         ).start()
 
     def update_stream_metadata(self):
+        self.break_stream_loop = True
         if not requests.post(
             config.UPDATE_ARTWORK_URL,
             params={"mount": self.username},
@@ -1268,6 +1277,7 @@ def embed_artwork(yt_dlp_info):
 
 def discord_join_event_handler(arg):
     print_to_logfile("Join event:", arg)
+
 
 def connect_to_discord():
     discord_rpc = DiscordRPCClient(client_id=config.DISCORD_ID)

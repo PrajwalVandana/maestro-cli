@@ -123,31 +123,35 @@ def discord_presence_loop(
             artist_name = "by " + read_from_queue(artist_queue)
             album_name = read_from_queue(album_queue).ljust(2)
 
+            d = dict(
+                details=song_name,
+                state=artist_name,
+                large_image=(
+                    f"{IMAGE_URL}?_={time()}"
+                    if stream_username
+                    else "maestro-icon"
+                ),
+                small_image="maestro-icon-small",
+                large_text=album_name,
+                # join=stream_username if stream_username else "",
+                # party_id="test",
+                # party_size=[1, 999],
+                buttons=(
+                    [
+                        {
+                            "label": "Listen Along",
+                            "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
+                        }
+                    ]
+                    if stream_username
+                    else []
+                ),
+            )
+            d = {k: v for k, v in d.items() if v}
+
             if discord_connected.value:
                 try:
-                    discord_rpc.set_activity(
-                        details=song_name,
-                        state=artist_name,
-                        large_image=(
-                            f"{IMAGE_URL}?_={time()}"
-                            if stream_username
-                            else "maestro-icon"
-                        ),
-                        large_text=album_name,
-                        # join=stream_username if stream_username else "",
-                        # party_id="test",
-                        # party_size=[1, 999],
-                        # buttons=(
-                        #     [
-                        #         {
-                        #             "label": "Listen Along",
-                        #             "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
-                        #         }
-                        #     ]
-                        #     if stream_username
-                        #     else []
-                        # ),
-                    )
+                    discord_rpc.set_activity(**d)
                     song_name = ""
                     artist_name = ""
                     album_name = ""
@@ -164,29 +168,7 @@ def discord_presence_loop(
 
                 if discord_connected.value:
                     try:
-                        discord_rpc.set_activity(
-                            details=song_name,
-                            state=artist_name,
-                            large_image=(
-                                f"{IMAGE_URL}?_={time()}"
-                                if stream_username
-                                else "maestro-icon"
-                            ),
-                            large_text=album_name,
-                            # join=stream_username if stream_username else "",
-                            # party_id="test",
-                            # party_size=[1, 999],
-                            # buttons=(
-                            #     [
-                            #         {
-                            #             "label": "Listen Along",
-                            #             "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
-                            #         }
-                            #     ]
-                            #     if stream_username
-                            #     else []
-                            # ),
-                        )
+                        discord_rpc.set_activity(**d)
                         song_name = ""
                         artist_name = ""
                         album_name = ""

@@ -275,8 +275,6 @@ class FFmpegProcessHandler:
                 "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
                 "-ac", "2",  # Set the number of audio channels to 2 (stereo)
                 '-i', 'pipe:',  # Input from stdin
-                # "-c:a", "aac",  # Set the audio codec to AAC
-                # "-profile:a", "aac_low",  # Set the AAC profile to low complexity
                 "-f", "mp3",  # Output format
                 # "-report",  # DEBUG
                 f"icecast://{self.username}:{self.password}@{config.ICECAST_SERVER}:8000/{self.username}",  # Azure-hosted maestro Icecast URL
@@ -306,7 +304,7 @@ class FFmpegProcessHandler:
 
 class PlaybackHandler:
     def __init__(
-        self, stdscr, playlist, volume, clip_mode, visualize, stream, creds
+        self, stdscr, playlist, clip_mode, visualize, stream, creds
     ):
         self.stdscr = stdscr
         self.scroller = Scroller(
@@ -314,7 +312,7 @@ class PlaybackHandler:
         )
         self.playlist = playlist
         self.i = 0
-        self.volume = volume
+        self._volume = 0
         self.clip_mode = clip_mode
         self.update_discord = False
         self.visualize = visualize  # want to visualize
@@ -506,7 +504,7 @@ class PlaybackHandler:
                             self.song_id,
                             fpos / config.STREAM_SAMPLE_RATE,
                             self.playback.curr_pos,
-                        )
+                        )  # DEBUG
                         self.ffmpeg_process.write(
                             self.audio_data[self.song_id][1][
                                 :,
@@ -537,6 +535,16 @@ class PlaybackHandler:
     def paused(self, value):
         self._paused = value
         self.threaded_update_icecast_metadata()
+
+    @property
+    def volume(self):
+        return self._volume
+
+    @volume.setter
+    def volume(self, v):
+        self._volume = v
+        if self.playback is not None:
+            self.playback.set_volume(v/100)
 
     @property
     def song_id(self):
@@ -579,6 +587,10 @@ class PlaybackHandler:
                 self.update_now_playing = True
             self.last_timestamp = pos
 
+    def set_volume(self, v):
+        """Set volume w/o changing self.volume."""
+        self.playback.set_volume(v/100)
+
     def quit(self):
         if self.ffmpeg_process is not None:
             self.ffmpeg_process.terminate()
@@ -596,7 +608,6 @@ class PlaybackHandler:
         self.output(self.playback.curr_pos)
 
     def update_discord_metadata(self):
-        sleep(1)  # wait for image to be uploaded  # TODO: find better way
         if self.update_discord:
             multiprocessing_put_word(
                 self.discord_queues["title"],
@@ -1105,12 +1116,12 @@ class PlaybackHandler:
                 screen_width - volume_line_length_so_far
                 >= config.MIN_VOLUME_BAR_WIDTH + 10
             ):
-                bar = f"{str(int(self.volume*100)).rjust(3)}/100 |"
+                bar = f"{str(int(self.volume)).rjust(3)}/100 |"
                 volume_bar_width = min(
                     screen_width - volume_line_length_so_far - (len(bar) + 1),
                     config.MAX_VOLUME_BAR_WIDTH,
                 )
-                block_width = int(volume_bar_width * 8 * self.volume)
+                block_width = int(volume_bar_width * 8 * self.volume / 100)
                 for _ in range(volume_bar_width):
                     if block_width > 8:
                         bar += config.HORIZONTAL_BLOCKS[8]
@@ -1126,7 +1137,7 @@ class PlaybackHandler:
                 self.stdscr.addstr(bar, curses.color_pair(16))
             elif screen_width - volume_line_length_so_far >= 7:
                 self.stdscr.addstr(
-                    f"{str(int(self.volume*100)).rjust(3)}/100".rjust(
+                    f"{str(int(self.volume)).rjust(3)}/100".rjust(
                         screen_width - volume_line_length_so_far
                     ),
                     curses.color_pair(16),

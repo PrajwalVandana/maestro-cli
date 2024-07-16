@@ -209,7 +209,6 @@ def _play(
     player = helpers.PlaybackHandler(
         stdscr,
         playlist,
-        volume,
         clip_mode,
         visualize,
         stream,
@@ -276,7 +275,8 @@ def _play(
 
         player.update_metadata()
         player.playback.play()
-        print_to_logfile("Changed song", player.playback.curr_pos)
+        player.volume = volume
+        print_to_logfile("Changed song", player.playback.curr_pos)  # DEBUG
 
         if player.clip_mode:
             clip_start, clip_end = player.clip
@@ -284,7 +284,6 @@ def _play(
             player.seek(clip_start)
 
         start_time = pause_start = time()
-        player.playback.set_volume(player.volume)
 
         player.last_timestamp = player.playback.curr_pos
         next_song = 1  # -1 if going back, 0 if restarting, +1 if next song
@@ -303,11 +302,11 @@ def _play(
                 and clip_end - clip_start > 5  # if clip is longer than 5 secs
                 and player.playback.curr_pos < clip_start + 2
             ):
-                player.playback.set_volume(
+                player.set_volume(
                     player.volume * (player.playback.curr_pos - clip_start) / 2
                 )
             else:
-                player.playback.set_volume(player.volume)
+                player.set_volume(player.volume)
 
             if player.can_mac_now_playing:  # macOS Now Playing event loop
                 try:
@@ -557,7 +556,6 @@ def _play(
                                     player.volume = prev_volume
                                 else:
                                     player.volume = 0
-                                player.playback.set_volume(player.volume)
 
                                 player.update_screen()
                             elif ch in "vV":
@@ -597,19 +595,13 @@ def _play(
                                 player.volume = max(
                                     0, player.volume - config.VOLUME_STEP
                                 )
-                                player.playback.set_volume(player.volume)
-
                                 player.update_screen()
-
                                 prev_volume = player.volume
                             elif ch == "]":
                                 player.volume = min(
-                                    1, player.volume + config.VOLUME_STEP
+                                    100, player.volume + config.VOLUME_STEP
                                 )
-                                player.playback.set_volume(player.volume)
-
                                 player.update_screen()
-
                                 prev_volume = player.volume
                     else:
                         if c == curses.KEY_LEFT:
@@ -1202,6 +1194,10 @@ def add(
         paths = [new_path]
         move_ = True  # always move (from temp loc in config.MAESTRO_DIR) if renaming
 
+        m = music_tag.load_file(new_path)
+        m["tracktitle"] = name
+        m.save()
+
     if clip is not None and len(paths) == 1:
         song_duration = music_tag.load_file(paths[0])["#length"].value
 
@@ -1781,8 +1777,6 @@ def play(
     if not playlist:
         click.secho("No songs found matching tag criteria.", fg="red")
     else:
-        volume /= 100
-
         username = helpers.get_username()
         password = helpers.get_password()
         if stream:
@@ -1836,6 +1830,7 @@ def play(
     default=False,
     help="If passed, rename tag instead of song (treat the arguments as tags).",
 )
+# NOTE: original is not forced to be a int so that tags can be renamed
 @click.argument("original")
 @click.argument("new_name")
 def rename(original, new_name, renaming_tag):
@@ -1885,15 +1880,18 @@ def rename(original, new_name, renaming_tag):
                     )
                     return
 
-                lines[i] = "|".join(details)
-                songs_file.close()
-                songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
-                songs_file.write("\n".join(lines))
-
+                m = music_tag.load_file(full_song_path)
+                m["tracktitle"] = new_name
+                m.save()
                 os.rename(
-                    os.path.join(config.SETTINGS["song_directory"], old_path),
+                    full_song_path,
                     os.path.join(config.SETTINGS["song_directory"], details[1]),
                 )
+
+                lines[i] = "|".join(details)
+                songs_file.close()
+                with open(config.SONGS_INFO_PATH, "w", encoding="utf-8") as f:
+                    f.write("\n".join(lines))
 
                 click.secho(
                     f"Renamed song '{old_path}' with ID {original} to '{details[1]}'.",
@@ -1915,10 +1913,9 @@ def rename(original, new_name, renaming_tag):
 
                     lines[i] = "|".join(details)
                     break
-
         songs_file.close()
-        songs_file = open(config.SONGS_INFO_PATH, "w", encoding="utf-8")
-        songs_file.write("\n".join(lines))
+        with open(config.SONGS_INFO_PATH, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
 
         click.secho(
             f"Replaced all ocurrences of tag '{original}' to '{new_name}'.",

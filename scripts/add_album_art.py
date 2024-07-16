@@ -1,12 +1,22 @@
+"""
+Add album art to songs that don't have it, using the title of the song to search
+Spotify for the album art. Can fail sometimes; the 'custom_album_art.py' script
+offers more control over the process, but requires manual input.
+
+Usage: python add_album_art.py <path_to_songs_directory>
+"""
+
 import json
 import os
+import sys
 import subprocess
 
 import music_tag
 import requests
 
 
-DIR = "/Users/sysadmin/.maestro-files/songs"
+DIR = sys.argv[1]  # REPLACE WITH THE PATH TO YOUR SONGS DIRECTORY
+
 for path in os.listdir(DIR):
     fname, ext = os.path.splitext(path)
     if ext not in (".mp3", ".flac", ".ogg", ".wav"):

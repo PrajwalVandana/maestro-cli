@@ -1,6 +1,11 @@
+"""
+Usage: python custom_album_art.py <path_to_songs_directory>
+"""
+
 import json
 import os
 import subprocess
+import sys
 
 import music_tag
 import requests
@@ -8,18 +13,10 @@ import requests
 from yt_dlp import YoutubeDL
 
 
-remove_paths = [
-    "/Users/sysadmin/.maestro-files/songs/Aa Ammayi Gurinchi Meeku Cheppali Credits Song.mp3",
-]
-youtubeURLs = {
-    "/Users/sysadmin/.maestro-files/songs/Thaaney Vachhindhanaa.mp3": "https://music.youtube.com/watch?v=LsZnqhNIMAc&si=EVe7OsmkWSE29Zjx",
-    "/Users/sysadmin/.maestro-files/songs/U Turn.mp3": "https://music.youtube.com/watch?v=efIqLlcp_q8&si=pnQcmsYDQrecWbxv",
-    "/Users/sysadmin/.maestro-files/songs/Vikram Rathore BGM.mp3": "https://music.youtube.com/watch?v=4qNaUvhwI38&si=uLivnUE8ofU_zIVK",
-    "/Users/sysadmin/.maestro-files/songs/Weak.mp3": "https://music.youtube.com/watch?v=iD4h_naiHxg&si=WulbhShv9UugIpNz",
-    "/Users/sysadmin/.maestro-files/songs/What Was.mp3": "https://music.youtube.com/watch?v=r3XG0c8b8i4&si=VXSQKGRDGExxBUcT",
-}
-spotifyURLs = {}
-
+remove_paths = []  # song paths to remove artwork from
+youtubeURLs = {}  # {path: YouTube/YT Music URL to download artwork from}
+spotifyURLs = {}  # {path: Spotify URL to download artwork from}
+DIR = sys.argv[1]  # REPLACE WITH THE PATH TO YOUR SONGS DIRECTORY
 
 def yt_embed_artwork(path_, yt_dlp_info):
     yt_dlp_info["thumbnails"].sort(key=lambda d: d["preference"])
@@ -33,21 +30,12 @@ def yt_embed_artwork(path_, yt_dlp_info):
     for thumbnail in yt_dlp_info["thumbnails"][:-1]:
         if "height" in thumbnail and (
             thumbnail["height"] == thumbnail["width"]
-            and (
-                best_thumbnail["width"]
-                != best_thumbnail["height"]
-            )
+            and (best_thumbnail["width"] != best_thumbnail["height"])
             or (
                 thumbnail["height"] >= best_thumbnail["height"]
+                and (thumbnail["width"] >= best_thumbnail["width"])
                 and (
-                    thumbnail["width"]
-                    >= best_thumbnail["width"]
-                )
-                and (
-                    (
-                        best_thumbnail["width"]
-                        != best_thumbnail["height"]
-                    )
+                    (best_thumbnail["width"] != best_thumbnail["height"])
                     or thumbnail["width"] == thumbnail["height"]
                 )
             )
@@ -62,7 +50,7 @@ def yt_embed_artwork(path_, yt_dlp_info):
     m_["artwork"] = image_data
     m_.save()
 
-DIR = "/Users/sysadmin/.maestro-files/songs"
+
 for path, url in spotifyURLs.items():
     subprocess.run(
         [

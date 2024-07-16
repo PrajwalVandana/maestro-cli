@@ -80,7 +80,7 @@ HORIZONTAL_BLOCKS = {
     8: "█",
 }
 SCRUB_TIME = 5  # in seconds
-VOLUME_STEP = 0.01  # self.volume is 0-1
+VOLUME_STEP = 1
 MIN_PROGRESS_BAR_WIDTH = 20
 MIN_VOLUME_BAR_WIDTH, MAX_VOLUME_BAR_WIDTH = 10, 40
 # endregion

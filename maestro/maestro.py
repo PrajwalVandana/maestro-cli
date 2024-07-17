@@ -214,6 +214,7 @@ def _play(
         stream,
         (username, password) if username and password else (None, None),
     )
+    player.volume = volume
     if can_mac_now_playing:
         player.can_mac_now_playing = True
         player.mac_now_playing = mac_now_playing
@@ -275,7 +276,7 @@ def _play(
 
         player.update_metadata()
         player.playback.play()
-        player.volume = volume
+        player.set_volume(volume)
         print_to_logfile("Changed song", player.playback.curr_pos)  # DEBUG
 
         if player.clip_mode:

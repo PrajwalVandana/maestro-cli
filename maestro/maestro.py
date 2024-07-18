@@ -637,7 +637,7 @@ def _play(
                         elif c == curses.KEY_ENTER:
                             # pylint: disable=unsubscriptable-object
                             # fmt: off
-                            if player.prompting[0].isnumeric() and player.prompting[2] in (
+                            if player.prompting[0].isdecimal() and player.prompting[2] in (
                                 config.PROMPT_MODES["add"],
                                 config.PROMPT_MODES["insert"],
                             ):
@@ -1312,19 +1312,12 @@ def add(
 def remove(args, force, tag):
     """Remove either tag(s) or song(s) passed as ID(s)."""
     if not tag:
-        try:
-            song_ids = {int(song_id) for song_id in args}
-            remaining_song_ids = {n for n in song_ids}
-        except ValueError:
-            click.secho(
-                "Song IDs must be integers. To delete tags, pass the '-T/--tag' flag.",
-                fg="red",
-            )
-            return
+        song_ids = {helpers.SONG(v) for v in args}
+        remaining_song_ids = set(song_ids)
 
         if not force:
             char = input(
-                f"Are you sure you want to delete {len(song_ids)} song(s)? [y/n] "
+                f"Are you sure you want to delete {helpers.pluralize(len(song_ids), "song")}? [y/n] "
             )
 
             if char.lower() != "y":
@@ -1404,7 +1397,7 @@ def remove(args, force, tag):
         tags_to_remove = set(args)
         if not force:
             char = input(
-                f"Are you sure you want to delete {len(tags_to_remove)} tag(s)? [y/n] "
+                f"Are you sure you want to delete {helpers.pluralize(len(tags_to_remove), "tag")}? [y/n] "
             )
 
             if char.lower() != "y":
@@ -1426,13 +1419,13 @@ def remove(args, force, tag):
             songs_file.write("\n".join(lines))
 
         click.secho(
-            f"Deleted all occurrences of {len(tags_to_remove)} tag(s).",
+            f"Deleted all occurrences of {helpers.pluralize(len(tags_to_remove), "tag")}.",
             fg="green",
         )
 
 
 @cli.command(name="tag")
-@click.argument("song_ids", type=click.INT, required=True, nargs=-1)
+@click.argument("songs", type=helpers.SONG, required=True, nargs=-1)
 @click.option(
     "-t",
     "--tag",
@@ -1440,10 +1433,10 @@ def remove(args, force, tag):
     help="Tags to add.",
     multiple=True,
 )
-def tag_(song_ids, tags):
+def tag_(songs, tags):
     """Add tags to a song (passed as ID). Tags cannot contain the characters
     ',' or '|'."""
-    song_ids = set(song_ids)
+    song_ids = set(songs)
     num_songs = len(song_ids)
     tags = set(tags)
     for tag in tags:
@@ -1473,14 +1466,15 @@ def tag_(song_ids, tags):
         songs_file.close()
 
         if song_ids:
+            num_not_found = len(song_ids)
             click.secho(
-                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}.",
+                f"Could not find {helpers.pluralize(num_not_found, "song")} with {helpers.pluralize(num_not_found, "ID", False)} {', '.join(map(str, song_ids))}.",
                 fg="red",
             )
             if len(song_ids) == num_songs:
                 return
         click.secho(
-            f"Added {len(tags)} tag(s) to {num_songs - len(song_ids)} song(s).",
+            f"Added {helpers.pluralize(len(tags), "tag")} to {helpers.pluralize(num_songs - len(song_ids), "song")}.",
             fg="green",
         )
     else:
@@ -1488,7 +1482,7 @@ def tag_(song_ids, tags):
 
 
 @cli.command()
-@click.argument("song_ids", type=click.INT, required=True, nargs=-1)
+@click.argument("songs", type=helpers.SONG, required=True, nargs=-1)
 @click.option(
     "-t",
     "--tag",
@@ -1497,13 +1491,13 @@ def tag_(song_ids, tags):
     multiple=True,
 )
 @click.option("-A/-nA", "--all/--no-all", "all_", default=False)
-def untag(song_ids, tags, all_):
+def untag(songs, tags, all_):
     """Remove tags from a specific song (passed as ID). Tags that the song
     doesn't have will be ignored.
 
     Passing the '-A/--all' flag will remove all tags from the song, unless TAGS
     is passed (in which case the flag is ignored)."""
-    song_ids = set(song_ids)
+    song_ids = set(songs)
     num_songs = len(song_ids)
     tags = set(tags)
     if tags:
@@ -1528,14 +1522,15 @@ def untag(song_ids, tags, all_):
         songs_file.close()
 
         if song_ids:
+            num_not_found = len(song_ids)
             click.secho(
-                f"Could not find song(s) with ID(s) {', '.join(map(str, song_ids))}.",
+                f"Could not find {helpers.pluralize(num_not_found, "song")} with {helpers.pluralize(num_not_found, "ID", False)} {', '.join(map(str, song_ids))}.",
                 fg="red",
             )
             if len(song_ids) == num_songs:
                 return
         click.secho(
-            f"Removed any occurrences of {len(tags)} tag(s) from {num_songs - len(song_ids)} song(s).",
+            f"Removed any occurrences of {helpers.pluralize(len(tags), "tag")} from {helpers.pluralize(num_songs - len(song_ids), "song")}.",
             fg="green",
         )
     else:
@@ -1559,7 +1554,7 @@ def untag(song_ids, tags, all_):
             songs_file.close()
 
             click.secho(
-                f"Removed {len(tags)} tag(s) from {len(song_ids)} song(s).",
+                f"Removed {helpers.pluralize(len(tags), "tag")} from {helpers.pluralize(len(song_ids), "song")}.",
                 fg="green",
             )
 
@@ -1600,7 +1595,7 @@ def untag(song_ids, tags, all_):
     "-o",
     "--only",
     "only",
-    type=click.INT,
+    type=helpers.SONG,
     multiple=True,
     help="Play only this/these song(s) (can be passed multiple times, e.g. 'maestro play -o 1 -o 17').",
 )
@@ -1854,12 +1849,7 @@ def rename(original, new_name, renaming_tag):
     songs_file = open(config.SONGS_INFO_PATH, "r", encoding="utf-8")
     lines = songs_file.read().splitlines()
     if not renaming_tag:
-        if not original.isnumeric():
-            click.secho(
-                "Song ID must be an integer. To rename a tag, pass the '-T/--tag' flag.",
-                fg="red",
-            )
-            return
+        original = helpers.SONG(original)
 
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
@@ -1939,48 +1929,37 @@ def rename(original, new_name, renaming_tag):
     default=False,
     help="Searches for matching tags instead of song names.",
 )
-def search(phrase, searching_for_tags):
+@click.option(
+    "-M/-nM",
+    "--show-metadata/--no-show-metadata",
+    "show_metadata",
+    default=False,
+    help="Show metadata for songs (artist, album, album artist). Ignored if '-T/--tag' is passed.",
+)
+def search(phrase, searching_for_tags, show_metadata):
     """Search for song names (or tags with '-T' flag). All songs/tags starting
     with PHRASE will appear before songs/tags containing but not starting with
     PHRASE. This search is case-insensitive."""
     phrase = phrase.lower()
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
-            results = [], []  # starts, contains but does not start
-            for line in songs_file:
-                song_id, song_name, tags, *_ = line.strip().split("|")
-                song_id = int(song_id)
-                song_name = song_name.lower()
-
-                if song_name.startswith(phrase):
-                    results[0].append(song_id)
-                elif phrase in song_name:
-                    results[1].append(song_id)
-
+            results = helpers.search_song(phrase, songs_file)
             if not any(results):
                 click.secho("No results found.", fg="red")
                 return
 
-            songs_file.seek(0)
-            for line in songs_file:
-                details = line.strip().split("|")
-                if int(details[0]) in results[0]:
-                    helpers.print_entry(details, phrase)
+            for details in results[0]+results[1]:
+                helpers.print_entry(details, phrase, show_metadata)
 
-            songs_file.seek(0)
-            for line in songs_file:
-                details = line.strip().split("|")
-                if int(details[0]) in results[1]:
-                    helpers.print_entry(details, phrase)
-
+            num_results = len(results[0]) + len(results[1])
             click.secho(
-                f"Found {len(results[0]) + len(results[1])} song(s).",
+                f"Found {helpers.pluralize(num_results, "song")}.",
                 fg="green",
             )
         else:
             results = set(), set()  # starts, contains but does not start
             for line in songs_file:
-                song_id, song_name, tags, *_ = line.strip().split("|")
+                tags = line.strip().split("|")[2]
                 if tags:
                     tags = tags.split(",")
 
@@ -1997,12 +1976,12 @@ def search(phrase, searching_for_tags):
 
             for tag in results[0]:
                 print(tag)
-
             for tag in results[1]:
                 print(tag)
 
+            num_results = len(results[0]) + len(results[1])
             click.secho(
-                f"Found {len(results[0]) + len(results[1])} tag(s).", fg="green"
+                f"Found {helpers.pluralize(num_results, "tag")}.", fg="green"
             )
 
 
@@ -2311,8 +2290,8 @@ def list_(
     default=True,
     help="Show the artist, album, and album artist for each song.",
 )
-@click.argument("song_ids", type=click.INT, nargs=-1, required=True)
-def entry(song_ids, year, song_info):
+@click.argument("songs", type=helpers.SONG, nargs=-1, required=True)
+def entry(songs, year, song_info):
     """
     View the details for specific song(s).
 
@@ -2323,7 +2302,7 @@ def entry(song_ids, year, song_info):
         ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
         artist - album (album artist), unless -nI/--no-artist-info is passed
     """
-    song_ids = set(song_ids)
+    song_ids = set(songs)
 
     if year is None:
         stats_path = config.TOTAL_STATS_PATH
@@ -2397,7 +2376,7 @@ def entry(song_ids, year, song_info):
     "--name/--no-name",
     "title",
     default=False,
-    help="Treat SONG as a song name instead of an ID.",
+    help="Treat SONG as a song name to search on YT Music instead of an existing maestro song (ID/search phrase).",
 )
 def recommend(song, title):
     """
@@ -2407,7 +2386,7 @@ def recommend(song, title):
     to the song with ID SONG to listen to.
 
     If the '-N' flag is passed, SONG is treated as a song name to search for
-    on YouTube Music."""
+    on YouTube Music, instead of a song in the maestro database."""
     try:
         from ytmusicapi import YTMusic
     except ImportError:
@@ -2422,12 +2401,7 @@ def recommend(song, title):
     if title:
         results = ytmusic.search(song, filter="songs")
     else:
-        if not song.isdigit():
-            click.secho(
-                "Song ID must be a number. To get recommendations by name, pass the '-N/--name' flag.",
-                fg="red",
-            )
-            return
+        song = helpers.SONG(song)
 
         with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
             for line in songs_file:
@@ -2464,13 +2438,13 @@ def recommend(song, title):
 
 
 @cli.command()
-@click.argument("song_ids", required=True, type=int, nargs=-1)
+@click.argument("songs", required=True, type=helpers.SONG, nargs=-1)
 @click.option("-B/-nB", "--bottom/--no-bottom", "bottom", default=False)
-def push(song_ids, bottom):
+def push(songs, bottom):
     """
     Move songs around to the bottom or top of the database.
 
-    Push the song(s) with ID(s) SONG_IDS to the top of the database (as if they
+    Push the song(s) with ID(s) SONGS to the top of the database (as if they
     were the songs most recently added) in the order they are passed (e.g.
     'maestro push 1 2 3' will make the most recent song be 3).
 
@@ -2482,14 +2456,14 @@ def push(song_ids, bottom):
 
         lines_to_move = []
         for i in range(len(lines)):
-            if int(lines[i].split("|")[0]) in song_ids:
+            if int(lines[i].split("|")[0]) in songs:
                 lines_to_move.append((i, lines[i]))
 
         for i, _ in reversed(lines_to_move):
             lines.pop(i)
 
         song_ids_with_order = dict(
-            map(lambda x: (x[1], x[0]), enumerate(song_ids))
+            map(lambda x: (x[1], x[0]), enumerate(songs))
         )
 
         for i in range(len(lines_to_move)):
@@ -2511,7 +2485,7 @@ def push(song_ids, bottom):
 
 
 @cli.command(name="clip")
-@click.argument("song_id", required=True, type=int)
+@click.argument("song", required=True, type=helpers.SONG)
 @click.argument("start", required=False, type=float, default=None)
 @click.argument("end", required=False, type=float, default=None)
 @click.option(
@@ -2521,11 +2495,11 @@ def push(song_ids, bottom):
     default=True,
     help="Open the clip editor, even if START and END are passed. Ignored if neither START nor END are passed.",
 )
-def clip_(song_id, start, end, editor):
+def clip_(song, start, end, editor):
     """
     Create or edit the clip for a song.
 
-    Sets the clip for the song with ID SONG_ID to the time range START to END
+    Sets the clip for the song with ID SONG to the time range START to END
     (in seconds).
 
     If END is not passed, the clip will be from START to the end of the song.
@@ -2562,10 +2536,10 @@ def clip_(song_id, start, end, editor):
 
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
-            if int(details[0]) == song_id:
+            if int(details[0]) == song:
                 break
         else:
-            click.secho(f"No song found with ID {song_id}.", fg="red")
+            click.secho(f"No song found with ID {song}.", fg="red")
             return
 
         song_name = details[1]
@@ -2573,7 +2547,7 @@ def clip_(song_id, start, end, editor):
             os.path.join(config.SETTINGS["song_directory"], song_name)
         ):
             click.secho(
-                f"Song file {song_name} (ID {song_id}) not found.",
+                f"Song file {song_name} (ID {song}) not found.",
                 fg="red",
             )
             return
@@ -2625,7 +2599,7 @@ def clip_(song_id, start, end, editor):
 
 
 @cli.command()
-@click.argument("song_ids", type=int, nargs=-1, required=False)
+@click.argument("songs", type=helpers.SONG, nargs=-1, required=False)
 @click.option(
     "-A/-nA",
     "--all/--no-all",
@@ -2640,19 +2614,19 @@ def clip_(song_id, start, end, editor):
     default=False,
     help="Skip confirmation prompt.",
 )
-def unclip(song_ids, all_, force):
+def unclip(songs, all_, force):
     """
     Remove clips for specific song(s).
 
-    Removes clip for the song(s) with ID(s) SONG_IDS.
+    Removes clip for the song(s) with ID(s) SONGS.
 
     If the '-A/--all' flag is passed, the clips for all songs will be removed,
     ignoring SONG_IDS. This prompts for confirmation unless the '-F/--force'
     flag is passed.
     """
     if not all_:
-        if song_ids:
-            song_ids = set(song_ids)
+        if songs:
+            song_ids = set(songs)
         else:
             click.secho(
                 "No song IDs passed. To remove clips for all songs, pass the '-A/--all' flag.",
@@ -2683,22 +2657,22 @@ def unclip(song_ids, all_, force):
         click.secho("Removed clips for all songs.", fg="green")
     else:
         click.secho(
-            f"Removed clip(s) for song(s) with ID(s) {', '.join(map(str, song_ids))}.",
+            f"Removed clip{"s" if len(song_ids) > 1 else ""} for song{"s" if len(song_ids) > 1 else ""} with ID{"s" if len(song_ids) > 1 else ""} {', '.join(map(str, song_ids))}.",
             fg="green",
         )
 
 
 @cli.command()
-@click.argument("song_ids", type=int, required=True, nargs=-1)
+@click.argument("songs", type=helpers.SONG, required=True, nargs=-1)
 @click.option("-m", "--metadata", "pairs", type=str, required=False)
-def metadata(song_ids, pairs):
+def metadata(songs, pairs):
     """
     View or edit the metadata for a song or songs.
 
     If the -m/--metadata option is not passed, prints the metadata for each song
-    ID in SONG_IDS.
+    ID in SONGS.
 
-    If the option is passed, sets the metadata for the each song ID in SONG_IDS
+    If the option is passed, sets the metadata for the each song ID in SONGS
     to the key-value pairs in -m/--metadata. The option should be passed as a
     string of the form 'key1:value1|key2:value2|...'.
 
@@ -2734,11 +2708,11 @@ def metadata(song_ids, pairs):
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
 
-        ids_not_found = set(song_ids)
+        ids_not_found = set(songs)
         for i in range(len(lines)):
             details = lines[i].strip().split("|")
             song_id = int(details[0])
-            if song_id in song_ids:
+            if song_id in songs:
                 ids_not_found.remove(song_id)
                 song_name = details[1]
                 song_path = os.path.join(

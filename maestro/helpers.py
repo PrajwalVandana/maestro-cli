@@ -1251,6 +1251,36 @@ def init_curses(stdscr):
         pass
 
 
+class SongParamType(click.ParamType):
+    name = "song"
+
+    def convert(self, value, param, ctx):
+        if type(value) == int:
+            return value
+
+        if not value.isdecimal():
+            # search for song by name
+            results = search_song(value)
+            if not any(results):
+                self.fail(f"No song found matching '{value}'.", param, ctx)
+
+            if len(results[0]) == 1:
+                return int(results[0][0][0])
+            if len(results[1]) == 1:
+                return int(results[1][0][0])
+
+            for details in results[0]+results[1]:
+                print_entry(details, value)
+            self.fail("Multiple songs found", param, ctx)
+
+        song_id = int(value)
+        if song_id < 1:
+            self.fail("Song ID must be positive.", param, ctx)
+
+        return song_id
+
+SONG = SongParamType()
+
 def embed_artwork(yt_dlp_info):
     yt_dlp_info["thumbnails"].sort(key=lambda d: d["preference"])
     best_thumbnail = yt_dlp_info["thumbnails"][-1]  # default thumbnail
@@ -1314,7 +1344,7 @@ def add_song(
     if "|" in song_fname:
         song_fname = song_fname.replace("|", "-")
         click.secho(
-            f"The song \"{song_fname}\" contains one or more '|' character(s), which is not allowed—all ocurrences have been replaced with '-'.",
+            f"The song \"{song_fname}\" contains one or more '|' characters, which are not allowed—all ocurrences have been replaced with '-'.",
             fg="yellow",
         )
 
@@ -1743,9 +1773,33 @@ def format_seconds(secs, show_decimal=False):
     )
 
 
-def print_entry(entry_list, highlight=None, show_song_info=None):
+def search_song(phrase, songs_file=None):
     """
-    tuple or iterable of strings
+    Returns a tuple of two lists:
+    0: songs that start with the phrase
+    1: songs that contain the phrase but do not start with it
+    """
+    songs_file = songs_file or open(
+        config.SONGS_INFO_PATH, "r", encoding="utf-8"
+    )
+    phrase = phrase.lower()
+
+    results = [], []  # starts, contains but does not start
+    for line in songs_file:
+        details = line.strip().split("|")
+        song_name = details[1].lower()
+
+        if song_name.startswith(phrase):
+            results[0].append(details)
+        elif phrase in song_name:
+            results[1].append(details)
+
+    return results
+
+
+def print_entry(entry_list, highlight=None, show_song_info=False):
+    """
+    tuple or iterable of STRINGS
 
     0: song ID
     1: song name
@@ -1848,3 +1902,7 @@ def multiprocessing_put_word(q, word):
 
 def versiontuple(v):
     return tuple(map(int, v.split(".")))
+
+
+def pluralize(count, word, include_count=True):
+    return f"{count} " * include_count + word + ("s" if count != 1 else "")

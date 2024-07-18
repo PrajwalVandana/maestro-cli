@@ -51,6 +51,7 @@ MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
 
 SETTINGS_FILE = os.path.join(MAESTRO_DIR, "settings.json")
 LOGFILE = os.path.join(MAESTRO_DIR, "maestro.log")
+OLD_LOG_DIR = os.path.join(MAESTRO_DIR, "old-logs/")
 DEFAULT_SETTINGS = {
     "song_directory": os.path.join(MAESTRO_DIR, "songs/"),
     "last_version_sync": 0,

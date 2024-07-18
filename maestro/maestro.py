@@ -15,7 +15,7 @@ import music_tag
 from collections import defaultdict
 from queue import Queue
 from random import randint
-from shutil import move, copy
+from shutil import move, copy, rmtree
 from time import sleep, time
 
 from maestro.icon import img
@@ -939,7 +939,7 @@ def cli():
     if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:
         # move to backup
         backup_path = os.path.join(
-            config.MAESTRO_DIR, f"old-logs/maestro-{int(time())}.log"
+            config.OLD_LOG_DIR, f"maestro-{int(time())}.log"
         )
         os.makedirs(os.path.dirname(backup_path), exist_ok=True)
         move(config.LOGFILE, backup_path)
@@ -959,10 +959,10 @@ def cli():
     "-n",
     "--name",
     type=str,
-    help="What to name the song, if you don't want to use the title from Youtube/Spotify or filename. Do not include an extension (e.g. '.wav'). Ignored if adding multiple songs.",
+    help="What to name the song, if you don't want to use the title from Youtube/Spotify/filename. Do not include an extension (e.g. '.wav'). Ignored if adding multiple songs.",
 )
 @click.option(
-    "-R, -nR",
+    "-R/-nR",
     "--recursive/--no-recursive",
     "recurse",
     default=False,
@@ -994,7 +994,7 @@ def cli():
     "--clip",
     nargs=2,
     type=float,
-    help="Add a clip. Ignored if adding multiple songs.",
+    help="Add a clip (two numbers). Ignored if adding multiple songs.",
 )
 @click.option(
     "-P/-nP",
@@ -1010,6 +1010,12 @@ def cli():
     default=None,
     help="Add metadata to the song. If adding multiple songs, the metadata is added to each song. The format is 'key1:value1|key2:value2|...'.",
 )
+@click.option(
+    "-nD/-D",
+    "--skip-dupes/--no-skip-dupes",
+    default=False,
+    help="Skip adding song names that are already in the database. If not passed, 'copy' is appended to any duplicate names.",
+)
 def add(
     path_,
     tags,
@@ -1022,6 +1028,7 @@ def add(
     clip,
     playlist_,
     metadata_pairs,
+    skip_dupes,
 ):
     """
     Add a new song.
@@ -1167,18 +1174,16 @@ def add(
         click.secho("No songs to add.", fg="red")
         return
     if len(paths) > 1:
-        if clip is not None or name is not None:
-            if clip is not None:
-                click.secho(
-                    "Cannot pass '-c/--clip' option when adding multiple songs.",
-                    fg="red",
-                )
-            if name is not None:
-                click.secho(
-                    "Cannot pass '-n/--name' option when adding multiple songs.",
-                    fg="red",
-                )
-            return
+        if clip is not None:
+            click.secho(
+                "Cannot pass '-c/--clip' option when adding multiple songs.",
+                fg="yellow",
+            )
+        if name is not None:
+            click.secho(
+                "Cannot pass '-n/--name' option when adding multiple songs.",
+                fg="yellow",
+            )
 
     if len(paths) == 1 and name is not None:  # renaming
         ext = os.path.splitext(paths[0])[1].lower()
@@ -1286,6 +1291,7 @@ def add(
                 prepend_newline,
                 start,
                 end,
+                skip_dupes,
             )
 
 
@@ -1836,7 +1842,7 @@ def play(
 @click.argument("new_name")
 def rename(original, new_name, renaming_tag):
     """
-    Rename a song.
+    Rename a song or tag.
 
     Renames the song with the ID ORIGINAL to NEW_NAME. The extension of the
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
@@ -1934,9 +1940,9 @@ def rename(original, new_name, renaming_tag):
     help="Searches for matching tags instead of song names.",
 )
 def search(phrase, searching_for_tags):
-    """Search for song names (or tags with '-T' flag) that contain PHRASE. All
-    songs/tags starting with PHRASE will appear before songs/tags containing but
-    not starting with PHRASE. This search is case-insensitive."""
+    """Search for song names (or tags with '-T' flag). All songs/tags starting
+    with PHRASE will appear before songs/tags containing but not starting with
+    PHRASE. This search is case-insensitive."""
     phrase = phrase.lower()
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
@@ -2078,7 +2084,7 @@ def list_(
     match_all,
     show_metadata,
 ):
-    """List the entries for all songs.
+    """List songs or tags.
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
 
@@ -2086,9 +2092,9 @@ def list_(
 
     Output format: tag, duration, listen time, times listened
 
-    If TAGS are passed, any tag/song matching any tag in TAGS will be listed,
-    unless the '-M/--match-all' flag is passed, in which case every tag must
-    be matched (ignored if listing tags).
+    If TAGS are passed, all songs matching ANY tag in TAGS will be listed,
+    unless the '-M/--match-all' flag is passed, in which case EVERY tag must
+    be matched (this flag is ignored if listing tags).
     """
     if top is not None:
         if top < 1:
@@ -2395,8 +2401,7 @@ def entry(song_ids, year, song_info):
 )
 def recommend(song, title):
     """
-    Get recommendations from YT Music based on song titles. Note: this feature
-    is experimental.
+    Get recommendations from YT Music based on song titles (experimental).
 
     Recommends songs (possibly explicit) using the YouTube Music API similar
     to the song with ID SONG to listen to.
@@ -2868,3 +2873,19 @@ def signup(username, login_):
     creating the account. You can still log in later using 'maestro login'.
     """
     helpers.signup(username, None, login_)
+
+
+@cli.command(name="clear-logs")
+def clear_logs():
+    """
+    Clear all logs stored by maestro.
+    """
+    try:
+        os.remove(config.LOGFILE)
+        try:
+            rmtree(config.OLD_LOG_DIR)
+        except FileNotFoundError:
+            pass
+        click.secho("Cleared logs.", fg="green")
+    except FileNotFoundError:
+        click.secho("No logs found.", fg="yellow")

@@ -14,9 +14,10 @@ from yt_dlp import YoutubeDL
 
 
 remove_paths = []  # song paths to remove artwork from
-youtubeURLs = {}  # {path: YouTube/YT Music URL to download artwork from}
-spotifyURLs = {}  # {path: Spotify URL to download artwork from}
+youtubeURLs = {}  # {filename: YouTube/YT Music URL to download artwork from}
+spotifyURLs = {}  # {filename: Spotify URL to download artwork from}
 DIR = sys.argv[1]  # REPLACE WITH THE PATH TO YOUR SONGS DIRECTORY
+
 
 def yt_embed_artwork(path_, yt_dlp_info):
     yt_dlp_info["thumbnails"].sort(key=lambda d: d["preference"])
@@ -73,9 +74,9 @@ for path, url in spotifyURLs.items():
 for path, url in youtubeURLs.items():
     with YoutubeDL() as ydl:
         info = ydl.extract_info(url, download=False)
-        yt_embed_artwork(path, info)
+        yt_embed_artwork(os.path.join(DIR, path), info)
 
 for path in remove_paths:
-    m = music_tag.load_file(path)
+    m = music_tag.load_file(os.path.join(DIR, path))
     m["artwork"] = None
     m.save()

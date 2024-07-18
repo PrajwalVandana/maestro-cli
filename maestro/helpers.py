@@ -303,9 +303,7 @@ class FFmpegProcessHandler:
 
 
 class PlaybackHandler:
-    def __init__(
-        self, stdscr, playlist, clip_mode, visualize, stream, creds
-    ):
+    def __init__(self, stdscr, playlist, clip_mode, visualize, stream, creds):
         self.stdscr = stdscr
         self.scroller = Scroller(
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
@@ -500,11 +498,11 @@ class PlaybackHandler:
                     config.STREAM_CHUNK_SIZE,
                 ):
                     try:
-                        print_to_logfile(
-                            self.song_id,
-                            fpos / config.STREAM_SAMPLE_RATE,
-                            self.playback.curr_pos,
-                        )  # DEBUG
+                        # print_to_logfile(
+                        #     self.song_id,
+                        #     fpos / config.STREAM_SAMPLE_RATE,
+                        #     self.playback.curr_pos,
+                        # )  # DEBUG
                         self.ffmpeg_process.write(
                             self.audio_data[self.song_id][1][
                                 :,
@@ -544,7 +542,7 @@ class PlaybackHandler:
     def volume(self, v):
         self._volume = v
         if self.playback is not None:
-            self.playback.set_volume(v/100)
+            self.playback.set_volume(v / 100)
 
     @property
     def song_id(self):
@@ -589,7 +587,7 @@ class PlaybackHandler:
 
     def set_volume(self, v):
         """Set volume w/o changing self.volume."""
-        self.playback.set_volume(v/100)
+        self.playback.set_volume(v / 100)
 
     def quit(self):
         if self.ffmpeg_process is not None:
@@ -1310,26 +1308,35 @@ def add_song(
     prepend_newline,
     clip_start,
     clip_end,
+    skip_dupes,
 ):
-    song_name = os.path.split(path)[1]
-    if "|" in song_name:
-        song_name = song_name.replace("|", "-")
+    song_fname = os.path.split(path)[1]
+    if "|" in song_fname:
+        song_fname = song_fname.replace("|", "-")
         click.secho(
-            f"The song \"{song_name}\" contains one or more '|' character(s), which is not allowed—all ocurrences have been replaced with '-'.",
+            f"The song \"{song_fname}\" contains one or more '|' character(s), which is not allowed—all ocurrences have been replaced with '-'.",
             fg="yellow",
         )
 
     for line in lines:
         details = line.split("|")
-        if details[1] == song_name:
+        song_name, song_ext = os.path.splitext(song_fname)
+        if os.path.splitext(details[1])[0] == song_name:
+            if skip_dupes:
+                click.secho(
+                    f"Song with name '{song_name}' already exists, skipping.",
+                    fg="yellow",
+                )
+                os.remove(path)
+                return
             click.secho(
                 f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name.",
                 fg="yellow",
             )
-            song_basename, song_ext = os.path.splitext(song_name)
-            song_name = song_basename + " copy" + song_ext
+            song_fname = song_name + " copy" + song_ext
             break
-    dest_path = os.path.join(config.SETTINGS["song_directory"], song_name)
+
+    dest_path = os.path.join(config.SETTINGS["song_directory"], song_fname)
 
     if move_:
         move(path, dest_path)
@@ -1340,7 +1347,7 @@ def add_song(
 
     if prepend_newline:
         songs_file.write("\n")
-    songs_file.write(f"{song_id}|{song_name}|{','.join(tags)}|")
+    songs_file.write(f"{song_id}|{song_fname}|{','.join(tags)}|")
     if clip_start is not None:
         songs_file.write(f"{clip_start} {clip_end}")
     songs_file.write("\n")
@@ -1371,7 +1378,7 @@ def add_song(
 
     song_metadata = music_tag.load_file(dest_path)
     click.secho(
-        f"Added song '{song_name}' with ID {song_id}"
+        f"Added song '{song_fname}' with ID {song_id}"
         + tags_string
         + clip_string
         + f" and metadata (artist: {song_metadata['artist'] if song_metadata['artist'] else '<None>'}, album: {song_metadata['album'] if song_metadata['album'] else '<None>'}, albumartist: {song_metadata['albumartist'] if song_metadata['albumartist'] else '<None>'}).",

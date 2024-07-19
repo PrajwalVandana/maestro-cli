@@ -831,7 +831,9 @@ def _play(
                 stats_file.truncate()
 
         threading.Thread(
-            target=stats_update, args=(player.song_id, player.paused)
+            target=stats_update,
+            args=(player.song_id, player.paused),
+            daemon=True,
         ).start()
         # endregion
 
@@ -839,6 +841,8 @@ def _play(
             player.quit()
             if player.update_discord:
                 discord_presence_process.terminate()
+            if player.can_mac_now_playing:
+                app_helper_process.terminate()
             return
 
         if next_song == -1:

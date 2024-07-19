@@ -1940,7 +1940,6 @@ def search(phrase, searching_for_tags, show_metadata):
     """Search for song names (or tags with '-T' flag). All songs/tags starting
     with PHRASE will appear before songs/tags containing but not starting with
     PHRASE. This search is case-insensitive."""
-    phrase = phrase.lower()
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
             results = helpers.search_song(phrase, songs_file)
@@ -1948,16 +1947,17 @@ def search(phrase, searching_for_tags, show_metadata):
                 click.secho("No results found.", fg="red")
                 return
 
-            for details in results[0]+results[1]:
+            for details in sum(results, []):
                 helpers.print_entry(details, phrase, show_metadata)
 
-            num_results = len(results[0]) + len(results[1])
+            num_results = len(results[0]) + len(results[1]) + len(results[2])
             click.secho(
                 f"Found {helpers.pluralize(num_results, "song")}.",
                 fg="green",
             )
         else:
-            results = set(), set()  # starts, contains but does not start
+            phrase = phrase.lower()
+            results = set(), set(), set()  # is, starts, contains but does not start
             for line in songs_file:
                 tags = line.strip().split("|")[2]
                 if tags:
@@ -1965,10 +1965,12 @@ def search(phrase, searching_for_tags, show_metadata):
 
                     for tag in tags:
                         tag_lower = tag.lower()
-                        if tag_lower.startswith(phrase):
+                        if tag_lower == phrase:
                             results[0].add(tag)
-                        elif phrase in tag_lower:
+                        elif tag_lower.startswith(phrase):
                             results[1].add(tag)
+                        elif phrase in tag_lower:
+                            results[2].add(tag)
 
             if not any(results):
                 click.secho("No results found.", fg="red")
@@ -1976,10 +1978,12 @@ def search(phrase, searching_for_tags, show_metadata):
 
             for tag in results[0]:
                 print(tag)
+            for tag in results[0]:
+                print(tag)
             for tag in results[1]:
                 print(tag)
 
-            num_results = len(results[0]) + len(results[1])
+            num_results = len(results[0]) + len(results[1]) + len(results[2])
             click.secho(
                 f"Found {helpers.pluralize(num_results, "tag")}.", fg="green"
             )

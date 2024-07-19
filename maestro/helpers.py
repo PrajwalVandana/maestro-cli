@@ -1266,10 +1266,12 @@ class SongParamType(click.ParamType):
 
             if len(results[0]) == 1:
                 return int(results[0][0][0])
-            if len(results[1]) == 1:
+            if not results[0] and len(results[1]) == 1:
                 return int(results[1][0][0])
+            if not results[0] and not results[1] and len(results[2]) == 1:
+                return int(results[2][0][0])
 
-            for details in results[0]+results[1]:
+            for details in sum(results, []):
                 print_entry(details, value)
             self.fail("Multiple songs found", param, ctx)
 
@@ -1279,7 +1281,9 @@ class SongParamType(click.ParamType):
 
         return song_id
 
+
 SONG = SongParamType()
+
 
 def embed_artwork(yt_dlp_info):
     yt_dlp_info["thumbnails"].sort(key=lambda d: d["preference"])
@@ -1766,17 +1770,39 @@ def login(username=None, password=None):
         )
 
 
-def format_seconds(secs, show_decimal=False):
-    """Format seconds into a string."""
-    return f"{int(secs//60):02}:{int(secs%60):02}" + (
-        f".{secs%1:0.2f}"[2:] if show_decimal else ""
+def format_seconds(secs, show_decimal=False, digital=True, include_hours=None):
+    """Format seconds into a string.
+
+    show_decimal: whether to show the decimal part of the seconds
+    digital: whether to use digital format ([HH]:MM:SS) or words (e.g. 1h 2m 3s)
+    include_hours: whether to include hours in the output (e.g. 71:05 vs 1:11:05)
+    """
+    h = int(secs // 3600)
+    if include_hours is None:
+        include_hours = h > 0
+    m = int(secs // 60)
+    if include_hours:
+        m %= 60
+    s = int(secs % 60)
+    if digital:
+        return (
+            (f"{h}:" if include_hours else "")
+            + f"{m}:{s:02}"
+            + (f".{secs%1:0.2f}"[2:] if show_decimal else "")
+        )
+    return (
+        (f"{h}h " if include_hours else "")
+        + f"{m}m {s}"
+        + (f".{secs%1:0.2f}"[2:] if show_decimal else "")
+        + "s"
     )
 
 
 def search_song(phrase, songs_file=None):
     """
-    Returns a tuple of two lists:
-    0: songs that start with the phrase
+    CASE INSENSITIVE. Returns a tuple of three lists:
+    0: songs that are the phrase
+    1: songs that start with the phrase
     1: songs that contain the phrase but do not start with it
     """
     songs_file = songs_file or open(
@@ -1784,15 +1810,17 @@ def search_song(phrase, songs_file=None):
     )
     phrase = phrase.lower()
 
-    results = [], []  # starts, contains but does not start
+    results = [], [], []  # is, starts, contains but does not start
     for line in songs_file:
         details = line.strip().split("|")
-        song_name = details[1].lower()
+        song_name = os.path.splitext(details[1].lower())[0]
 
-        if song_name.startswith(phrase):
+        if song_name == phrase:
             results[0].append(details)
-        elif phrase in song_name:
+        elif song_name.startswith(phrase):
             results[1].append(details)
+        elif phrase in song_name:
+            results[2].append(details)
 
     return results
 
@@ -1840,11 +1868,21 @@ def print_entry(entry_list, highlight=None, show_song_info=False):
         secs_listened = float(entry_list[4])
         total_duration = float(entry_list[5])
         click.secho(
-            format_seconds(total_duration, show_decimal=True) + " ",
+            format_seconds(
+                total_duration,
+                show_decimal=True,
+                digital=False,
+            )
+            + " ",
             nl=False,
         )
         click.secho(
-            format_seconds(secs_listened, show_decimal=True) + " ",
+            format_seconds(
+                secs_listened,
+                show_decimal=True,
+                digital=False,
+            )
+            + " ",
             fg="yellow",
             nl=False,
         )

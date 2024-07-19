@@ -696,28 +696,30 @@ class PlaybackHandler:
 
     def update_stream_metadata(self):
         self.break_stream_loop = True
-        if not requests.post(
-            config.UPDATE_ARTWORK_URL,
-            params={"mount": self.username},
-            files={"artwork": self.img_data},
-            auth=(self.username, self.password),
-            timeout=5,
-        ).ok:
-            print_to_logfile("Failed to update artwork.")
+        if self.discord_connected or self.stream:
+            if not requests.post(
+                config.UPDATE_ARTWORK_URL,
+                params={"mount": self.username},
+                files={"artwork": self.img_data},
+                auth=(self.username, self.password),
+                timeout=5,
+            ).ok:
+                print_to_logfile("Failed to update artwork.")
 
-        if not requests.post(
-            config.UPDATE_TIMESTAMP_URL,
-            params={"mount": self.username},
-            data={
-                "timestamp": self.playback.curr_pos,
-                "time_updated": time(),
-            },
-            auth=(self.username, self.password),
-            timeout=5,
-        ).ok:
-            print_to_logfile("Failed to update timestamp.")
+        if self.stream:
+            if not requests.post(
+                config.UPDATE_TIMESTAMP_URL,
+                params={"mount": self.username},
+                data={
+                    "timestamp": self.playback.curr_pos,
+                    "time_updated": time(),
+                },
+                auth=(self.username, self.password),
+                timeout=5,
+            ).ok:
+                print_to_logfile("Failed to update timestamp.")
 
-        self.threaded_update_icecast_metadata()
+            self.threaded_update_icecast_metadata()
 
     def update_metadata(self):
         def f():
@@ -729,8 +731,7 @@ class PlaybackHandler:
             )
 
             self.update_mac_now_playing_metadata()
-            if self.stream:
-                self.update_stream_metadata()
+            self.update_stream_metadata()
             self.update_discord_metadata()
 
         threading.Thread(target=f, daemon=True).start()

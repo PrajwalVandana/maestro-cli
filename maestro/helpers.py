@@ -314,7 +314,7 @@ class PlaybackHandler:
         self.clip_mode = clip_mode
         self.update_discord = False
         self.visualize = visualize  # want to visualize
-        self.stream = stream
+        self._stream = stream
         self.username, self.password = creds
 
         self.playback = Playback()
@@ -548,6 +548,16 @@ class PlaybackHandler:
             self.playback.set_volume(v / 100)
 
     @property
+    def stream(self):
+        return self._stream
+
+    @stream.setter
+    def stream(self, value):
+        if LIBROSA is None:
+            value = False
+        self._stream = value
+
+    @property
     def song_id(self):
         return self.playlist[self.i][0]
 
@@ -679,10 +689,9 @@ class PlaybackHandler:
             sleep(0.01)
 
     def threaded_update_icecast_metadata(self):
-        if self.stream:
-            threading.Thread(
-                target=self.update_icecast_metadata, daemon=True
-            ).start()
+        threading.Thread(
+            target=self.update_icecast_metadata, daemon=True
+        ).start()
 
     def update_stream_metadata(self):
         self.break_stream_loop = True

@@ -2867,3 +2867,7 @@ def clear_logs():
         click.secho("Cleared logs.", fg="green")
     except FileNotFoundError:
         click.secho("No logs found.", fg="yellow")
+
+
+if __name__ == "__main__":
+    cli()

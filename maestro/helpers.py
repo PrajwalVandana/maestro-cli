@@ -23,7 +23,6 @@ import importlib
 import logging
 import multiprocessing
 import os
-import requests
 import subprocess
 import threading
 import warnings
@@ -33,6 +32,7 @@ logging.disable(logging.CRITICAL)
 import click
 import keyring
 import music_tag
+import requests
 
 from getpass import getpass
 from shutil import copy, move
@@ -1259,17 +1259,15 @@ class SongParamType(click.ParamType):
             return value
 
         if not value.isdecimal():
-            # search for song by name
             results = search_song(value)
             if not any(results):
                 self.fail(f"No song found matching '{value}'.", param, ctx)
 
-            if len(results[0]) == 1:
-                return int(results[0][0][0])
-            if not results[0] and len(results[1]) == 1:
-                return int(results[1][0][0])
-            if not results[0] and not results[1] and len(results[2]) == 1:
-                return int(results[2][0][0])
+            for result in results:
+                if len(result) == 1:
+                    return int(result[0][0])
+                if len(result) > 1:
+                    break
 
             for details in sum(results, []):
                 print_entry(details, value)
@@ -1278,7 +1276,6 @@ class SongParamType(click.ParamType):
         song_id = int(value)
         if song_id < 1:
             self.fail("Song ID must be positive.", param, ctx)
-
         return song_id
 
 

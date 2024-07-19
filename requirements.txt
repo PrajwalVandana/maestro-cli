@@ -1,0 +1,14 @@
+click  # CLI handling
+just_playback  # Audio playback
+music-tag  # Metadata handling
+pillow  # Image processing (for album art)
+pypresence  # Discord Rich Presence
+yt-dlp  # YouTube downloads
+spotdl  # Spotify downloads
+ytmusicapi  # Song recommendation (experimental)
+librosa  # Audio processing
+numba  # JIT compilation
+numpy
+windows-curses; sys_platform == 'win32'  # Windows curses support
+keyring  # Credential storage
+requests  # HTTP requests

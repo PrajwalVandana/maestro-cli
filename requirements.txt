@@ -12,3 +12,13 @@ numpy
 windows-curses; sys_platform == 'win32'  # Windows curses support
 keyring  # Credential storage
 requests  # HTTP requests
+
+# PyObjC dependencies
+pyobjc-core; sys_platform == 'darwin'
+pyobjc-framework-ApplicationServices; sys_platform == 'darwin'
+pyobjc-framework-AVFoundation; sys_platform == 'darwin'
+pyobjc-framework-Cocoa; sys_platform == 'darwin'
+pyobjc-framework-CoreAudio; sys_platform == 'darwin'
+pyobjc-framework-CoreMedia; sys_platform == 'darwin'
+pyobjc-framework-MediaPlayer; sys_platform == 'darwin'
+pyobjc-framework-Quartz; sys_platform == 'darwin'

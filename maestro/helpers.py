@@ -1,11 +1,11 @@
-from time import sleep, time
+from datetime import datetime
 
 
 def print_to_logfile(*args, **kwargs):
     if "file" in kwargs:
         raise ValueError("file kwargs not allowed for 'print_to_logfile'")
     print(
-        time(),
+        datetime.now().strftime("[%Y-%m-%d %H:%M:%S]"),
         *args,
         **kwargs,
         file=open(config.LOGFILE, "a", encoding="utf-8"),
@@ -37,6 +37,7 @@ import requests
 from getpass import getpass
 from shutil import copy, move
 from random import randint
+from time import sleep, time
 from urllib.parse import quote, quote_plus
 
 from just_playback import Playback

@@ -11,8 +11,8 @@ jobs:
           # pyinstaller_ver: '==6.9.0'
           spec: 'maestro/maestro.py'
           # requirements: 'src/requirements.txt'
-          upload_exe_with_name: 'maestro'
-          options: --onefile, --name "Maestro", --icon "data/maestro_icon.png"
+          upload_exe_with_name: 'maestro-windows'
+          options: --onefile, --name "maestro-windows", --icon "data/icons/maestro_icon.ico"
   pyinstaller-build-mac:
     runs-on: macos-12
     steps:
@@ -23,8 +23,8 @@ jobs:
           # pyinstaller_ver: '==6.9.0'
           spec: 'maestro/maestro.py'
           # requirements: 'src/requirements.txt'
-          upload_exe_with_name: 'maestro'
-          options: --onefile, --name "Maestro", --icon "data/maestro_icon.png"
+          upload_exe_with_name: 'maestro-mac'
+          options: --onefile, --name "maestro-mac", --icon "data/icons/maestro_icon.icns"
   pyinstaller-build-linux:
     runs-on: ubuntu-latest
     steps:
@@ -35,5 +35,5 @@ jobs:
           # pyinstaller_ver: '==6.9.0'
           spec: 'maestro/maestro.py'
           # requirements: 'src/requirements.txt'
-          upload_exe_with_name: 'maestro'
-          options: --onefile, --name "Maestro", --icon "data/maestro_icon.png"
+          upload_exe_with_name: 'maestro-ubuntu'
+          options: --onefile, --name "maestro-ubuntu"

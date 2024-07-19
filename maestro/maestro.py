@@ -2874,4 +2874,5 @@ def clear_logs():
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     cli()

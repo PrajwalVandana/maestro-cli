@@ -1,0 +1,15 @@
+name: Cross-Platform Build
+on: push
+jobs:
+  pyinstaller-build:
+    runs-on: [windows-latest, ubuntu-latest, macos-12]
+    steps:
+      - name: Create Executable
+        uses: sayyid5416/pyinstaller@v1
+        with:
+          python_ver: '3.12'
+          # pyinstaller_ver: '==6.9.0'
+          spec: 'maestro/maestro.py'
+          # requirements: 'src/requirements.txt'
+          upload_exe_with_name: 'maestro'
+          options: --onefile, --name "Maestro", --icon "data/maestro_icon.png"

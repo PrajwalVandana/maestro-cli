@@ -676,9 +676,10 @@ class PlaybackHandler:
             sleep(0.01)
 
     def threaded_update_icecast_metadata(self):
-        threading.Thread(
-            target=self.update_icecast_metadata, daemon=True
-        ).start()
+        if self.stream:
+            threading.Thread(
+                target=self.update_icecast_metadata, daemon=True
+            ).start()
 
     def update_stream_metadata(self):
         self.break_stream_loop = True
@@ -715,7 +716,8 @@ class PlaybackHandler:
             )
 
             self.update_mac_now_playing_metadata()
-            self.update_stream_metadata()
+            if self.stream:
+                self.update_stream_metadata()
             self.update_discord_metadata()
 
         threading.Thread(target=f, daemon=True).start()

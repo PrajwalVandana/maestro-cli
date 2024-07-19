@@ -2182,7 +2182,7 @@ def list_(
 
             for tag, (listen_time, total_duration) in tag_items:
                 click.echo(
-                    f"{tag} {click.style(helpers.format_seconds(total_duration, show_decimal=True), fg='bright_black')} {click.style(helpers.format_seconds(listen_time, show_decimal=True), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
+                    f"{tag} {click.style(helpers.format_seconds(total_duration, show_decimal=True, digital=False), fg='bright_black')} {click.style(helpers.format_seconds(listen_time, show_decimal=True, digital=False), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
                 )
                 num_lines += 1
                 if top is not None and num_lines == top:

@@ -327,6 +327,8 @@ class PlaybackHandler:
         self.prompting: None | tuple = None
         self.clip = (0, 0)
 
+        self.italic = True
+
         self.can_mac_now_playing = False
         self.mac_now_playing = None
         self.update_now_playing = False
@@ -411,6 +413,7 @@ class PlaybackHandler:
                         self.audio_data[song_id][1] is not None
                         or not self.stream
                     )
+                    or LIBROSA is None
                 ):
                     continue
 
@@ -1023,16 +1026,19 @@ class PlaybackHandler:
             curses.color_pair(12),
         )
 
-        try:
-            song_data_length_so_far = addstr_fit_to_width(
-                self.stdscr,
-                self.song_album,
-                screen_width,
-                song_data_length_so_far,
-                curses.color_pair(12) | curses.A_ITALIC,
-            )
-        except:  # pylint: disable=bare-except
-            print_to_logfile("Failed to italicize text in curses.")
+        if self.italic:
+            try:
+                song_data_length_so_far = addstr_fit_to_width(
+                    self.stdscr,
+                    self.song_album,
+                    screen_width,
+                    song_data_length_so_far,
+                    curses.color_pair(12) | curses.A_ITALIC,
+                )
+            except:  # pylint: disable=bare-except
+                self.italic = False
+                print_to_logfile("Failed to italicize text in curses.")
+        if not self.italic:
             song_data_length_so_far = addstr_fit_to_width(
                 self.stdscr,
                 self.song_album,

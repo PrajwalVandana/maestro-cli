@@ -1321,7 +1321,7 @@ def remove(args, force, tag):
 
         if not force:
             char = input(
-                f"Are you sure you want to delete {helpers.pluralize(len(song_ids), "song")}? [y/n] "
+                f"Are you sure you want to delete {helpers.pluralize(len(song_ids), 'song')}? [y/n] "
             )
 
             if char.lower() != "y":
@@ -1401,7 +1401,7 @@ def remove(args, force, tag):
         tags_to_remove = set(args)
         if not force:
             char = input(
-                f"Are you sure you want to delete {helpers.pluralize(len(tags_to_remove), "tag")}? [y/n] "
+                f"Are you sure you want to delete {helpers.pluralize(len(tags_to_remove), 'tag')}? [y/n] "
             )
 
             if char.lower() != "y":
@@ -1423,7 +1423,7 @@ def remove(args, force, tag):
             songs_file.write("\n".join(lines))
 
         click.secho(
-            f"Deleted all occurrences of {helpers.pluralize(len(tags_to_remove), "tag")}.",
+            f"Deleted all occurrences of {helpers.pluralize(len(tags_to_remove), 'tag')}.",
             fg="green",
         )
 
@@ -1472,13 +1472,13 @@ def tag_(songs, tags):
         if song_ids:
             num_not_found = len(song_ids)
             click.secho(
-                f"Could not find {helpers.pluralize(num_not_found, "song")} with {helpers.pluralize(num_not_found, "ID", False)} {', '.join(map(str, song_ids))}.",
+                f"Could not find {helpers.pluralize(num_not_found, 'song')} with {helpers.pluralize(num_not_found, 'ID', False)} {', '.join(map(str, song_ids))}.",
                 fg="red",
             )
             if len(song_ids) == num_songs:
                 return
         click.secho(
-            f"Added {helpers.pluralize(len(tags), "tag")} to {helpers.pluralize(num_songs - len(song_ids), "song")}.",
+            f"Added {helpers.pluralize(len(tags), 'tag')} to {helpers.pluralize(num_songs - len(song_ids), 'song')}.",
             fg="green",
         )
     else:
@@ -1528,13 +1528,13 @@ def untag(songs, tags, all_):
         if song_ids:
             num_not_found = len(song_ids)
             click.secho(
-                f"Could not find {helpers.pluralize(num_not_found, "song")} with {helpers.pluralize(num_not_found, "ID", False)} {', '.join(map(str, song_ids))}.",
+                f"Could not find {helpers.pluralize(num_not_found, 'song')} with {helpers.pluralize(num_not_found, 'ID', False)} {', '.join(map(str, song_ids))}.",
                 fg="red",
             )
             if len(song_ids) == num_songs:
                 return
         click.secho(
-            f"Removed any occurrences of {helpers.pluralize(len(tags), "tag")} from {helpers.pluralize(num_songs - len(song_ids), "song")}.",
+            f"Removed any occurrences of {helpers.pluralize(len(tags), 'tag')} from {helpers.pluralize(num_songs - len(song_ids), 'song')}.",
             fg="green",
         )
     else:
@@ -1558,7 +1558,7 @@ def untag(songs, tags, all_):
             songs_file.close()
 
             click.secho(
-                f"Removed {helpers.pluralize(len(tags), "tag")} from {helpers.pluralize(len(song_ids), "song")}.",
+                f"Removed {helpers.pluralize(len(tags), 'tag')} from {helpers.pluralize(len(song_ids), 'song')}.",
                 fg="green",
             )
 
@@ -1956,7 +1956,7 @@ def search(phrase, searching_for_tags, show_metadata):
 
             num_results = len(results[0]) + len(results[1]) + len(results[2])
             click.secho(
-                f"Found {helpers.pluralize(num_results, "song")}.",
+                f"Found {helpers.pluralize(num_results, 'song')}.",
                 fg="green",
             )
         else:
@@ -1989,7 +1989,7 @@ def search(phrase, searching_for_tags, show_metadata):
 
             num_results = len(results[0]) + len(results[1]) + len(results[2])
             click.secho(
-                f"Found {helpers.pluralize(num_results, "tag")}.", fg="green"
+                f"Found {helpers.pluralize(num_results, 'tag')}.", fg="green"
             )
 
 

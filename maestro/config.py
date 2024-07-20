@@ -117,6 +117,7 @@ STREAM_CHUNK_SIZE = 256
 ICECAST_SERVER = "maestro-icecast.eastus2.cloudapp.azure.com"  # Azure-hosted Icecast server
 
 MAESTRO_SITE = "https://maestro-music.vercel.app"
+IMAGE_URL = f"{MAESTRO_SITE}/api/get_artwork/"
 # endregion
 
 # region auth

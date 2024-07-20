@@ -89,103 +89,6 @@ if can_mac_now_playing:
         AppHelper.runEventLoop()
 
 
-def read_from_queue(queue):
-    res = ""
-    while not queue.empty():
-        res = ""
-        c = queue.get()
-        while c != "\n":
-            res += c
-            c = queue.get()
-
-    return res
-
-
-def discord_presence_loop(
-    song_name_queue,
-    artist_queue,
-    album_queue,
-    discord_connected,
-    stream_username,
-):
-    IMAGE_URL = f"{config.MAESTRO_SITE}/api/get_artwork/{stream_username}"
-
-    try:
-        discord_rpc = helpers.connect_to_discord()
-        discord_connected.value = 1
-    except Exception as e:  # pylint: disable=broad-except,unused-variable
-        print_to_logfile("Discord connection error:", e)
-        discord_connected.value = 0
-
-    while True:
-        if not album_queue.empty():
-            # minimum 2 characters (Discord requirement)
-            song_name = read_from_queue(song_name_queue).ljust(2)
-            artist_name = "by " + read_from_queue(artist_queue)
-            album_name = read_from_queue(album_queue).ljust(2)
-
-            d = dict(
-                details=song_name,
-                state=artist_name,
-                large_image=(
-                    f"{IMAGE_URL}?_={time()}"
-                    if stream_username
-                    else "maestro-icon"
-                ),
-                small_image="maestro-icon-small",
-                large_text=album_name,
-                # join=stream_username if stream_username else "",
-                # party_id="test",
-                # party_size=[1, 999],
-                buttons=(
-                    [
-                        {
-                            "label": "Listen Along",
-                            "url": f"{config.MAESTRO_SITE}/listen/{stream_username}",
-                        }
-                    ]
-                    if stream_username
-                    else []
-                ),
-            )
-            d = {k: v for k, v in d.items() if v}
-
-            if discord_connected.value:
-                try:
-                    discord_rpc.set_activity(**d)
-                    song_name = ""
-                    artist_name = ""
-                    album_name = ""
-                    sleep(15)
-                except Exception as e:  # pylint: disable=bare-except
-                    print_to_logfile("Discord update error:", e)
-                    discord_connected.value = 1
-            else:
-                try:
-                    discord_rpc = helpers.connect_to_discord()
-                    discord_connected.value = 1
-                except Exception as e:
-                    print_to_logfile("Discord connection error:", e)
-
-                if discord_connected.value:
-                    try:
-                        discord_rpc.set_activity(**d)
-                        song_name = ""
-                        artist_name = ""
-                        album_name = ""
-                        sleep(15)
-                    except Exception as e:
-                        print_to_logfile("Discord update error:", e)
-                        discord_connected.value = 0
-        else:
-            if not discord_connected.value:
-                try:
-                    discord_rpc = helpers.connect_to_discord()
-                    discord_connected.value = 1
-                except Exception as e:
-                    print_to_logfile("Discord connection error:", e)
-
-
 def _play(
     stdscr,
     playlist,
@@ -244,20 +147,7 @@ def _play(
         )
         app_helper_process.start()
     if update_discord:
-        player.initialize_discord_attrs()
-
-        discord_presence_process = multiprocessing.Process(
-            daemon=True,
-            target=discord_presence_loop,
-            args=(
-                player.discord_queues["title"],
-                player.discord_queues["artist"],
-                player.discord_queues["album"],
-                player.discord_connected,
-                username,
-            ),
-        )
-        discord_presence_process.start()
+        player.initialize_discord()
 
     prev_volume = volume
     while player.i in range(len(player.playlist)):
@@ -503,26 +393,17 @@ def _play(
                             elif ch in "dD":
                                 if player.update_discord:
                                     player.update_discord = False
-                                    discord_presence_process.terminate()
+                                    player.discord_rpc.close()
+                                    player.discord_connected = 0
                                 else:
-                                    player.initialize_discord_attrs()
-                                    player.update_discord_metadata()
-
-                                    # start new process
-                                    discord_presence_process = (
-                                        multiprocessing.Process(
-                                            daemon=True,
-                                            target=discord_presence_loop,
-                                            args=(
-                                                player.discord_queues["title"],
-                                                player.discord_queues["artist"],
-                                                player.discord_queues["album"],
-                                                player.discord_connected,
-                                                username,
-                                            ),
-                                        )
+                                    def f():
+                                        player.initialize_discord()
+                                        player.update_discord_metadata()
+                                    t = threading.Thread(
+                                        target=f,
+                                        daemon=True,
                                     )
-                                    discord_presence_process.start()
+                                    t.start()
                             elif ch in "iI":
                                 player.prompting = (
                                     "",
@@ -567,7 +448,11 @@ def _play(
                                 player.stream = not player.stream
                                 if player.stream:
                                     if player.username is not None:
-                                        player.update_stream_metadata()
+                                        t = threading.Thread(
+                                            target=player.update_stream_metadata,
+                                            daemon=True,
+                                        )
+                                        t.start()
                                         player.ffmpeg_process.start()
                                 else:
                                     player.ffmpeg_process.terminate()
@@ -840,8 +725,6 @@ def _play(
 
         if player.ending and not player.restarting:
             player.quit()
-            if player.update_discord:
-                discord_presence_process.terminate()
             if player.can_mac_now_playing:
                 app_helper_process.terminate()
             return

@@ -21,7 +21,8 @@ from maestro import (
 import curses
 import importlib
 import logging
-import multiprocessing
+
+# import multiprocessing
 import os
 import subprocess
 import threading
@@ -334,8 +335,9 @@ class PlaybackHandler:
         self.mac_now_playing = None
         self.update_now_playing = False
 
-        self.discord_connected = multiprocessing.Value("i", 2)
-        self.discord_queues = {}
+        self.discord_connected = 2
+        self.discord_rpc = None
+        self.discord_last_update = 0
 
         self.can_visualize = LIBROSA is not None  # can generate visualization
         self.can_show_visualization = (
@@ -519,6 +521,7 @@ class PlaybackHandler:
                         )
                     except KeyError as e:
                         print_to_logfile("KeyError in streaming loop:", e)
+                        # TODO: figure out why this is here
                         self.update_stream_metadata()
 
                     if self.break_stream_loop:
@@ -606,6 +609,7 @@ class PlaybackHandler:
     def quit(self):
         if self.ffmpeg_process is not None:
             self.ffmpeg_process.terminate()
+        self.discord_rpc.close()
 
     def prompting_delete_char(self):
         if self.prompting[1] > 0:
@@ -620,19 +624,66 @@ class PlaybackHandler:
         self.output(self.playback.curr_pos)
 
     def update_discord_metadata(self):
-        if self.update_discord:
-            multiprocessing_put_word(
-                self.discord_queues["title"],
-                self.song_title,
-            )
-            multiprocessing_put_word(
-                self.discord_queues["artist"],
-                self.song_artist,
-            )
-            multiprocessing_put_word(
-                self.discord_queues["album"],
-                self.song_album,
-            )
+        if can_update_discord and self.update_discord:
+            song_name, artist_name, album_name = "", "", ""
+
+            # minimum 2 characters (Discord requirement)
+            new_song_name = self.song_title.ljust(2)
+            new_artist_name = "by " + self.song_artist.ljust(2)
+            new_album_name = self.song_album.ljust(2)
+
+            if (
+                new_song_name != song_name
+                or new_artist_name != artist_name
+                or new_album_name != album_name
+            ):
+                t = time()
+                if self.discord_last_update + 15 > t:
+                    sleep(15 - (t - self.discord_last_update))
+                song_name = new_song_name
+                artist_name = new_artist_name
+                album_name = new_album_name
+
+                d = dict(
+                    details=song_name,
+                    state=artist_name,
+                    large_image=(
+                        f"{config.IMAGE_URL}/{self.username}?_={time()}"
+                        if self.username
+                        else "maestro-icon"
+                    ),
+                    small_image="maestro-icon-small",
+                    large_text=album_name,
+                    # join=self.username if self.username else "",
+                    # party_id="test",
+                    # party_size=[1, 999],
+                    buttons=(
+                        [
+                            {
+                                "label": "Listen Along",
+                                "url": f"{config.MAESTRO_SITE}/listen/{self.username}",
+                            }
+                        ]
+                        if self.username
+                        else []
+                    ),
+                )
+                d = {k: v for k, v in d.items() if v}
+
+                try:
+                    self.discord_rpc.set_activity(**d)
+                    self.discord_last_update = time()
+                except Exception as e:  # pylint: disable=bare-except
+                    print_to_logfile("Discord update error:", e)
+                    song_name, artist_name, album_name = "", "", ""
+                    self.discord_connected = 2
+                    try:
+                        self.discord_rpc = connect_to_discord()
+                        self.discord_connected = 1
+                        self.update_discord_metadata()
+                    except Exception as err:
+                        print_to_logfile("Discord connection error:", err)
+                        self.discord_connected = 0
 
     def update_mac_now_playing_metadata(self):
         if self.can_mac_now_playing:
@@ -736,11 +787,13 @@ class PlaybackHandler:
 
         threading.Thread(target=f, daemon=True).start()
 
-    def initialize_discord_attrs(self):
+    def initialize_discord(self):
         self.update_discord = True
-        self.discord_queues["title"] = multiprocessing.Queue()
-        self.discord_queues["artist"] = multiprocessing.Queue()
-        self.discord_queues["album"] = multiprocessing.Queue()
+        try:
+            self.discord_rpc = connect_to_discord()
+            self.discord_connected = 1
+        except Exception as e:  # pylint: disable=broad-except,unused-variable
+            print_to_logfile("Discord connection error:", e)
 
     def output(self, pos):
         self.can_show_visualization = (
@@ -766,7 +819,7 @@ class PlaybackHandler:
 
         length_so_far = 0
         if self.update_discord:
-            if self.discord_connected.value == 2:
+            if self.discord_connected == 2:
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     "Connecting to Discord ... ",
@@ -774,7 +827,7 @@ class PlaybackHandler:
                     length_so_far,
                     curses.color_pair(12),
                 )
-            elif self.discord_connected.value == 1:
+            elif self.discord_connected == 1:
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
                     "Discord connected! ",
@@ -1341,10 +1394,6 @@ def discord_join_event_handler(arg):
 def connect_to_discord():
     discord_rpc = DiscordRPCClient(client_id=config.DISCORD_ID)
     discord_rpc.start()
-    # discord_rpc.register_event(
-    #     "ACTIVITY_JOIN",
-    #     discord_join_event_handler,
-    # )
     return discord_rpc
 
 

@@ -1910,6 +1910,7 @@ def print_entry(entry_list, highlight=None, show_song_info=False):
     entry_list = list(entry_list)
 
     click.secho(entry_list[0] + " ", fg="bright_black", nl=False)
+    fname = entry_list[1]
     entry_list[1] = os.path.splitext(entry_list[1])[0]
     if highlight is None:
         click.secho(entry_list[1] + " ", fg="blue", nl=False, bold=True)
@@ -1976,7 +1977,7 @@ def print_entry(entry_list, highlight=None, show_song_info=False):
 
     if show_song_info:
         song_data = music_tag.load_file(
-            os.path.join(config.SETTINGS["song_directory"], entry_list[1])
+            os.path.join(config.SETTINGS["song_directory"], fname)
         )
         artist, album, album_artist = (
             song_data["artist"].value,

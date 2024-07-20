@@ -161,8 +161,7 @@ def _play(
         else:
             player.clip = 0, player.playback.duration
 
-        if player.paused:
-            player.paused = False
+        player.paused = False
         player.duration = full_duration = player.playback.duration
 
         player.update_metadata()

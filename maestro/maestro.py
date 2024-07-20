@@ -397,9 +397,11 @@ def _play(
                                         player.discord_rpc.close()
                                     player.discord_connected = 0
                                 else:
+
                                     def f():
                                         player.initialize_discord()
                                         player.update_discord_metadata()
+
                                     t = threading.Thread(
                                         target=f,
                                         daemon=True,
@@ -1006,6 +1008,8 @@ def add(
             try:
                 subprocess.run(
                     [
+                        sys.executable,
+                        "-m"
                         "spotdl",
                         "download",
                         path_,
@@ -1678,7 +1682,8 @@ def play(
                     if password is None:
                         click.secho("Password not found.", fg="red")
                     click.secho(
-                        "Please log in using 'maestro login' to stream.", fg="red"
+                        "Please log in using 'maestro login' to stream.",
+                        fg="red",
                     )
                     return
             elif discord:
@@ -1860,7 +1865,11 @@ def search(phrase, searching_for_tags, show_metadata):
             )
         else:
             phrase = phrase.lower()
-            results = set(), set(), set()  # is, starts, contains but does not start
+            results = (
+                set(),
+                set(),
+                set(),
+            )  # is, starts, contains but does not start
             for line in songs_file:
                 tags = line.strip().split("|")[2]
                 if tags:

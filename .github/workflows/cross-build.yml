@@ -1,5 +1,7 @@
 name: Cross-Platform Build
+
 on: push
+
 jobs:
   pyinstaller-build-windows:
     runs-on: windows-latest

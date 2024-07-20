@@ -24,7 +24,7 @@ jobs:
           upload_exe_with_name: 'maestro-mac'
           # options: --icon "data/icons/maestro_icon.icns"
   pyinstaller-build-linux:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     steps:
       - name: Build executable
         uses: sayyid5416/pyinstaller@v1

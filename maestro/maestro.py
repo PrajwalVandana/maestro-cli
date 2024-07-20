@@ -1008,8 +1008,6 @@ def add(
             try:
                 subprocess.run(
                     [
-                        sys.executable,
-                        "-m"
                         "spotdl",
                         "download",
                         path_,

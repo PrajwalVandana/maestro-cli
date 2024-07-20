@@ -943,7 +943,7 @@ class PlaybackHandler:
                 if j == self.i:
                     length_so_far = addstr_fit_to_width(
                         self.stdscr,
-                        f"{self.playlist[j][1]} ",
+                        f"{os.path.splitext(self.playlist[j][1])[0]} ",
                         screen_width,
                         length_so_far,
                         curses.color_pair(song_display_color) | curses.A_BOLD,
@@ -951,7 +951,7 @@ class PlaybackHandler:
                 else:
                     length_so_far = addstr_fit_to_width(
                         self.stdscr,
-                        f"{self.playlist[j][1]} ",
+                        f"{os.path.splitext(self.playlist[j][1])[0]} ",
                         screen_width,
                         length_so_far,
                         (
@@ -1009,7 +1009,7 @@ class PlaybackHandler:
         )
         length_so_far = addstr_fit_to_width(
             self.stdscr,
-            f"{self.song_file} ",
+            f"{self.song_title} ",
             screen_width,
             length_so_far,
             curses.color_pair(song_display_color + 10) | curses.A_BOLD,

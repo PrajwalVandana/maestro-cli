@@ -3,7 +3,6 @@ import curses
 import json
 import multiprocessing
 import os
-import requests
 import subprocess
 import sys
 import threading
@@ -11,6 +10,7 @@ import threading
 import click
 import keyring
 import keyring.errors
+import requests
 import music_tag
 
 from collections import defaultdict

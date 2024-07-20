@@ -21,8 +21,6 @@ from maestro import (
 import curses
 import importlib
 import logging
-
-# import multiprocessing
 import os
 import subprocess
 import threading

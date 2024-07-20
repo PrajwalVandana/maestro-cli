@@ -793,6 +793,9 @@ class PlaybackHandler:
         except Exception as e:  # pylint: disable=broad-except,unused-variable
             print_to_logfile("Discord connection error:", e)
 
+    def threaded_initialize_discord(self):
+        threading.Thread(target=self.initialize_discord, daemon=True).start()
+
     def output(self, pos):
         self.can_show_visualization = (
             self.visualize
@@ -1248,8 +1251,7 @@ class PlaybackHandler:
                         )
                         self.compiled = True
 
-                    t = threading.Thread(target=thread_func, daemon=True)
-                    t.start()
+                    threading.Thread(target=thread_func, daemon=True).start()
                 self.stdscr.addstr(
                     (
                         (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")

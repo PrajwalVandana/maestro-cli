@@ -147,7 +147,7 @@ def _play(
         )
         app_helper_process.start()
     if update_discord:
-        player.initialize_discord()
+        player.threaded_initialize_discord()
 
     prev_volume = volume
     while player.i in range(len(player.playlist)):
@@ -402,11 +402,10 @@ def _play(
                                         player.initialize_discord()
                                         player.update_discord_metadata()
 
-                                    t = threading.Thread(
+                                    threading.Thread(
                                         target=f,
                                         daemon=True,
-                                    )
-                                    t.start()
+                                    ).start()
                             elif ch in "iI":
                                 player.prompting = (
                                     "",
@@ -451,11 +450,10 @@ def _play(
                                 player.stream = not player.stream
                                 if player.stream:
                                     if player.username is not None:
-                                        t = threading.Thread(
+                                        threading.Thread(
                                             target=player.update_stream_metadata,
                                             daemon=True,
-                                        )
-                                        t.start()
+                                        ).start()
                                         player.ffmpeg_process.start()
                                 else:
                                     player.ffmpeg_process.terminate()

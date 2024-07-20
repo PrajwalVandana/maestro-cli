@@ -1893,7 +1893,7 @@ def search_song(phrase, songs_file=None):
 
 def print_entry(entry_list, highlight=None, show_song_info=False):
     """
-    tuple or iterable of STRINGS
+    ordered iterable of STRINGS
 
     0: song ID
     1: song name
@@ -1908,7 +1908,10 @@ def print_entry(entry_list, highlight=None, show_song_info=False):
         <song ID> <song name> [<total duration> <seconds listened> <times listened>] <clip> <tags>
             [<artist> - <album> (<album artist>)]
     """
+    entry_list = list(entry_list)
+
     click.secho(entry_list[0] + " ", fg="bright_black", nl=False)
+    entry_list[1] = os.path.splitext(entry_list[1])[0]
     if highlight is None:
         click.secho(entry_list[1] + " ", fg="blue", nl=False, bold=True)
     else:

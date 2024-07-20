@@ -1008,7 +1008,12 @@ def add(
             try:
                 subprocess.run(
                     [
-                        "spotdl",
+                        (
+                            # pylint: disable=protected-access
+                            os.path.join(sys._MEIPASS, "spotdl")
+                            if getattr(sys, "frozen", False)
+                            else "spotdl"
+                        ),
                         "download",
                         path_,
                         "--output",

@@ -3,7 +3,6 @@ import curses
 import json
 import multiprocessing
 import os
-import subprocess
 import sys
 import threading
 
@@ -23,6 +22,7 @@ from maestro.icon import img
 from maestro.__version__ import VERSION
 from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
+from spotdl import console_entry_point as original_spotdl_entry_point
 from yt_dlp import YoutubeDL
 
 # import gui_helper
@@ -1005,28 +1005,29 @@ def add(
 
             cwd = os.getcwd()
             os.chdir(config.MAESTRO_DIR)
-            try:
-                subprocess.run(
-                    [
-                        (
-                            # pylint: disable=protected-access
-                            os.path.join(sys._MEIPASS, "spotdl")
-                            if getattr(sys, "frozen", False)
-                            else "spotdl"
-                        ),
-                        "download",
-                        path_,
-                        "--output",
-                        "{title}.{output-ext}",
-                        "--format",
-                        format_,
-                        "--headless",
-                    ],
-                    check=True,
-                )
-            except Exception as e:
-                os.chdir(cwd)
-                raise e
+
+            def spotdl_entry_point(args):
+                original_argv = sys.argv
+                sys.argv = args
+                try:
+                    original_spotdl_entry_point()
+                except Exception as e:
+                    os.chdir(cwd)
+                    raise e
+                finally:
+                    sys.argv = original_argv
+
+            spotdl_entry_point(
+                [
+                    "download",
+                    path_,
+                    "--output",
+                    "{title}.{output-ext}",
+                    "--format",
+                    format_,
+                    "--headless",
+                ],
+            )
 
         paths = []
         for fname in os.listdir(config.MAESTRO_DIR):

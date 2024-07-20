@@ -519,7 +519,6 @@ class PlaybackHandler:
                         )
                     except KeyError as e:
                         print_to_logfile("KeyError in streaming loop:", e)
-                        # TODO: figure out why this is here
                         self.update_stream_metadata()
 
                     if self.break_stream_loop:

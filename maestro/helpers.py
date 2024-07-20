@@ -609,7 +609,8 @@ class PlaybackHandler:
     def quit(self):
         if self.ffmpeg_process is not None:
             self.ffmpeg_process.terminate()
-        self.discord_rpc.close()
+        if self.discord_rpc is not None:
+            self.discord_rpc.close()
 
     def prompting_delete_char(self):
         if self.prompting[1] > 0:

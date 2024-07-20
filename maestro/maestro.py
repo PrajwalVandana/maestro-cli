@@ -393,7 +393,8 @@ def _play(
                             elif ch in "dD":
                                 if player.update_discord:
                                     player.update_discord = False
-                                    player.discord_rpc.close()
+                                    if player.discord_rpc is not None:
+                                        player.discord_rpc.close()
                                     player.discord_connected = 0
                                 else:
                                     def f():

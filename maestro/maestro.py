@@ -3,6 +3,7 @@ import curses
 import json
 import multiprocessing
 import os
+import keyring.errors
 import requests
 import subprocess
 import sys
@@ -1783,30 +1784,44 @@ def play(
     if not playlist:
         click.secho("No songs found matching tag criteria.", fg="red")
     else:
-        username = helpers.get_username()
-        password = helpers.get_password()
-        if stream:
-            if username is None or password is None:
-                if username is None:
-                    click.secho("Username not found.", fg="red")
-                if password is None:
-                    click.secho("Password not found.", fg="red")
+        try:
+            username = helpers.get_username()
+            password = helpers.get_password()
+            if stream:
+                if username is None or password is None:
+                    if username is None:
+                        click.secho("Username not found.", fg="red")
+                    if password is None:
+                        click.secho("Password not found.", fg="red")
+                    click.secho(
+                        "Please log in using 'maestro login' to stream.", fg="red"
+                    )
+                    return
+            elif discord:
+                if username is None or password is None:
+                    if username is None:
+                        click.secho("Username not found.", fg="yellow")
+                    if password is None:
+                        click.secho("Password not found.", fg="yellow")
+                    click.secho(
+                        "Log in using 'maestro login' to enable album art in the Discord rich presence.",
+                        fg="yellow",
+                    )
+                    username = None
+                    password = None
+        except keyring.errors.NoKeyringError as e:
+            if stream:
                 click.secho(
-                    "Please log in using 'maestro login' to stream.", fg="red"
+                    f"No keyring available. Cannot stream without login.\n{e}",
+                    fg="red",
                 )
-                return
-        elif discord:
-            if username is None or password is None:
-                if username is None:
-                    click.secho("Username not found.", fg="yellow")
-                if password is None:
-                    click.secho("Password not found.", fg="yellow")
+            if discord:
                 click.secho(
-                    "Log in using 'maestro login' to enable album art in the Discord rich presence.",
+                    f"No keyring available. Cannot show album art in Discord rich presence without login.\n{e}",
                     fg="yellow",
                 )
-                username = None
-                password = None
+            username = None
+            password = None
 
         curses.wrapper(
             _play,

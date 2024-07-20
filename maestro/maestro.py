@@ -2665,7 +2665,7 @@ def unclip(songs, all_, force):
         click.secho("Removed clips for all songs.", fg="green")
     else:
         click.secho(
-            f"Removed clip{"s" if len(song_ids) > 1 else ""} for song{"s" if len(song_ids) > 1 else ""} with ID{"s" if len(song_ids) > 1 else ""} {', '.join(map(str, song_ids))}.",
+            f"Removed {helpers.pluralize(len(song_ids), 'clip', False)} for {helpers.pluralize(len(song_ids), 'song')} with {helpers.pluralize(len(song_ids), 'ID')} {', '.join(map(str, song_ids))}.",
             fg="green",
         )
 

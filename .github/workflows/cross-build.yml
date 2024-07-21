@@ -32,6 +32,7 @@ jobs:
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Add install script
         run: |
+          mkdir -p ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
           mv install-scripts/mac ${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall
       - name: Create .pkg
         id: pkgbuild

@@ -51,8 +51,7 @@ jobs:
         with:
           python_ver: '3.12'
           spec: maestro.spec
-          requirements: requirements.txt
-          options: --add-data "install-scripts/ubuntu:."
+          requirements: requirements.txts
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:

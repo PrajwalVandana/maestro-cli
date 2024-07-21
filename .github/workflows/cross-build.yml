@@ -23,8 +23,21 @@ jobs:
           python_ver: '3.12'
           spec: 'maestro-onedir.spec'
           requirements: 'requirements.txt'
-          upload_exe_with_name: 'maestro-mac'
+          # upload_exe_with_name: 'maestro-mac'
           # options: --icon "data/icons/maestro_icon.icns"
+      - name: Change file permissions
+        run: chmod +x ./dist/maestro
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-mac
+      # - name: Create .pkg
+      #   uses: akiojin/generate-mac-installer-github-action@v0.1.3
+      #   with:
+      #     root-directory:  # TODO
+      #     identifier:  'com.maestro.maestro-cli'
+      #     version: '1.1.1'
+      #     install-location: '/Applications'
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
     steps:
@@ -34,4 +47,10 @@ jobs:
           python_ver: '3.12'
           spec: 'maestro-onedir.spec'
           requirements: 'requirements.txt'
-          upload_exe_with_name: 'maestro-ubuntu'
+          # upload_exe_with_name: 'maestro-ubuntu'
+      - name: Change file permissions
+        run: chmod +x ./dist/maestro
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-ubuntu

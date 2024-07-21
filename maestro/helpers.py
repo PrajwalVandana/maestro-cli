@@ -57,13 +57,17 @@ except:  # pylint: disable=bare-except
 try:
     import numpy as np
 
-    LIBROSA = importlib.import_module("librosa")
-    if not (
-        "load" in dir(LIBROSA)
-        and "amplitude_to_db" in dir(LIBROSA)
-        and "stft" in dir(LIBROSA)
-    ):
-        raise ImportError
+    from librosa import load as librosa_load, stft, amplitude_to_db
+
+    LIBROSA = type(
+        "LIBROSA",
+        (),
+        {
+            "load": staticmethod(librosa_load),
+            "stft": staticmethod(stft),
+            "amplitude_to_db": staticmethod(amplitude_to_db),
+        },
+    )
 except ImportError:
     print_to_logfile("Librosa not installed. Visualization will be disabled.")
     LIBROSA = None

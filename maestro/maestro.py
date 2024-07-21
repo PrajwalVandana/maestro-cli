@@ -766,9 +766,11 @@ def cli():
     if not os.path.exists(config.MAESTRO_DIR):
         os.makedirs(config.MAESTRO_DIR)
 
+    update_settings = False
     # ensure config.SETTINGS has all settings
     if not os.path.exists(config.SETTINGS_FILE):
         config.SETTINGS = config.DEFAULT_SETTINGS
+        update_settings = True
     else:
         with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
             config.SETTINGS = json.load(f)
@@ -776,6 +778,7 @@ def cli():
         for key in config.DEFAULT_SETTINGS:
             if key not in config.SETTINGS:
                 config.SETTINGS[key] = config.DEFAULT_SETTINGS[key]
+                update_settings = True
 
     if not os.path.exists(config.SETTINGS["song_directory"]):
         os.makedirs(config.SETTINGS["song_directory"])
@@ -820,8 +823,9 @@ def cli():
             print_to_logfile("Failed to check for updates:", e)
 
     # ensure config.SETTINGS_FILE is up to date
-    with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
-        json.dump(config.SETTINGS, g)
+    if update_settings:
+        with open(config.SETTINGS_FILE, "w", encoding="utf-8") as g:
+            json.dump(config.SETTINGS, g)
 
     # ensure config.LOGFILE is not too large
     if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:

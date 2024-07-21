@@ -26,12 +26,12 @@ jobs:
           # upload_exe_with_name: 'maestro-mac'
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Change file permissions
-        run: chmod +x ./dist/maestro
+        run: chmod +x ./dist/maestro/maestro
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac
-          path: ./dist/maestro
+          path: ./dist/maestro/maestro
       # - name: Create .pkg
       #   uses: akiojin/generate-mac-installer-github-action@v0.1.3
       #   with:
@@ -50,9 +50,9 @@ jobs:
           requirements: 'requirements.txt'
           # upload_exe_with_name: 'maestro-ubuntu'
       - name: Change file permissions
-        run: chmod +x ./dist/maestro
+        run: chmod +x ./dist/maestro/maestro
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-ubuntu
-          path: ./dist/maestro
+          path: ./dist/maestro/maestro

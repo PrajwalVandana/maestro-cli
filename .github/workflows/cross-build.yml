@@ -35,7 +35,7 @@ jobs:
           mv install-scripts/mac ${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall
       - name: Create .pkg
         id: pkgbuild
-        uses: PrajwalVandana/generate-mac-installer-github-action
+        uses: PrajwalVandana/generate-mac-installer-github-action@fd5c2a0
         with:
           root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
           scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts

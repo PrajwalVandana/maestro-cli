@@ -1,11 +1,28 @@
 #!/bin/sh
 
-# Make maestro executable
-chmod +x ./maestro
+PREINSTALL_LOC=.
+MAESTRO_BUNDLE_LOC=/usr/local/bin/maestro-bundle
+MAESTRO_SYMLINK_LOC=/usr/local/bin/maestro
 
-# Move files to /usr/local/bin/maestro-bundle
-mv ./maestro /usr/local/bin/maestro-bundle/maestro
-mv ./_internal /usr/local/bin/maestro-bundle/_internal
+# Make maestro executable
+echo Changing permissions for maestro executable
+chmod +x $PREINSTALL_LOC/maestro
+
+# Remove existing bundle files
+echo Removing any existing maestro bundle files at $MAESTRO_BUNDLE_LOC
+rm -rf $MAESTRO_BUNDLE_LOC
+
+# Move files to $MAESTRO_BUNDLE_LOC
+echo Creating maestro bundle at $MAESTRO_BUNDLE_LOC
+mkdir $MAESTRO_BUNDLE_LOC
+echo Moving files to $MAESTRO_BUNDLE_LOC
+mv $PREINSTALL_LOC/maestro $MAESTRO_BUNDLE_LOC/maestro
+mv $PREINSTALL_LOC/_internal $MAESTRO_BUNDLE_LOC/_internal
+
+# Remove existing symlink
+echo Removing any existing symlinks at $MAESTRO_SYMLINK_LOC
+rm -rf $MAESTRO_SYMLINK_LOC
 
 # Create a symlink to the maestro executable
-ln -s /usr/local/bin/maestro-bundle/maestro /usr/local/bin/maestro
+echo Creating symlink to maestro executable
+ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC

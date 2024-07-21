@@ -1,10 +1,18 @@
 #!/bin/sh
 
+MAESTRO_BUNDLE_LOC=/usr/local/bin/maestro-bundle
+MAESTRO_SYMLINK_LOC=/usr/local/bin/maestro
+
 # Make maestro executable
-chmod +x /usr/local/bin/maestro-bundle/maestro
+chmod +x $MAESTRO_BUNDLE_LOC/maestro
 
 # Recursively find and disable quarantine
-find /usr/local/bin/maestro-bundle -exec sudo xattr -d com.apple.quarantine {} +
+find $MAESTRO_BUNDLE_LOC -exec sudo xattr -d com.apple.quarantine {} +
+
+# Remove existing symlink
+echo Removing any existing symlinks at $MAESTRO_SYMLINK_LOC
+rm -rf $MAESTRO_SYMLINK_LOC
 
 # Create a symlink to the maestro executable
-ln -s /usr/local/bin/maestro-bundle/maestro /usr/local/bin/maestro
+echo Creating symlink to maestro executable
+ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC

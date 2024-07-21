@@ -30,18 +30,23 @@ jobs:
           spec: maestro.spec
           requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.icns"
+      - name: Add install script
+        run: |
+          mv install-scripts/mac ${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall
+      - name: Create .pkg
+        id: pkgbuild
+        uses: PrajwalVandana/generate-mac-installer-github-action
+        with:
+          root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
+          scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
+          identifier: com.maestro.maestro-cli
+          version: '1.1.1'
+          install-location: /usr/local/bin/maestro-bundle/
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac
-          path: ${{ steps.pyinstaller.outputs.executable_path }}
-      # - name: Create .pkg
-      #   uses: akiojin/generate-mac-installer-github-action@v0.1.3
-      #   with:
-      #     root-directory:  # TODO
-      #     identifier: com.maestro.maestro-cli
-      #     version: '1.1.1'
-      #     install-location: /Applications
+          path: ${{ steps.pkgbuild.outputs.output-path }}
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
     steps:
@@ -54,7 +59,7 @@ jobs:
           requirements: requirements.txt
       - name: Add install script
         run: |
-          mv install-scripts/ubuntu ${{ steps.pyinstaller.outputs.executable_path }}/maestro/install
+          mv install-scripts/ubuntu ${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:

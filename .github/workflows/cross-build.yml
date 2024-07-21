@@ -52,8 +52,11 @@ jobs:
           python_ver: '3.12'
           spec: maestro.spec
           requirements: requirements.txt
+      - name: Add install script
+        run: |
+          mv install-scripts/ubuntu ${{ steps.pyinstaller.outputs.executable_path }}/maestro/install
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-ubuntu
-          path: ${{ steps.pyinstaller.outputs.executable_path }}
+          path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro

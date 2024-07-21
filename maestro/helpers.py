@@ -19,7 +19,6 @@ from maestro import (
 # region imports
 
 import curses
-import importlib
 import logging
 import os
 import subprocess

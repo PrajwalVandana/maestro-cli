@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Make maestro executable
+chmod +x /usr/local/bin/maestro-bundle/maestro
+
+# Recursively find and disable quarantine
+find /usr/local/bin/maestro-bundle -exec sudo xattr -d com.apple.quarantine {} +
+
+# Create a symlink to the maestro executable
+ln -s /usr/local/bin/maestro-bundle/maestro /usr/local/bin/maestro

@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# Make maestro executable
+chmod +x ./maestro
+
+# Move files to /usr/local/bin/maestro-bundle
+mv ./maestro /usr/local/bin/maestro-bundle/maestro
+mv ./_internal /usr/local/bin/maestro-bundle/_internal
+
+# Create a symlink to the maestro executable
+ln -s /usr/local/bin/maestro-bundle/maestro /usr/local/bin/maestro

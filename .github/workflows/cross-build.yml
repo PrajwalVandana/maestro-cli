@@ -8,31 +8,33 @@ jobs:
     steps:
       - name: Build executable
         uses: sayyid5416/pyinstaller@v1
+        id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro-onedir.spec
+          spec: maestro.spec
           requirements: requirements.txt
+          # options: --icon "data/icons/maestro_icon.ico"
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-windows
-          path: ./dist/maestro
-          # options: --icon "data/icons/maestro_icon.ico"
+          path: ${{ steps.pyinstaller.outputs.executable_path }}
   pyinstaller-build-mac:
     runs-on: macos-12
     steps:
       - name: Build executable
         uses: sayyid5416/pyinstaller@v1
+        id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro-onedir.spec
+          spec: maestro.spec
           requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac
-          path: ./dist/maestro
+          path: ${{ steps.pyinstaller.outputs.executable_path }}
       # - name: Create .pkg
       #   uses: akiojin/generate-mac-installer-github-action@v0.1.3
       #   with:
@@ -45,12 +47,14 @@ jobs:
     steps:
       - name: Build executable
         uses: sayyid5416/pyinstaller@v1
+        id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro-onedir.spec
+          spec: maestro.spec
           requirements: requirements.txt
+          options: --add-data "install-scripts/ubuntu:."
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-ubuntu
-          path: ./dist/maestro
+          path: ${{ steps.pyinstaller.outputs.executable_path }}

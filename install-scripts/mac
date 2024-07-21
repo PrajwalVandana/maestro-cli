@@ -10,9 +10,7 @@ chmod +x $MAESTRO_BUNDLE_LOC/maestro
 find $MAESTRO_BUNDLE_LOC -exec sudo xattr -d com.apple.quarantine {} +
 
 # Remove existing symlink
-echo Removing any existing symlinks at $MAESTRO_SYMLINK_LOC
 rm -rf $MAESTRO_SYMLINK_LOC
 
 # Create a symlink to the maestro executable
-echo Creating symlink to maestro executable
 ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('install-scripts/*', '.')]
+datas = []
 binaries = []
 hiddenimports = ['librosa']
 tmp_ret = collect_all('ytmusicapi')

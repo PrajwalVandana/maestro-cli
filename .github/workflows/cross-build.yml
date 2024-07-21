@@ -10,9 +10,13 @@ jobs:
         uses: sayyid5416/pyinstaller@v1
         with:
           python_ver: '3.12'
-          spec: 'maestro-onedir.spec'
-          requirements: 'requirements.txt'
-          upload_exe_with_name: 'maestro-windows'
+          spec: maestro-onedir.spec
+          requirements: requirements.txt
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-windows
+          path: ./dist/maestro
           # options: --icon "data/icons/maestro_icon.ico"
   pyinstaller-build-mac:
     runs-on: macos-12
@@ -21,24 +25,21 @@ jobs:
         uses: sayyid5416/pyinstaller@v1
         with:
           python_ver: '3.12'
-          spec: 'maestro-onedir.spec'
-          requirements: 'requirements.txt'
-          # upload_exe_with_name: 'maestro-mac'
+          spec: maestro-onedir.spec
+          requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.icns"
-      - name: Change file permissions
-        run: chmod +x ./dist/maestro/maestro
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac
-          path: ./dist/maestro/maestro
+          path: ./dist/maestro
       # - name: Create .pkg
       #   uses: akiojin/generate-mac-installer-github-action@v0.1.3
       #   with:
       #     root-directory:  # TODO
-      #     identifier:  'com.maestro.maestro-cli'
+      #     identifier: com.maestro.maestro-cli
       #     version: '1.1.1'
-      #     install-location: '/Applications'
+      #     install-location: /Applications
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
     steps:
@@ -46,13 +47,10 @@ jobs:
         uses: sayyid5416/pyinstaller@v1
         with:
           python_ver: '3.12'
-          spec: 'maestro-onedir.spec'
-          requirements: 'requirements.txt'
-          # upload_exe_with_name: 'maestro-ubuntu'
-      - name: Change file permissions
-        run: chmod +x ./dist/maestro/maestro
+          spec: maestro-onedir.spec
+          requirements: requirements.txt
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-ubuntu
-          path: ./dist/maestro/maestro
+          path: ./dist/maestro

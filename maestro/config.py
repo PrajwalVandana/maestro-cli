@@ -1,6 +1,6 @@
 import os
 
-from datetime import date
+from datetime import date, datetime
 from urllib.parse import urljoin
 
 
@@ -132,3 +132,13 @@ UPDATE_TIMESTAMP_URL = urljoin(AUTH_SERVER, "update_timestamp")
 # endregion
 
 # endregion
+
+def print_to_logfile(*args, **kwargs):
+    if "file" in kwargs:
+        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
+    print(
+        datetime.now().strftime("[%Y-%m-%d %H:%M:%S]"),
+        *args,
+        **kwargs,
+        file=open(LOGFILE, "a", encoding="utf-8"),
+    )

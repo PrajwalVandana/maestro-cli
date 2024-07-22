@@ -46,11 +46,14 @@ jobs:
           identifier: com.maestro.maestro-cli
           version: '1.1.1'
           install-location: /usr/local/bin/maestro-bundle/
-      - name: Upload executable
+      - name: Rename .pkg
+        run: |
+          mv ${{ steps.pkgbuild.outputs.output-path }} ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+      - name: Upload .pkg
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac
-          path: ${{ steps.pkgbuild.outputs.output-path }}
+          path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
     steps:

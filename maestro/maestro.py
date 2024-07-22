@@ -18,75 +18,15 @@ from random import randint
 from shutil import move, copy, rmtree
 from time import sleep, time
 
+from maestro import config
+from maestro import helpers
 from maestro.icon import img
 from maestro.__version__ import VERSION
 from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
-from spotdl import console_entry_point as original_spotdl_entry_point
-from yt_dlp import YoutubeDL
-
-# import gui_helper
-
-can_mac_now_playing = False
-if sys.platform == "darwin":
-    try:
-        # pylint: disable=no-name-in-module,import-error
-        from AppKit import (
-            NSApp,
-            NSApplication,
-            # NSApplicationDelegate,
-            NSApplicationActivationPolicyProhibited,
-            NSDate,
-            NSObject,
-            NSRunLoop,
-        )
-
-        # from MediaPlayer import MPNowPlayingInfoPropertyElapsedPlaybackTime
-        from PyObjCTools import AppHelper
-
-        from maestro.mac_presence import MacNowPlaying
-
-        # globals
-        mac_now_playing = MacNowPlaying()
-        cover_img = img
-        can_mac_now_playing = True
-    except (
-        Exception  # pylint: disable=bare-except,broad-except
-    ) as mac_import_err:
-        print_to_logfile("macOS import error:", mac_import_err)
-
-from maestro import config
-from maestro import helpers
-
-can_update_discord = helpers.can_update_discord
-
 # endregion
 
 # region utility functions/classes
-
-if can_mac_now_playing:
-
-    class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
-        def applicationDidFinishLaunching_(self, _aNotification):
-            pass
-
-        def sayHello_(self, _sender):
-            pass
-
-    def app_helper_loop():
-        # ns_application = NSApplication.sharedApplication()
-        # logo_ns_image = NSImage.alloc().initByReferencingFile_(
-        #     "./maestro_icon.png"
-        # )
-        # ns_application.setApplicationIconImage_(logo_ns_image)
-
-        # # we must keep a reference to the delegate object ourselves,
-        # # NSApp.setDelegate_() doesn't retain it. A local variable is
-        # # enough here.
-        # delegate = AppDelegate.alloc().init()
-        # NSApp().setDelegate_(delegate)
-
-        AppHelper.runEventLoop()
 
 
 def _play(
@@ -102,6 +42,33 @@ def _play(
     username,
     password,
 ):
+    can_mac_now_playing = False
+    if sys.platform == "darwin":
+        try:
+            from maestro.mac_presence import (
+                MacNowPlaying,
+                AppDelegate,
+                app_helper_loop
+            )
+            # pylint: disable=no-name-in-module,import-error
+            from AppKit import (
+                NSApp,
+                NSApplication,
+                # NSApplicationDelegate,
+                NSApplicationActivationPolicyProhibited,
+                NSDate,
+                NSRunLoop,
+            )
+            # pylint: enable
+
+            mac_now_playing = MacNowPlaying()
+            cover_img = img
+            can_mac_now_playing = True
+        except (
+            Exception  # pylint: disable=bare-except,broad-except
+        ) as mac_import_err:
+            print_to_logfile("macOS PyObjC import error:", mac_import_err)
+
     helpers.init_curses(stdscr)
 
     if loop:
@@ -129,10 +96,6 @@ def _play(
         player.mac_now_playing.cover = cover_img
 
         ns_application = NSApplication.sharedApplication()
-        # logo_ns_image = NSImage.alloc().initByReferencingFile_(
-        #     "./maestro_icon.png"
-        # )
-        # ns_application.setApplicationIconImage_(logo_ns_image)
         ns_application.setActivationPolicy_(
             NSApplicationActivationPolicyProhibited
         )
@@ -966,6 +929,9 @@ def add(
         return
 
     if youtube or spotify:
+        from spotdl import console_entry_point as original_spotdl_entry_point
+        from yt_dlp import YoutubeDL
+
         if youtube and spotify:
             click.secho(
                 "Cannot pass both '-y/--youtube' and '-s/--spotify' flags.",
@@ -1724,7 +1690,7 @@ def play(
             loop,
             clips,
             reshuffle,
-            discord and can_update_discord,
+            discord,
             visualize,
             stream,
             username,

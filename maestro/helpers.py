@@ -1,21 +1,3 @@
-from datetime import datetime
-
-
-def print_to_logfile(*args, **kwargs):
-    if "file" in kwargs:
-        raise ValueError("file kwargs not allowed for 'print_to_logfile'")
-    print(
-        datetime.now().strftime("[%Y-%m-%d %H:%M:%S]"),
-        *args,
-        **kwargs,
-        file=open(config.LOGFILE, "a", encoding="utf-8"),
-    )
-
-
-from maestro import (
-    config,
-)  # pylint: disable=wildcard-import,unused-wildcard-import
-
 # region imports
 
 import curses
@@ -23,7 +5,6 @@ import logging
 import os
 import subprocess
 import threading
-import warnings
 
 logging.disable(logging.CRITICAL)
 
@@ -38,48 +19,8 @@ from random import randint
 from time import sleep, time
 from urllib.parse import quote, quote_plus
 
-from just_playback import Playback
-
-try:
-    from numba import jit
-except:  # pylint: disable=bare-except
-    jit = lambda x: x
-    print_to_logfile("Numba not installed. Visualization will be slow.")
-try:
-    from numba.core.errors import NumbaWarning
-
-    warnings.simplefilter("ignore", category=NumbaWarning)
-except:  # pylint: disable=bare-except
-    pass
-
-
-try:
-    import numpy as np
-
-    from librosa import load as librosa_load, stft, amplitude_to_db
-
-    LIBROSA = type(
-        "LIBROSA",
-        (),
-        {
-            "load": staticmethod(librosa_load),
-            "stft": staticmethod(stft),
-            "amplitude_to_db": staticmethod(amplitude_to_db),
-        },
-    )
-except ImportError:
-    print_to_logfile("Librosa not installed. Visualization will be disabled.")
-    LIBROSA = None
-
-
-can_update_discord = True
-try:
-    from pypresence import Client as DiscordRPCClient
-except ImportError:
-    print_to_logfile(
-        "pypresence not installed. Discord presence will be disabled."
-    )
-    can_update_discord = False
+from maestro import config
+from maestro.config import print_to_logfile
 
 # endregion
 
@@ -163,105 +104,6 @@ def addstr_fit_to_width(stdscr, s, width, length_so_far, *args, **kwargs):
     return length_so_far
 
 
-@jit
-def lerp(start, stop, t):
-    return start + t * (stop - start)
-
-
-@jit(forceobj=True)
-def bin_average(arr, n, include_remainder=False, func=np.max):
-    remainder = arr.shape[1] % n
-    if remainder == 0:
-        return func(arr.reshape(arr.shape[0], -1, n), axis=1)
-
-    avg_head = func(arr[:, :-remainder].reshape(arr.shape[0], -1, n), axis=1)
-    if include_remainder:
-        avg_tail = func(
-            arr[:, -remainder:].reshape(arr.shape[0], -1, remainder), axis=1
-        )
-        return np.concatenate((avg_head, avg_tail), axis=1)
-
-    return avg_head
-
-
-@jit(forceobj=True)
-def render(
-    num_bins,
-    freqs,
-    frame,
-    visualizer_height,
-    mono=None,
-    include_remainder=None,
-    func=np.max,
-):
-    """
-    mono:
-        True:  forces one-channel visualization
-        False: forces two-channel visualization
-        None:  if freqs[0] == freqs[1], one-channel, else two
-    """
-    if mono is None:
-        mono = np.array_equal(freqs[0], freqs[1])
-
-    if not mono:
-        gap_bins = 1 if num_bins % 2 else 2
-        num_bins = (num_bins - 1) // 2
-    else:
-        gap_bins = 0
-        freqs[0, :, frame] = (freqs[0, :, frame] + freqs[1, :, frame]) / 2
-
-    num_vertical_block_sizes = len(config.VERTICAL_BLOCKS) - 1
-    freqs = np.round(
-        bin_average(
-            freqs[:, :, frame],
-            num_bins,
-            (
-                (freqs.shape[-2] % num_bins) > num_bins / 2
-                if include_remainder is None
-                else include_remainder
-            ),
-            func=func,
-        )
-        / 80
-        * visualizer_height
-        * num_vertical_block_sizes
-    )
-
-    arr = np.zeros((int(not mono) + 1, visualizer_height, num_bins))
-    for b in range(num_bins):
-        bin_height = freqs[0, b]
-        h = 0
-        while bin_height > num_vertical_block_sizes:
-            arr[0, h, b] = num_vertical_block_sizes
-            bin_height -= num_vertical_block_sizes
-            h += 1
-        arr[0, h, b] = bin_height
-        if not mono:
-            bin_height = freqs[1, b]
-            h = 0
-            while bin_height > num_vertical_block_sizes:
-                arr[1, h, b] = num_vertical_block_sizes
-                bin_height -= num_vertical_block_sizes
-                h += 1
-            arr[1, h, b] = bin_height
-
-    res = []
-    for h in range(visualizer_height - 1, -1, -1):
-        s = ""
-        for b in range(num_bins):
-            if mono:
-                s += config.VERTICAL_BLOCKS[arr[0, h, b]]
-            else:
-                s += config.VERTICAL_BLOCKS[arr[0, h, num_bins - b - 1]]
-        if not mono:
-            s += " " * gap_bins
-            for b in range(num_bins):
-                s += config.VERTICAL_BLOCKS[arr[1, h, b]]
-        res.append(s)
-
-    return res
-
-
 class FFmpegProcessHandler:
     def __init__(self, username, password):
         self.process = None
@@ -307,6 +149,8 @@ class FFmpegProcessHandler:
 
 class PlaybackHandler:
     def __init__(self, stdscr, playlist, clip_mode, visualize, stream, creds):
+        from just_playback import Playback
+
         self.stdscr = stdscr
         self.scroller = Scroller(
             len(playlist), stdscr.getmaxyx()[0] - 2  # -2 for status bar
@@ -340,7 +184,39 @@ class PlaybackHandler:
         self.discord_rpc = None
         self.discord_last_update = 0
 
-        self.can_visualize = LIBROSA is not None  # can generate visualization
+        self.can_update_discord = True
+        try:
+            from pypresence import Client as DiscordRPCClient
+            self._DiscordRPCClient = DiscordRPCClient
+        except ImportError:
+            print_to_logfile(
+                "pypresence not installed. Discord presence will be disabled."
+            )
+            self.can_update_discord = False
+
+        self._np = None
+        try:
+            import numpy as np
+            self._np = np
+        except ImportError:
+            print_to_logfile("Numpy not installed. Visualization will be disabled.")
+
+        self._librosa = None
+        try:
+            from librosa import load, stft, amplitude_to_db
+            self._librosa = type(
+                "librosa",
+                (),
+                {
+                    "load": staticmethod(load),
+                    "stft": staticmethod(stft),
+                    "amplitude_to_db": staticmethod(amplitude_to_db),
+                },
+            )
+        except ImportError:
+            print_to_logfile("Librosa not installed. Visualization will be disabled.")
+
+        self.can_visualize = self._librosa is not None  # can generate visualization
         self.can_show_visualization = (
             self.visualize
             and self.can_visualize
@@ -371,14 +247,14 @@ class PlaybackHandler:
 
     def _load_audio(self, path, sr):
         # shape = (# channels, # frames)
-        audio_data = LIBROSA.load(path, mono=False, sr=sr)[0]
+        audio_data = self._librosa.load(path, mono=False, sr=sr)[0]
 
         if len(audio_data.shape) == 1:  # mono -> stereo
-            audio_data = np.repeat([audio_data], 2, axis=0)
+            audio_data = self._np.repeat([audio_data], 2, axis=0)
         elif audio_data.shape[0] == 1:  # mono -> stereo
-            audio_data = np.repeat(audio_data, 2, axis=0)
+            audio_data = self._np.repeat(audio_data, 2, axis=0)
         elif audio_data.shape[0] == 6:  # 5.1 -> stereo
-            audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
+            audio_data = self._np.delete(audio_data, (1, 3, 4, 5), axis=0)
 
         return audio_data
 
@@ -417,7 +293,7 @@ class PlaybackHandler:
                         self.audio_data[song_id][1] is not None
                         or not self.stream
                     )
-                    or LIBROSA is None
+                    or self._librosa is None
                 ):
                     continue
 
@@ -428,23 +304,23 @@ class PlaybackHandler:
                 if song_id not in self.audio_data:
                     self.audio_data[song_id] = [
                         (
-                            LIBROSA.amplitude_to_db(
-                                np.abs(
-                                    LIBROSA.stft(
+                            self._librosa.amplitude_to_db(
+                                self._np.abs(
+                                    self._librosa.stft(
                                         self._load_audio(
                                             song_path,
                                             sr=config.VIS_SAMPLE_RATE,
                                         )
                                     )
                                 ),
-                                ref=np.max,
+                                ref=self._np.max,
                             )
                             + 80
                             if self.visualize and self.can_visualize
                             else None
                         ),
                         (
-                            np.int16(
+                            self._np.int16(
                                 self._load_audio(
                                     song_path, sr=config.STREAM_SAMPLE_RATE
                                 )
@@ -462,21 +338,21 @@ class PlaybackHandler:
                         and self.can_visualize
                     ):
                         self.audio_data[song_id][0] = (
-                            LIBROSA.amplitude_to_db(
-                                np.abs(
-                                    LIBROSA.stft(
+                            self._librosa.amplitude_to_db(
+                                self._np.abs(
+                                    self._librosa.stft(
                                         self._load_audio(
                                             song_path,
                                             sr=config.VIS_SAMPLE_RATE,
                                         )
                                     )
                                 ),
-                                ref=np.max,
+                                ref=self._np.max,
                             )
                             + 80
                         )
                     if self.audio_data[song_id][1] is None and self.stream:
-                        self.audio_data[song_id][1] = np.int16(
+                        self.audio_data[song_id][1] = self._np.int16(
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
                             )
@@ -557,7 +433,7 @@ class PlaybackHandler:
 
     @stream.setter
     def stream(self, value):
-        if LIBROSA is None:
+        if self._librosa is None:
             value = False
         self._stream = value
 
@@ -624,8 +500,13 @@ class PlaybackHandler:
     def update_screen(self):
         self.output(self.playback.curr_pos)
 
+    def connect_to_discord(self):
+        discord_rpc = self._DiscordRPCClient(client_id=config.DISCORD_ID)
+        discord_rpc.start()
+        return discord_rpc
+
     def update_discord_metadata(self):
-        if can_update_discord and self.update_discord:
+        if self.can_update_discord and self.update_discord:
             song_name, artist_name, album_name = "", "", ""
 
             # minimum 2 characters (Discord requirement)
@@ -679,7 +560,7 @@ class PlaybackHandler:
                     song_name, artist_name, album_name = "", "", ""
                     self.discord_connected = 2
                     try:
-                        self.discord_rpc = connect_to_discord()
+                        self.discord_rpc = self.connect_to_discord()
                         self.discord_connected = 1
                         self.update_discord_metadata()
                     except Exception as err:
@@ -791,15 +672,18 @@ class PlaybackHandler:
     def initialize_discord(self):
         self.update_discord = True
         try:
-            self.discord_rpc = connect_to_discord()
+            self.discord_rpc = self.connect_to_discord()
             self.discord_connected = 1
         except Exception as e:  # pylint: disable=broad-except,unused-variable
+            self.discord_connected = 0
             print_to_logfile("Discord connection error:", e)
 
     def threaded_initialize_discord(self):
         threading.Thread(target=self.initialize_discord, daemon=True).start()
 
     def output(self, pos):
+        from maestro.jit_funcs import render
+
         self.can_show_visualization = (
             self.visualize
             and self.can_visualize
@@ -1394,12 +1278,6 @@ def discord_join_event_handler(arg):
     print_to_logfile("Join event:", arg)
 
 
-def connect_to_discord():
-    discord_rpc = DiscordRPCClient(client_id=config.DISCORD_ID)
-    discord_rpc.start()
-    return discord_rpc
-
-
 def add_song(
     path,
     tags,
@@ -1489,6 +1367,8 @@ def add_song(
 
 
 def clip_editor(stdscr, details, start=None, end=None):
+    from just_playback import Playback
+
     song_name = details[1]
     song_path = os.path.join(config.SETTINGS["song_directory"], song_name)
 

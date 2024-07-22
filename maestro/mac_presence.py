@@ -6,11 +6,10 @@ from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 # pylint: disable=no-name-in-module,import-error
 from AppKit import (
     NSImage,
+    NSObject,
     # NSMakeRect,
     # NSCompositingOperationSourceOver,
     # NSCompositingOperationCopy,
-    # NSRunLoop,
-    # NSDate,
 )
 from Foundation import NSMutableDictionary
 from MediaPlayer import (
@@ -27,6 +26,30 @@ from MediaPlayer import (
     MPMusicPlaybackStatePaused,
     # MPMusicPlaybackStateStopped,
 )
+from PyObjCTools import AppHelper
+
+
+class AppDelegate(NSObject):  # so Python doesn't bounce in the dock
+    def applicationDidFinishLaunching_(self, _aNotification):
+        pass
+
+    def sayHello_(self, _sender):
+        pass
+
+def app_helper_loop():
+    # ns_application = NSApplication.sharedApplication()
+    # logo_ns_image = NSImage.alloc().initByReferencingFile_(
+    #     "./maestro_icon.png"
+    # )
+    # ns_application.setApplicationIconImage_(logo_ns_image)
+
+    # # we must keep a reference to the delegate object ourselves,
+    # # NSApp.setDelegate_() doesn't retain it. A local variable is
+    # # enough here.
+    # delegate = AppDelegate.alloc().init()
+    # NSApp().setDelegate_(delegate)
+
+    AppHelper.runEventLoop()
 
 # pylint: enable
 

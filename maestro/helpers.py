@@ -183,7 +183,8 @@ class PlaybackHandler:
         self.discord_connected = 2
         self.discord_rpc = None
         self.discord_last_update = 0
-        self.can_update_discord = True
+        self.can_update_discord = True  # pypresence installed
+        self.discord_updating = False  # lock
 
         self._librosa = None
         self.can_visualize = False
@@ -506,7 +507,13 @@ class PlaybackHandler:
         return discord_rpc
 
     def update_discord_metadata(self):
+        if self.discord_updating:
+            return
+        self.discord_updating = True
         if self.can_update_discord and self.update_discord:
+            t = time()
+            if self.discord_last_update + 15 > t:
+                sleep(15 - (t - self.discord_last_update))
             song_name, artist_name, album_name = "", "", ""
 
             # minimum 2 characters (Discord requirement)
@@ -519,9 +526,6 @@ class PlaybackHandler:
                 or new_artist_name != artist_name
                 or new_album_name != album_name
             ):
-                t = time()
-                if self.discord_last_update + 15 > t:
-                    sleep(15 - (t - self.discord_last_update))
                 song_name = new_song_name
                 artist_name = new_artist_name
                 album_name = new_album_name
@@ -555,6 +559,7 @@ class PlaybackHandler:
                 try:
                     self.discord_rpc.set_activity(**d)
                     self.discord_last_update = time()
+                    self.discord_updating = False
                 except Exception as e:  # pylint: disable=bare-except
                     print_to_logfile("Discord update error:", e)
                     song_name, artist_name, album_name = "", "", ""
@@ -566,6 +571,7 @@ class PlaybackHandler:
                     except Exception as err:
                         print_to_logfile("Discord connection error:", err)
                         self.discord_connected = 0
+                        self.discord_updating = False
 
     def update_mac_now_playing_metadata(self):
         from maestro.icon import img as default_artwork
@@ -870,7 +876,7 @@ class PlaybackHandler:
                         if self.prompting[2] == config.PROMPT_MODES["insert"]
                         else "Append"
                     )
-                    + " song (by ID): "
+                    + " song: "
                     + self.prompting[0],
                     screen_width,
                     0,
@@ -1230,7 +1236,8 @@ class SongParamType(click.ParamType):
                     break
 
             for details in sum(results, []):
-                print_entry(details, value)
+                if param is not None:  # called by click
+                    print_entry(details, value)
             self.fail("Multiple songs found", param, ctx)
 
         song_id = int(value)

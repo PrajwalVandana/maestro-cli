@@ -483,67 +483,70 @@ def _play(
                         elif c == curses.KEY_ENTER:
                             # pylint: disable=unsubscriptable-object
                             # fmt: off
-                            if player.prompting[0].isdecimal() and player.prompting[2] in (
+                            if player.prompting[2] in (
                                 config.PROMPT_MODES["add"],
                                 config.PROMPT_MODES["insert"],
                             ):
-                                with open(
-                                    config.SONGS_INFO_PATH,
-                                    "r",
-                                    encoding="utf-8",
-                                ) as songs_file:
-                                    for line in songs_file:
-                                        details = line.strip().split("|")
-                                        song_id = int(details[0])
-                                        if song_id == int(player.prompting[0]):
-                                            song_data = music_tag.load_file(
-                                                os.path.join(
-                                                    config.SETTINGS["song_directory"],
-                                                    details[1],
+                                try:
+                                    song_id = helpers.SONG(player.prompting[0])
+                                    with open(
+                                        config.SONGS_INFO_PATH,
+                                        "r",
+                                        encoding="utf-8",
+                                    ) as songs_file:
+                                        for line in songs_file:
+                                            details = line.strip().split("|")
+                                            if int(details[0]) == song_id:
+                                                song_data = music_tag.load_file(
+                                                    os.path.join(
+                                                        config.SETTINGS["song_directory"],
+                                                        details[1],
+                                                    )
                                                 )
-                                            )
-                                            details += [
-                                                (song_data[x[0]].value or f"No {x[1]}")
-                                                for x in (
-                                                    ("artist", "Artist"),
-                                                    ("album", "Album"),
-                                                    ("albumartist", "Album Artist"),
-                                                )
-                                            ]
-                                            if player.prompting[2] == config.PROMPT_MODES["insert"]:
-                                                player.playlist.insert(
-                                                    player.scroller.pos + 1,
-                                                    details,
-                                                )
-                                                inserted_pos = player.scroller.pos + 1
-                                                if player.i > player.scroller.pos:
-                                                    player.i += 1
-                                            else:
-                                                player.playlist.append(details)
-                                                inserted_pos = len(player.playlist) - 1
+                                                details += [
+                                                    (song_data[x[0]].value or f"No {x[1]}")
+                                                    for x in (
+                                                        ("artist", "Artist"),
+                                                        ("album", "Album"),
+                                                        ("albumartist", "Album Artist"),
+                                                    )
+                                                ]
+                                                if player.prompting[2] == config.PROMPT_MODES["insert"]:
+                                                    player.playlist.insert(
+                                                        player.scroller.pos + 1,
+                                                        details,
+                                                    )
+                                                    inserted_pos = player.scroller.pos + 1
+                                                    if player.i > player.scroller.pos:
+                                                        player.i += 1
+                                                else:
+                                                    player.playlist.append(details)
+                                                    inserted_pos = len(player.playlist) - 1
 
-                                            if loop:
-                                                if reshuffle >= 0:
-                                                    next_playlist.insert(randint(max(0, inserted_pos-reshuffle), min(len(playlist)-1, inserted_pos+reshuffle)), details)
-                                                elif reshuffle == -1:
-                                                    next_playlist.insert(randint(0, len(playlist) - 1), details)
-                                                # else:
-                                                #     if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
-                                                #         next_playlist.insert(
-                                                #             player_output.scroller.pos + 1,
-                                                #             details,
-                                                #         )
-                                                #     else:
-                                                #         next_playlist.append(details)
+                                                if loop:
+                                                    if reshuffle >= 0:
+                                                        next_playlist.insert(randint(max(0, inserted_pos-reshuffle), min(len(playlist)-1, inserted_pos+reshuffle)), details)
+                                                    elif reshuffle == -1:
+                                                        next_playlist.insert(randint(0, len(playlist) - 1), details)
+                                                    # else:
+                                                    #     if player_output.prompting[2] == config.PROMPT_MODES["insert"]:
+                                                    #         next_playlist.insert(
+                                                    #             player_output.scroller.pos + 1,
+                                                    #             details,
+                                                    #         )
+                                                    #     else:
+                                                    #         next_playlist.append(details)
 
-                                            player.scroller.num_lines += 1
+                                                player.scroller.num_lines += 1
 
-                                            player.prompting = None
-                                            curses.curs_set(False)
-                                            player.scroller.resize(screen_size[0] - 2)
+                                                player.prompting = None
+                                                curses.curs_set(False)
+                                                player.scroller.resize(screen_size[0] - 2)
 
-                                            player.update_screen()
-                                            break
+                                                player.update_screen()
+                                                break
+                                except click.BadParameter:
+                                    pass
                             elif (
                                 "|" not in player.prompting[0]
                                 and player.prompting[2]

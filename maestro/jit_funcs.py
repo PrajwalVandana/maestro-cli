@@ -24,7 +24,7 @@ def lerp(start, stop, t):
 
 
 @jit(forceobj=True)
-def bin_average(arr, n, include_remainder=False, func=None):
+def bin_average(arr: np.ndarray, n, include_remainder=False, func=None):
     if func is None:
         func = np.max
 
@@ -45,7 +45,7 @@ def bin_average(arr, n, include_remainder=False, func=None):
 @jit(forceobj=True)
 def render(
     num_bins,
-    freqs,
+    freqs: np.ndarray,
     frame,
     visualizer_height,
     mono=None,

@@ -14,7 +14,7 @@ rm -rf $MAESTRO_BUNDLE_LOC
 
 # Move files to $MAESTRO_BUNDLE_LOC
 echo Creating maestro bundle at $MAESTRO_BUNDLE_LOC
-mkdir $MAESTRO_BUNDLE_LOC
+mkdir -p $MAESTRO_BUNDLE_LOC
 echo Moving files to $MAESTRO_BUNDLE_LOC
 mv $PREINSTALL_LOC/maestro $MAESTRO_BUNDLE_LOC/maestro
 mv $PREINSTALL_LOC/_internal $MAESTRO_BUNDLE_LOC/_internal

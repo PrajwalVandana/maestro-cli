@@ -893,10 +893,10 @@ def add(
     song will be the filename (unless '-n' is passed). Filenames and tags cannot
     contain the character '|', and tags cannot contain ','.
 
-    If the '-Y' or '--youtube' flag is passed, PATH is treated as a YouTube or
+    If the '-Y/--youtube' flag is passed, PATH is treated as a YouTube or
     YouTube Music URL instead of a file path.
 
-    If the '-S' or '--spotify' flag is passed, PATH is treated as a Spotify
+    If the '-S/--spotify' flag is passed, PATH is treated as a Spotify
     track URL, album URL, playlist URL, artist URL, or search query instead of
     a file path.
 
@@ -934,7 +934,7 @@ def add(
 
         if youtube and spotify:
             click.secho(
-                "Cannot pass both '-y/--youtube' and '-s/--spotify' flags.",
+                "Cannot pass both '-Y/--youtube' and '-S/--spotify' flags.",
                 fg="red",
             )
             return
@@ -1160,7 +1160,7 @@ def add(
 
 
 @cli.command()
-@click.argument("ARGS", required=True, nargs=-1)
+@click.argument("args", required=True, nargs=-1)
 @click.option(
     "-F/-nF",
     "--force/--no-force",
@@ -1174,7 +1174,7 @@ def add(
     help="If passed, treat all arguments as tags, deleting every ocurrence of each tag.",
 )
 def remove(args, force, tag):
-    """Remove either tag(s) or song(s) passed as ID(s)."""
+    """Remove tag(s) or song(s)."""
     if not tag:
         song_ids = {helpers.SONG(v) for v in args}
         remaining_song_ids = set(song_ids)
@@ -1298,8 +1298,7 @@ def remove(args, force, tag):
     multiple=True,
 )
 def tag_(songs, tags):
-    """Add tags to a song (passed as ID). Tags cannot contain the characters
-    ',' or '|'."""
+    """Add tags to songs. Tags cannot contain the characters ',' or '|'."""
     song_ids = set(songs)
     num_songs = len(song_ids)
     tags = set(tags)
@@ -1356,10 +1355,9 @@ def tag_(songs, tags):
 )
 @click.option("-A/-nA", "--all/--no-all", "all_", default=False)
 def untag(songs, tags, all_):
-    """Remove tags from a specific song (passed as ID). Tags that the song
-    doesn't have will be ignored.
+    """Remove tags from songs. Tags that a song doesn't have will be ignored.
 
-    Passing the '-A/--all' flag will remove all tags from the song, unless TAGS
+    Passing the '-A/--all' flag will remove all tags from each song, unless TAGS
     is passed (in which case the flag is ignored)."""
     song_ids = set(songs)
     num_songs = len(song_ids)
@@ -1722,7 +1720,7 @@ def rename(original, new_name, renaming_tag):
     song (e.g. '.wav', '.mp3') is preserved—do not include it in the name.
 
     If the '-T/--tag' flag is passed, treats ORIGINAL as a tag, renaming all
-    ocurrences of it to NEW_NAME—doesn't check if the tag NEW_NAME already,
+    ocurrences of it to NEW_NAME—doesn't check if the tag NEW_NAME already
     exists, so be careful!
     """
     songs_file = open(config.SONGS_INFO_PATH, "r", encoding="utf-8")
@@ -1816,9 +1814,9 @@ def rename(original, new_name, renaming_tag):
     help="Show metadata for songs (artist, album, album artist). Ignored if '-T/--tag' is passed.",
 )
 def search(phrase, searching_for_tags, show_metadata):
-    """Search for song names (or tags with '-T' flag). All songs/tags starting
-    with PHRASE will appear before songs/tags containing but not starting with
-    PHRASE. This search is case-insensitive."""
+    """Search for song names (or tags with '-T/--tag' flag). All songs/tags
+    starting with PHRASE will appear before songs/tags containing but not
+    starting with PHRASE. This search is case-insensitive."""
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         if not searching_for_tags:
             results = helpers.search_song(phrase, songs_file)
@@ -1954,7 +1952,7 @@ def list_(
 
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
 
-    If the '-T' flag is passed, tags will be listed instead of songs.
+    If the '-T/--tag' flag is passed, tags will be listed instead of songs.
 
     Output format: tag, duration, listen time, times listened
 
@@ -2182,8 +2180,6 @@ def entry(songs, year, song_info):
     """
     View the details for specific song(s).
 
-    Prints the details of the song(s) with the ID(s) SONG_IDS.
-
     \b
     Output format:
         ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
@@ -2259,21 +2255,22 @@ def entry(songs, year, song_info):
 @cli.command()
 @click.argument("song", required=True)
 @click.option(
-    "-N/-nN",
-    "--name/--no-name",
+    "-T/-nT",
+    "--title/--no-title",
     "title",
     default=False,
-    help="Treat SONG as a song name to search on YT Music instead of an existing maestro song (ID/search phrase).",
+    help="Treat SONG as a song title to search on YT Music instead of an existing maestro song.",
 )
 def recommend(song, title):
     """
     Get recommendations from YT Music based on song titles (experimental).
 
-    Recommends songs (possibly explicit) using the YouTube Music API similar
-    to the song with ID SONG to listen to.
+    Recommends songs (possibly explicit) using the YouTube Music API that are
+    similar to SONG to listen to.
 
-    If the '-N' flag is passed, SONG is treated as a song name to search for
-    on YouTube Music, instead of a song in the maestro database."""
+    If the '-T/--title' flag is passed, maestro directly searches up SONG on
+    YouTube Music, rather than trying to find a matching entry in your maestro
+    songs."""
     try:
         from ytmusicapi import YTMusic
     except ImportError:
@@ -2331,12 +2328,12 @@ def push(songs, bottom):
     """
     Move songs around to the bottom or top of the database.
 
-    Push the song(s) with ID(s) SONGS to the top of the database (as if they
-    were the songs most recently added) in the order they are passed (e.g.
-    'maestro push 1 2 3' will make the most recent song be 3).
+    Pushes SONGS to the top of the database (as if they were the songs most
+    recently added) in the order they are passed (e.g. 'maestro push 1 2 3' will
+    make the most recent songs be 3, 2, and 1 in that order).
 
-    If the '-B' flag is passed, the song(s) will be pushed to the bottom of the
-    list instead.
+    If the '-B/--bottom' flag is passed, the song(s) will be pushed to the
+    bottom of the list instead.
     """
     with open(config.SONGS_INFO_PATH, "r+", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()
@@ -2386,8 +2383,7 @@ def clip_(song, start, end, editor):
     """
     Create or edit the clip for a song.
 
-    Sets the clip for the song with ID SONG to the time range START to END
-    (in seconds).
+    Sets the clip for SONG to the time range START to END (in seconds).
 
     If END is not passed, the clip will be from START to the end of the song.
 
@@ -2503,13 +2499,11 @@ def clip_(song, start, end, editor):
 )
 def unclip(songs, all_, force):
     """
-    Remove clips for specific song(s).
-
-    Removes clip for the song(s) with ID(s) SONGS.
+    Remove any clips for SONGS.
 
     If the '-A/--all' flag is passed, the clips for all songs will be removed,
-    ignoring SONG_IDS. This prompts for confirmation unless the '-F/--force'
-    flag is passed.
+    ignoring SONGS. This prompts for confirmation unless the '-F/--force' flag
+    is passed.
     """
     if not all_:
         if songs:
@@ -2554,13 +2548,13 @@ def unclip(songs, all_, force):
 @click.option("-m", "--metadata", "pairs", type=str, required=False)
 def metadata(songs, pairs):
     """
-    View or edit the metadata for a song or songs.
+    View or edit the metadata for songs.
 
     If the -m/--metadata option is not passed, prints the metadata for each song
-    ID in SONGS.
+    in SONGS.
 
-    If the option is passed, sets the metadata for the each song ID in SONGS
-    to the key-value pairs in -m/--metadata. The option should be passed as a
+    If the option is passed, sets the metadata for the each song in SONGS to the
+    key-value pairs in -m/--metadata. The option should be passed as a
     string of the form 'key1:value1|key2:value2|...'.
 
     Possible editable metadata keys are: album, albumartist, artist, artwork,

@@ -794,10 +794,16 @@ def cli():
     if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:
         # move to backup
         backup_path = os.path.join(
-            config.OLD_LOG_DIR, f"maestro-{int(time())}.log"
+            config.OLD_LOG_DIR, f"maestro-{int(t)}.log"
         )
         os.makedirs(os.path.dirname(backup_path), exist_ok=True)
         move(config.LOGFILE, backup_path)
+
+    # delete old log files
+    for file in os.listdir(config.OLD_LOG_DIR):
+        if file.endswith(".log"):
+            if t - int(file.split(".")[0].split("-")[1]) > 24 * 60 * 60:
+                os.remove(os.path.join(config.OLD_LOG_DIR, file))
 
 
 @cli.command()

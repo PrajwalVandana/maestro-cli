@@ -183,43 +183,12 @@ class PlaybackHandler:
         self.discord_connected = 2
         self.discord_rpc = None
         self.discord_last_update = 0
-
         self.can_update_discord = True
-        try:
-            from pypresence import Client as DiscordRPCClient
-            self._DiscordRPCClient = DiscordRPCClient
-        except ImportError:
-            print_to_logfile(
-                "pypresence not installed. Discord presence will be disabled."
-            )
-            self.can_update_discord = False
-
-        self._np = None
-        try:
-            import numpy as np
-            self._np = np
-        except ImportError:
-            print_to_logfile("Numpy not installed. Visualization will be disabled.")
 
         self._librosa = None
-        try:
-            from librosa import load, stft, amplitude_to_db
-            self._librosa = type(
-                "librosa",
-                (),
-                {
-                    "load": staticmethod(load),
-                    "stft": staticmethod(stft),
-                    "amplitude_to_db": staticmethod(amplitude_to_db),
-                },
-            )
-        except ImportError:
-            print_to_logfile("Librosa not installed. Visualization will be disabled.")
-
-        self.can_visualize = self._librosa is not None  # can generate visualization
+        self.can_visualize = False
         self.can_show_visualization = (
             self.visualize
-            and self.can_visualize
             # space to show visualization
             and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
         )
@@ -246,19 +215,43 @@ class PlaybackHandler:
         self.streaming_thread.start()
 
     def _load_audio(self, path, sr):
+        import numpy as np
+
         # shape = (# channels, # frames)
         audio_data = self._librosa.load(path, mono=False, sr=sr)[0]
 
         if len(audio_data.shape) == 1:  # mono -> stereo
-            audio_data = self._np.repeat([audio_data], 2, axis=0)
+            audio_data = np.repeat([audio_data], 2, axis=0)
         elif audio_data.shape[0] == 1:  # mono -> stereo
-            audio_data = self._np.repeat(audio_data, 2, axis=0)
+            audio_data = np.repeat(audio_data, 2, axis=0)
         elif audio_data.shape[0] == 6:  # 5.1 -> stereo
-            audio_data = self._np.delete(audio_data, (1, 3, 4, 5), axis=0)
+            audio_data = np.delete(audio_data, (1, 3, 4, 5), axis=0)
 
         return audio_data
 
     def _audio_processing_loop(self):
+        import numpy as np
+
+        try:
+            from librosa import load, stft, amplitude_to_db
+
+            self._librosa = type(
+                "librosa",
+                (),
+                {
+                    "load": staticmethod(load),
+                    "stft": staticmethod(stft),
+                    "amplitude_to_db": staticmethod(amplitude_to_db),
+                },
+            )
+            self.can_visualize = True
+        except ImportError:
+            self.can_visualize = False
+            self.can_show_visualization = False
+            print_to_logfile(
+                "Librosa not installed. Visualization will be disabled."
+            )
+
         while True:
             cur_song_ids = set(
                 map(lambda x: x[0], self.playlist[self.i : self.i + 5])
@@ -305,7 +298,7 @@ class PlaybackHandler:
                     self.audio_data[song_id] = [
                         (
                             self._librosa.amplitude_to_db(
-                                self._np.abs(
+                                np.abs(
                                     self._librosa.stft(
                                         self._load_audio(
                                             song_path,
@@ -313,14 +306,14 @@ class PlaybackHandler:
                                         )
                                     )
                                 ),
-                                ref=self._np.max,
+                                ref=np.max,
                             )
                             + 80
                             if self.visualize and self.can_visualize
                             else None
                         ),
                         (
-                            self._np.int16(
+                            np.int16(
                                 self._load_audio(
                                     song_path, sr=config.STREAM_SAMPLE_RATE
                                 )
@@ -339,7 +332,7 @@ class PlaybackHandler:
                     ):
                         self.audio_data[song_id][0] = (
                             self._librosa.amplitude_to_db(
-                                self._np.abs(
+                                np.abs(
                                     self._librosa.stft(
                                         self._load_audio(
                                             song_path,
@@ -347,12 +340,12 @@ class PlaybackHandler:
                                         )
                                     )
                                 ),
-                                ref=self._np.max,
+                                ref=np.max,
                             )
                             + 80
                         )
                     if self.audio_data[song_id][1] is None and self.stream:
-                        self.audio_data[song_id][1] = self._np.int16(
+                        self.audio_data[song_id][1] = np.int16(
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
                             )
@@ -501,7 +494,14 @@ class PlaybackHandler:
         self.output(self.playback.curr_pos)
 
     def connect_to_discord(self):
-        discord_rpc = self._DiscordRPCClient(client_id=config.DISCORD_ID)
+        try:
+            from pypresence import Client as DiscordRPCClient
+        except ImportError:
+            print_to_logfile(
+                "pypresence not installed. Discord presence will be disabled."
+            )
+            self.can_update_discord = False
+        discord_rpc = DiscordRPCClient(client_id=config.DISCORD_ID)
         discord_rpc.start()
         return discord_rpc
 

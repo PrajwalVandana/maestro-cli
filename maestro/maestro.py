@@ -42,6 +42,8 @@ def _play(
     username,
     password,
 ):
+    helpers.init_curses(stdscr)
+
     can_mac_now_playing = False
     if sys.platform == "darwin":
         try:
@@ -68,8 +70,6 @@ def _play(
             Exception  # pylint: disable=bare-except,broad-except
         ) as mac_import_err:
             print_to_logfile("macOS PyObjC import error:", mac_import_err)
-
-    helpers.init_curses(stdscr)
 
     if loop:
         next_playlist = playlist[:]

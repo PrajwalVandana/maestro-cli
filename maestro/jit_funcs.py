@@ -9,7 +9,7 @@ try:
     from numba import jit
 except:  # pylint: disable=bare-except
     jit = lambda x: x
-    print_to_logfile("Numba not installed. Visualization will be slow.")
+    print_to_logfile("Numba not installed. Visualization will be slower.")
 try:
     from numba.core.errors import NumbaWarning
 

@@ -20,7 +20,6 @@ from time import sleep, time
 
 from maestro import config
 from maestro import helpers
-from maestro.icon import img
 from maestro.__version__ import VERSION
 from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
 
@@ -64,7 +63,6 @@ def _play(
             # pylint: enable
 
             mac_now_playing = MacNowPlaying()
-            cover_img = img
             can_mac_now_playing = True
         except (
             Exception  # pylint: disable=bare-except,broad-except
@@ -93,7 +91,6 @@ def _play(
         player.mac_now_playing.title_queue = Queue()
         player.mac_now_playing.artist_queue = Queue()
         player.mac_now_playing.q = Queue()
-        player.mac_now_playing.cover = cover_img
 
         ns_application = NSApplication.sharedApplication()
         ns_application.setActivationPolicy_(

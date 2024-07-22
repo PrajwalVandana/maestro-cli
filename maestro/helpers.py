@@ -568,11 +568,12 @@ class PlaybackHandler:
                         self.discord_connected = 0
 
     def update_mac_now_playing_metadata(self):
+        from maestro.icon import img as default_artwork
         if self.can_mac_now_playing:
             self.mac_now_playing.paused = False
             self.mac_now_playing.pos = 0
             self.mac_now_playing.length = self.duration
-            self.mac_now_playing.cover = self.img_data
+            self.mac_now_playing.cover = self.img_data if self.img_data else default_artwork
 
             multiprocessing_put_word(
                 self.mac_now_playing.title_queue,

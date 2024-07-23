@@ -20,13 +20,13 @@ jobs:
       - name: Install NSIS EnvVar plugin
         run: |
           Invoke-WebRequest https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
-          Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath $Env:ProgramFiles\NSIS\Plugins
+          Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath $Env:ProgramFiles\NSIS\Plugins -Force
         shell: pwsh
       - name: Run NSIS
         # run: |
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
         run: |
-          dir dist/maestro
+          dir %ProgramFiles%\NSIS\Plugins
           makensis install-scripts/windows.nsi
       - name: Upload executable
         uses: actions/upload-artifact@v4

@@ -131,7 +131,7 @@ def _play(
         player.update_metadata()
         player.playback.play()
         player.set_volume(volume)
-        print_to_logfile("Changed song", player.playback.curr_pos)  # DEBUG
+        # print_to_logfile("Changed song", player.playback.curr_pos)  # DEBUG
 
         if player.clip_mode:
             clip_start, clip_end = player.clip

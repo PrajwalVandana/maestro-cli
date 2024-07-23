@@ -7,7 +7,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Build executable
-        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
+        uses: PrajwalVandana/pyinstaller@c7c491de8409921df7045f681695d4d5ab71a4e0
         id: pyinstaller
         with:
           python_ver: '3.12'
@@ -24,7 +24,7 @@ jobs:
     runs-on: macos-12
     steps:
       - name: Build executable
-        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
+        uses: PrajwalVandana/pyinstaller@c7c491de8409921df7045f681695d4d5ab71a4e0
         id: pyinstaller
         with:
           python_ver: '3.12'
@@ -60,7 +60,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Build executable
-        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
+        uses: PrajwalVandana/pyinstaller@c7c491de8409921df7045f681695d4d5ab71a4e0
         id: pyinstaller
         with:
           python_ver: '3.12'
@@ -96,7 +96,7 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Build executable
-        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
+        uses: PrajwalVandana/pyinstaller@c7c491de8409921df7045f681695d4d5ab71a4e0
         id: pyinstaller
         with:
           python_ver: '3.12'

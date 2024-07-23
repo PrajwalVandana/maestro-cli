@@ -19,7 +19,7 @@ jobs:
           choco install -y nsis
       - name: Move executable to dist
         run: |
-          if not exist dist mkdir dist
+          if (not exist dist) mkdir dist
           move "${{ steps.pyinstaller.outputs.executable_path }}/maestro" dist/maestro
       - name: Run NSIS
         # run: |

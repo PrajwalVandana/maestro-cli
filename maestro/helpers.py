@@ -3,7 +3,6 @@
 import curses
 import logging
 import os
-import sys
 import subprocess
 import threading
 
@@ -15,10 +14,12 @@ import music_tag
 import requests
 
 from getpass import getpass
-from shutil import copy, move, which
+from shutil import copy, move
 from random import randint
 from time import sleep, time
 from urllib.parse import quote, quote_plus
+
+from spotdl.utils.ffmpeg import get_ffmpeg_path
 
 from maestro import config
 from maestro.config import print_to_logfile
@@ -27,16 +28,7 @@ from maestro.config import print_to_logfile
 
 
 # check if ffmpeg is installed without try/except
-FFMPEG_PATH = which("ffmpeg")
-if FFMPEG_PATH is None:
-    if sys.platform == "win32":
-        FFMPEG_PATH = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../ffmpeg.exe")
-        )
-    else:
-        FFMPEG_PATH = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../ffmpeg")
-        )
+FFMPEG_PATH = str(get_ffmpeg_path())
 
 
 def is_safe_username(url):

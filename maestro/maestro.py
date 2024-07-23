@@ -18,6 +18,8 @@ from random import randint
 from shutil import move, copy, rmtree
 from time import sleep, time
 
+from spotdl.utils.ffmpeg import FFmpegError, download_ffmpeg as spotdl_download_ffmpeg
+
 from maestro import config
 from maestro import helpers
 from maestro.__version__ import VERSION
@@ -49,8 +51,9 @@ def _play(
             from maestro.mac_presence import (
                 MacNowPlaying,
                 AppDelegate,
-                app_helper_loop
+                app_helper_loop,
             )
+
             # pylint: disable=no-name-in-module,import-error
             from AppKit import (
                 NSApp,
@@ -60,6 +63,7 @@ def _play(
                 NSDate,
                 NSRunLoop,
             )
+
             # pylint: enable
 
             mac_now_playing = MacNowPlaying()
@@ -793,9 +797,7 @@ def cli():
     # ensure config.LOGFILE is not too large
     if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:
         # move to backup
-        backup_path = os.path.join(
-            config.OLD_LOG_DIR, f"maestro-{int(t)}.log"
-        )
+        backup_path = os.path.join(config.OLD_LOG_DIR, f"maestro-{int(t)}.log")
         os.makedirs(os.path.dirname(backup_path), exist_ok=True)
         move(config.LOGFILE, backup_path)
 
@@ -991,19 +993,27 @@ def add(
                 finally:
                     sys.argv = original_argv
 
-            spotdl_entry_point(
-                [
-                    "download",
-                    path_,
-                    "--output",
-                    "{title}.{output-ext}",
-                    "--format",
-                    format_,
-                    "--headless",
-                    "--ffmpeg",
-                    helpers.FFMPEG_PATH,
-                ],
-            )
+            try:
+                spotdl_entry_point(
+                    [
+                        "download",
+                        path_,
+                        "--output",
+                        "{title}.{output-ext}",
+                        "--format",
+                        format_,
+                        "--headless",
+                        "--ffmpeg",
+                        helpers.FFMPEG_PATH,
+                        # "fake",  # DEBUG
+                    ],
+                )
+            except FFmpegError:
+                click.secho(
+                    "FFmpeg is not installed: you can install it globally or run 'maestro download-ffmpeg' to download it internally.",
+                    fg="red",
+                )
+                return
 
         paths = []
         for fname in os.listdir(config.MAESTRO_DIR):
@@ -2757,6 +2767,13 @@ def clear_logs():
     except FileNotFoundError:
         click.secho("No logs found.", fg="yellow")
 
+
+@cli.command(name="download-ffmpeg")
+def download_ffmpeg():
+    """
+    Download the ffmpeg binary for your OS. Required for clip editing.
+    """
+    spotdl_download_ffmpeg()
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

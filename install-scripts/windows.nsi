@@ -1,4 +1,4 @@
-!include "EnVar.nsh"
+; !include "EnVar.nsh"
 
 !define PRODUCT_NAME "maestro-cli"
 

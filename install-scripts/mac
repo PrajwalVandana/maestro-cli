@@ -7,7 +7,7 @@ MAESTRO_SYMLINK_LOC=/usr/local/bin/maestro
 chmod +x $MAESTRO_BUNDLE_LOC/maestro
 
 # Recursively find and disable quarantine
-find $MAESTRO_BUNDLE_LOC -exec sudo xattr -d com.apple.quarantine {} +
+xattr -d -r com.apple.quarantine $MAESTRO_BUNDLE_LOC
 
 # Remove existing symlink
 rm -rf $MAESTRO_SYMLINK_LOC

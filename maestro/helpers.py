@@ -187,7 +187,7 @@ class PlaybackHandler:
         self.discord_updating = False  # lock
 
         self._librosa = None
-        self.can_visualize = False
+        self.can_visualize = True
         self.can_show_visualization = (
             self.visualize
             # space to show visualization
@@ -245,7 +245,6 @@ class PlaybackHandler:
                     "amplitude_to_db": staticmethod(amplitude_to_db),
                 },
             )
-            self.can_visualize = True
         except ImportError:
             self.can_visualize = False
             self.can_show_visualization = False

@@ -17,20 +17,20 @@ jobs:
       - name: Install NSIS
         run: |
           choco install -y nsis
-      - name: Move executable to ./dist
+      - name: Move executable to dist
         run: |
-          mkdirs -p ./dist
-          mv ${{ steps.pyinstaller.outputs.executable_path }}/maestro ./dist/maestro
+          mkdir dist
+          move "${{ steps.pyinstaller.outputs.executable_path }}/maestro" dist/maestro
       - name: Run NSIS
         # run: |
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
         run: |
-          makensis install-scripts\windows.nsi
+          makensis install-scripts/windows.nsi
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-windows
-          path: install-scripts\maestro-installer.exe
+          path: install-scripts/maestro-installer.exe
   pyinstaller-build-mac-x86:
     runs-on: macos-12
     steps:
@@ -50,8 +50,8 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Add install script
         run: |
-          mkdir -p ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
-          mv install-scripts/mac ${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall
+          mkdir -p "${{ steps.pyinstaller.outputs.executable_path }}/Scripts"
+          mv install-scripts/mac "${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall"
       - name: Create .pkg
         id: pkgbuild
         # main branch
@@ -59,19 +59,19 @@ jobs:
         # dev branch
         uses: PrajwalVandana/generate-mac-installer-github-action@9d0c29930827283cce48688cb2154b47c92a4042
         with:
-          root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
-          scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
+          root-directory:  "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          scripts-directory:  "${{ steps.pyinstaller.outputs.executable_path }}/Scripts"
           identifier: com.maestro.maestro-cli
           version: ${{ steps.version.outputs.version }}
           install-location: /usr/local/bin/maestro-bundle/
       - name: Rename .pkg
         run: |
-          mv ${{ steps.pkgbuild.outputs.output-path }} ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
       - name: Upload .pkg
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac-intel
-          path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
   pyinstaller-build-mac-arm:
     runs-on: macos-latest
     steps:
@@ -91,8 +91,8 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Add install script
         run: |
-          mkdir -p ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
-          mv install-scripts/mac ${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall
+          mkdir -p "${{ steps.pyinstaller.outputs.executable_path }}/Scripts"
+          mv install-scripts/mac "${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall"
       - name: Create .pkg
         id: pkgbuild
         # main branch
@@ -100,19 +100,19 @@ jobs:
         # dev branch
         uses: PrajwalVandana/generate-mac-installer-github-action@9d0c29930827283cce48688cb2154b47c92a4042
         with:
-          root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
-          scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
+          root-directory:  "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          scripts-directory:  "${{ steps.pyinstaller.outputs.executable_path }}/Scripts"
           identifier: com.maestro.maestro-cli
           version: ${{ steps.version.outputs.version }}
           install-location: /usr/local/bin/maestro-bundle/
       - name: Rename .pkg
         run: |
-          mv ${{ steps.pkgbuild.outputs.output-path }} ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
       - name: Upload .pkg
         uses: actions/upload-artifact@v4
         with:
           name: maestro-mac-apple-silicon
-          path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
     steps:
@@ -126,9 +126,9 @@ jobs:
           lfs: true
       - name: Add install script
         run: |
-          mv install-scripts/ubuntu ${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro
+          mv install-scripts/ubuntu "${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro"
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-ubuntu
-          path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro
+          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"

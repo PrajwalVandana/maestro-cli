@@ -27,7 +27,7 @@ jobs:
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
         run: |
           echo %CD%
-          dir
+          dir dist
           makensis install-scripts/windows.nsi
       - name: Upload executable
         uses: actions/upload-artifact@v4

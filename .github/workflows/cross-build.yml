@@ -17,6 +17,11 @@ jobs:
       # - name: Install NSIS
       #   run: |
       #     choco install -y nsis
+      - name: Install NSIS EnvVar plugin
+        run: |
+          Invoke-WebRequest https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
+          Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath $Env:ProgramFiles\NSIS\Plugins
+        shell: pwsh
       - name: Run NSIS
         # run: |
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi

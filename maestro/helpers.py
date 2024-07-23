@@ -3,6 +3,7 @@
 import curses
 import logging
 import os
+import sys
 import subprocess
 import threading
 
@@ -28,15 +29,14 @@ from maestro.config import print_to_logfile
 # check if ffmpeg is installed without try/except
 FFMPEG_PATH = which("ffmpeg")
 if FFMPEG_PATH is None:
-    print_to_logfile("FFmpeg not found. Please install FFmpeg.")
-    FFMPEG_PATH = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "../ffmpeg")
-    )
-
-FFMPEG_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "../ffmpeg")
-)  # DEBUG
-print_to_logfile("FFMPEG_PATH:", FFMPEG_PATH)
+    if sys.platform == "win32":
+        FFMPEG_PATH = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../ffmpeg.exe")
+        )
+    else:
+        FFMPEG_PATH = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../ffmpeg")
+        )
 
 
 def is_safe_username(url):

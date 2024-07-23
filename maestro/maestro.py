@@ -1250,6 +1250,9 @@ def remove(args, force, tag):
 
                 to_be_deleted = []
                 for i in range(len(stats_lines)):
+                    if stats_lines[i].strip() == "":
+                        to_be_deleted.append(i)
+                        continue
                     details = stats_lines[i].strip().split("|")
                     song_id = int(details[0])
                     if song_id in song_ids and song_id not in skipping:

@@ -1,2 +1,2 @@
 dependency_builds/mac/ffmpeg filter=lfs diff=lfs merge=lfs -text
-dependency_builds/windows/ffmpeg filter=lfs diff=lfs merge=lfs -text
+dependency_builds/windows/ffmpeg.exe filter=lfs diff=lfs merge=lfs -text

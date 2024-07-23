@@ -11,7 +11,7 @@ jobs:
         id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro.spec
+          spec: specs/maestro-windows.spec
           requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.ico"
       - name: Upload executable
@@ -27,7 +27,7 @@ jobs:
         id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro.spec
+          spec: specs/maestro-mac-x86.spec
           requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Add install script
@@ -52,7 +52,7 @@ jobs:
       - name: Upload .pkg
         uses: actions/upload-artifact@v4
         with:
-          name: maestro-mac
+          name: maestro-mac-intel
           path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
   pyinstaller-build-mac-arm:
     runs-on: macos-latest
@@ -62,7 +62,7 @@ jobs:
         id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro-m1.spec
+          spec: specs/maestro-mac-arm.spec
           requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Add install script
@@ -87,7 +87,7 @@ jobs:
       - name: Upload .pkg
         uses: actions/upload-artifact@v4
         with:
-          name: maestro-mac
+          name: maestro-mac-apple-silicon
           path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
@@ -97,7 +97,7 @@ jobs:
         id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: maestro.spec
+          spec: specs/maestro-ubuntu.spec
           requirements: requirements.txt
       - name: Add install script
         run: |

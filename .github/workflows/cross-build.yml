@@ -42,7 +42,7 @@ jobs:
         id: version
         # read VERSION = "a.b.c" from __version__.py
         run: |
-          VERSION=$(grep -oP "VERSION = \"\K[^\"]+" maestro/__version__.py)
+          VERSION=$(sed -n 's/VERSION = "\([^"]*\)"/\1/p' maestro/__version__.py)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Add install script
         run: |
@@ -83,7 +83,7 @@ jobs:
         id: version
         # read VERSION = "a.b.c" from __version__.py
         run: |
-          VERSION=$(grep -oP "VERSION = \"\K[^\"]+" maestro/__version__.py)
+          VERSION=$(sed -n 's/VERSION = "\([^"]*\)"/\1/p' maestro/__version__.py)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Add install script
         run: |

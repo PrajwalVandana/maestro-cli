@@ -10,11 +10,11 @@ chmod +x $PREINSTALL_LOC/maestro || echo Failed to change permissions for maestr
 
 # Remove existing bundle files
 echo Removing any existing maestro bundle files at $MAESTRO_BUNDLE_LOC
-rm -rf $MAESTRO_BUNDLE_LOC  || echo Failed to remove any existing maestro bundle files at $MAESTRO_BUNDLE_LOC, try running with sudo
+rm -rf $MAESTRO_BUNDLE_LOC || echo Failed to remove any existing maestro bundle files at $MAESTRO_BUNDLE_LOC, try running with sudo
 
 # Move files to $MAESTRO_BUNDLE_LOC
 echo Creating maestro bundle at $MAESTRO_BUNDLE_LOC
-mkdir -p $MAESTRO_BUNDLE_LOC  || echo Failed to create maestro bundle directory at $MAESTRO_BUNDLE_LOC, try running with sudo
+mkdir -p $MAESTRO_BUNDLE_LOC || echo Failed to create maestro bundle directory at $MAESTRO_BUNDLE_LOC, try running with sudo
 echo Moving files to $MAESTRO_BUNDLE_LOC
 mv $PREINSTALL_LOC/maestro $MAESTRO_BUNDLE_LOC/maestro || echo Failed to move maestro executable to $MAESTRO_BUNDLE_LOC, try running with sudo
 mv $PREINSTALL_LOC/_internal $MAESTRO_BUNDLE_LOC/_internal || echo Failed to move dependency files to $MAESTRO_BUNDLE_LOC, try running with sudo
@@ -25,4 +25,4 @@ rm -rf $MAESTRO_SYMLINK_LOC || echo Failed to remove any existing maestro symlin
 
 # Create a symlink to the maestro executable
 echo Creating symlink to maestro executable
-ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC  | echo Failed to create symlink to maestro executable, try running with sudo
+ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC | echo Failed to create symlink to maestro executable, try running with sudo

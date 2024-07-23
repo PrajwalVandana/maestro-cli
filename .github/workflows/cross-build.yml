@@ -14,12 +14,19 @@ jobs:
           spec: specs/maestro-windows.spec
           requirements: requirements.txt
           lfs: true
-          # options: --icon "data/icons/maestro_icon.ico"
+      - name: Install NSIS
+        run: |
+          choco install -y nsis
+      - name: Run NSIS
+        # run: |
+        #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
+        run: |
+          makensis install-scripts\windows.nsi
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
           name: maestro-windows
-          path: ${{ steps.pyinstaller.outputs.executable_path }}
+          path: install-scripts\maestro-installer.exe
   pyinstaller-build-mac-x86:
     runs-on: macos-12
     steps:
@@ -31,7 +38,12 @@ jobs:
           spec: specs/maestro-mac-x86.spec
           requirements: requirements.txt
           lfs: true
-          # options: --icon "data/icons/maestro_icon.icns"
+      - name: Read version from __version__.py
+        id: version
+        # read VERSION = "a.b.c" from __version__.py
+        run: |
+          VERSION=$(grep -oP "VERSION = \"\K[^\"]+" maestro/__version__.py)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Add install script
         run: |
           mkdir -p ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
@@ -46,7 +58,7 @@ jobs:
           root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
           scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
           identifier: com.maestro.maestro-cli
-          version: '1.1.1'
+          version: ${{ steps.version.outputs.version }}
           install-location: /usr/local/bin/maestro-bundle/
       - name: Rename .pkg
         run: |
@@ -67,7 +79,12 @@ jobs:
           spec: specs/maestro-mac-arm.spec
           requirements: requirements.txt
           lfs: true
-          # options: --icon "data/icons/maestro_icon.icns"
+      - name: Read version from __version__.py
+        id: version
+        # read VERSION = "a.b.c" from __version__.py
+        run: |
+          VERSION=$(grep -oP "VERSION = \"\K[^\"]+" maestro/__version__.py)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       - name: Add install script
         run: |
           mkdir -p ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
@@ -82,7 +99,7 @@ jobs:
           root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
           scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
           identifier: com.maestro.maestro-cli
-          version: '1.1.1'
+          version: ${{ steps.version.outputs.version }}
           install-location: /usr/local/bin/maestro-bundle/
       - name: Rename .pkg
         run: |

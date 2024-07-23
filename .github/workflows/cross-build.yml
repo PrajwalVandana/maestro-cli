@@ -7,12 +7,13 @@ jobs:
     runs-on: windows-latest
     steps:
       - name: Build executable
-        uses: sayyid5416/pyinstaller@v1
+        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
         id: pyinstaller
         with:
           python_ver: '3.12'
           spec: specs/maestro-windows.spec
           requirements: requirements.txt
+          lfs: true
           # options: --icon "data/icons/maestro_icon.ico"
       - name: Upload executable
         uses: actions/upload-artifact@v4
@@ -23,12 +24,13 @@ jobs:
     runs-on: macos-12
     steps:
       - name: Build executable
-        uses: sayyid5416/pyinstaller@v1
+        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
         id: pyinstaller
         with:
           python_ver: '3.12'
           spec: specs/maestro-mac-x86.spec
           requirements: requirements.txt
+          lfs: true
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Add install script
         run: |
@@ -58,12 +60,13 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Build executable
-        uses: sayyid5416/pyinstaller@v1
+        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
         id: pyinstaller
         with:
           python_ver: '3.12'
           spec: specs/maestro-mac-arm.spec
           requirements: requirements.txt
+          lfs: true
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Add install script
         run: |
@@ -93,12 +96,13 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - name: Build executable
-        uses: sayyid5416/pyinstaller@v1
+        uses: PrajwalVandana/pyinstaller@8ee5a57908128c4e6af6e18eb158ef6a1fad2f53
         id: pyinstaller
         with:
           python_ver: '3.12'
           spec: specs/maestro-ubuntu.spec
           requirements: requirements.txt
+          lfs: true
       - name: Add install script
         run: |
           mv install-scripts/ubuntu ${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro

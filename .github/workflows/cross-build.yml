@@ -17,11 +17,11 @@ jobs:
       - name: Install NSIS
         run: |
           choco install -y nsis
-      - name: Move executable to dist
-        run: |
-            if (-Not (Test-Path dist)) { New-Item -ItemType Directory -Path dist }
-            Move-Item "${{ steps.pyinstaller.outputs.executable_path }}/maestro" dist/maestro
-        shell: pwsh
+      # - name: Move executable to dist
+      #   run: |
+      #       if (-Not (Test-Path dist)) { New-Item -ItemType Directory -Path dist }
+      #       Move-Item "${{ steps.pyinstaller.outputs.executable_path }}/maestro" dist/maestro
+      #   shell: pwsh
       - name: Run NSIS
         # run: |
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi

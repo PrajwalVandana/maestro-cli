@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 
-datas = [('dependency_builds/windows/ffmpeg', '.')]
+datas = [('../dependency_builds/windows/ffmpeg', '.')]
 binaries = []
 hiddenimports = []
 tmp_ret = collect_all('ytmusicapi')

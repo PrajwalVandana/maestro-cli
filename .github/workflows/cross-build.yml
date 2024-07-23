@@ -26,7 +26,6 @@ jobs:
         # run: |
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
         run: |
-          echo %CD%
           dir dist/maestro
           makensis install-scripts/windows.nsi
       - name: Upload executable

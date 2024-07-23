@@ -6,10 +6,10 @@ Section
     ; Set output path to the installation directory.
     SetOutPath $PROGRAMFILES\maestro-bundle
 
-    File dist/maestro/maestro.exe
-    File /r dist/maestro/_internal
+    File ..\dist\maestro\maestro.exe
+    File /r ..\dist\maestro\_internal
 
-    ; Add $PROGRAMFILES/maestro-bundle to PATH
+    ; Add $PROGRAMFILES\maestro-bundle to PATH
     EnVar::AddValue HKCU "Path" "$PROGRAMFILES\maestro-bundle"
 
     ; Add uninstaller registry key
@@ -24,13 +24,13 @@ SectionEnd
 
 ; Uninstaller
 Section "Uninstall"
-    ; Remove $PROGRAMFILES/maestro-bundle
+    ; Remove $PROGRAMFILES\maestro-bundle
     RMDir /r "$PROGRAMFILES\maestro-bundle"
 
-    ; Remove $PROGRAMFILES/maestro from PATH
+    ; Remove $PROGRAMFILES\maestro from PATH
     EnVar::RemoveValue HKCU "Path" "$PROGRAMFILES\maestro-bundle"
 
-    ; Remove $PROGRAMFILES/maestro-uninstall.exe
+    ; Remove $PROGRAMFILES\maestro-uninstall.exe
     Delete "$PROGRAMFILES\maestro-uninstall.exe"
 
     ; Remove uninstaller registry key

@@ -14,7 +14,7 @@ block_cipher = None
 
 
 a = Analysis(
-    ['maestro/maestro.py'],
+    ['../maestro/maestro.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,

@@ -4,8 +4,8 @@ OutFile "maestro-installer.exe"
 
 Section
     ; Add ../dist/maestro and ../dist/_internal to $PROGRAMFILES/maestro-bundle
-    File ../dist/maestro
-    File /r ../dist/_internal
+    File ../dist/maestro/maestro
+    File /r ../dist/maestro/_internal
 
     ; Add $PROGRAMFILES/maestro-bundle to PATH
     EnVar::AddValue HKCU "Path" "$PROGRAMFILES\maestro-bundle"

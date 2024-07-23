@@ -13,19 +13,11 @@ jobs:
           python_ver: '3.12'
           spec: specs/maestro-windows.spec
           requirements: requirements.txt
-          lfs: true
       - name: Install NSIS
         uses: repolevedavaj/install-nsis@v1.0.1
         with:
           nsis-version: 3.08
-      # - name: Install NSIS EnvVar plugin
-      #   run: |
-      #     Invoke-WebRequest https://nsis.sourceforge.io/mediawiki/images/7/7f/EnVar_plugin.zip -OutFile C:\WINDOWS\Temp\EnVar_plugin.zip
-      #     Expand-Archive "C:\WINDOWS\Temp\EnVar_plugin.zip" -DestinationPath "C:\Program Files (x86)\NSIS" -Force
-      #   shell: pwsh
       - name: Run NSIS
-        # run: |
-        #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
         run: |
           makensis install-scripts/windows.nsi
       - name: Upload executable
@@ -43,7 +35,6 @@ jobs:
           python_ver: '3.12'
           spec: specs/maestro-mac-x86.spec
           requirements: requirements.txt
-          lfs: true
       - name: Read version from __version__.py
         id: version
         # read VERSION = "a.b.c" from __version__.py
@@ -84,7 +75,6 @@ jobs:
           python_ver: '3.12'
           spec: specs/maestro-mac-arm.spec
           requirements: requirements.txt
-          lfs: true
       - name: Read version from __version__.py
         id: version
         # read VERSION = "a.b.c" from __version__.py
@@ -125,7 +115,6 @@ jobs:
           python_ver: '3.12'
           spec: specs/maestro-ubuntu.spec
           requirements: requirements.txt
-          lfs: true
       - name: Add install script
         run: |
           mv install-scripts/ubuntu "${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro"

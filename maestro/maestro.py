@@ -1005,7 +1005,6 @@ def add(
                         "--headless",
                         "--ffmpeg",
                         helpers.FFMPEG_PATH,
-                        # "fake",  # DEBUG
                     ],
                 )
             except FFmpegError:

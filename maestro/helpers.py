@@ -30,12 +30,14 @@ FFMPEG_PATH = which("ffmpeg")
 if FFMPEG_PATH is None:
     print_to_logfile("FFmpeg not found. Please install FFmpeg.")
     FFMPEG_PATH = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "ffmpeg")
+        os.path.join(os.path.dirname(__file__), "../ffmpeg")
     )
 
-# DEBUG
-FFMPEG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "ffmpeg"))
+FFMPEG_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "../ffmpeg")
+)  # DEBUG
 print_to_logfile("FFMPEG_PATH:", FFMPEG_PATH)
+
 
 def is_safe_username(url):
     return quote(url, safe="") == url if url else False

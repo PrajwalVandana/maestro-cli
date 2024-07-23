@@ -14,7 +14,7 @@ import music_tag
 import requests
 
 from getpass import getpass
-from shutil import copy, move
+from shutil import copy, move, which
 from random import randint
 from time import sleep, time
 from urllib.parse import quote, quote_plus
@@ -24,6 +24,11 @@ from maestro.config import print_to_logfile
 
 # endregion
 
+
+# check if ffmpeg is installed without try/except
+FFMPEG_PATH = which("ffmpeg")
+if FFMPEG_PATH is None:
+    FFMPEG_PATH = "./ffmpeg"
 
 def is_safe_username(url):
     return quote(url, safe="") == url if url else False
@@ -114,7 +119,7 @@ class FFmpegProcessHandler:
         self.process = subprocess.Popen(
             # fmt: off
             [
-                "ffmpeg",
+                FFMPEG_PATH,
                 "-re",  # Read input at native frame rate
                 "-f", "s16le",  # Raw PCM 16-bit little-endian audio
                 "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate

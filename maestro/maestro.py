@@ -1000,6 +1000,8 @@ def add(
                     "--format",
                     format_,
                     "--headless",
+                    "--ffmpeg",
+                    helpers.FFMPEG_PATH,
                 ],
             )
 

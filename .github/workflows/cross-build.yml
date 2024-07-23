@@ -19,7 +19,7 @@ jobs:
         with:
           name: maestro-windows
           path: ${{ steps.pyinstaller.outputs.executable_path }}
-  pyinstaller-build-mac:
+  pyinstaller-build-mac-x86:
     runs-on: macos-12
     steps:
       - name: Build executable
@@ -28,6 +28,41 @@ jobs:
         with:
           python_ver: '3.12'
           spec: maestro.spec
+          requirements: requirements.txt
+          # options: --icon "data/icons/maestro_icon.icns"
+      - name: Add install script
+        run: |
+          mkdir -p ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
+          mv install-scripts/mac ${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall
+      - name: Create .pkg
+        id: pkgbuild
+        # main branch
+        # uses: PrajwalVandana/generate-mac-installer-github-action@fd5c2a03cfc2be65e32095573392ed03423a4208
+        # dev branch
+        uses: PrajwalVandana/generate-mac-installer-github-action@9d0c29930827283cce48688cb2154b47c92a4042
+        with:
+          root-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/maestro
+          scripts-directory:  ${{ steps.pyinstaller.outputs.executable_path }}/Scripts
+          identifier: com.maestro.maestro-cli
+          version: '1.1.1'
+          install-location: /usr/local/bin/maestro-bundle/
+      - name: Rename .pkg
+        run: |
+          mv ${{ steps.pkgbuild.outputs.output-path }} ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+      - name: Upload .pkg
+        uses: actions/upload-artifact@v4
+        with:
+          name: maestro-mac
+          path: ${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg
+  pyinstaller-build-mac-arm:
+    runs-on: macos-latest
+    steps:
+      - name: Build executable
+        uses: sayyid5416/pyinstaller@v1
+        id: pyinstaller
+        with:
+          python_ver: '3.12'
+          spec: maestro-m1.spec
           requirements: requirements.txt
           # options: --icon "data/icons/maestro_icon.icns"
       - name: Add install script

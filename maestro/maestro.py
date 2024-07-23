@@ -800,10 +800,11 @@ def cli():
         move(config.LOGFILE, backup_path)
 
     # delete old log files
-    for file in os.listdir(config.OLD_LOG_DIR):
-        if file.endswith(".log"):
-            if t - int(file.split(".")[0].split("-")[1]) > 24 * 60 * 60:
-                os.remove(os.path.join(config.OLD_LOG_DIR, file))
+    if os.path.exists(config.OLD_LOG_DIR):
+        for file in os.listdir(config.OLD_LOG_DIR):
+            if file.endswith(".log"):
+                if t - int(file.split(".")[0].split("-")[1]) > 24 * 60 * 60:
+                    os.remove(os.path.join(config.OLD_LOG_DIR, file))
 
 
 @cli.command()

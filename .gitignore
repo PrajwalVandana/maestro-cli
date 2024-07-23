@@ -16,3 +16,4 @@ song_info.txt
 sound_vis_cache/
 gui_helper.py
 **/*.spotdl
+dist/**

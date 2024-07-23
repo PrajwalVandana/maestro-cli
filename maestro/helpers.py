@@ -28,7 +28,14 @@ from maestro.config import print_to_logfile
 # check if ffmpeg is installed without try/except
 FFMPEG_PATH = which("ffmpeg")
 if FFMPEG_PATH is None:
-    FFMPEG_PATH = "./ffmpeg"
+    print_to_logfile("FFmpeg not found. Please install FFmpeg.")
+    FFMPEG_PATH = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "ffmpeg")
+    )
+
+# DEBUG
+FFMPEG_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), "ffmpeg"))
+print_to_logfile("FFMPEG_PATH:", FFMPEG_PATH)
 
 def is_safe_username(url):
     return quote(url, safe="") == url if url else False
@@ -579,11 +586,14 @@ class PlaybackHandler:
 
     def update_mac_now_playing_metadata(self):
         from maestro.icon import img as default_artwork
+
         if self.can_mac_now_playing:
             self.mac_now_playing.paused = False
             self.mac_now_playing.pos = 0
             self.mac_now_playing.length = self.duration
-            self.mac_now_playing.cover = self.img_data if self.img_data else default_artwork
+            self.mac_now_playing.cover = (
+                self.img_data if self.img_data else default_artwork
+            )
 
             multiprocessing_put_word(
                 self.mac_now_playing.title_queue,

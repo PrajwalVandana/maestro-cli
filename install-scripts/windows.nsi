@@ -15,8 +15,8 @@ Section
     EnVar::AddValue HKCU "Path" "$PROGRAMFILES64\maestro-bundle"
 
     ; Add uninstaller registry key
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$PRODUCT_NAME" "DisplayName" "$PRODUCT_NAME"
-    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$PRODUCT_NAME" "UninstallString" "$PROGRAMFILES64\maestro-uninstall.exe"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
+    WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "UninstallString" "$PROGRAMFILES64\maestro-uninstall.exe"
 SectionEnd
 
 Section -Post
@@ -30,11 +30,11 @@ Section "Uninstall"
     RMDir /r "$PROGRAMFILES64\maestro-bundle"
 
     ; Remove $PROGRAMFILES64\maestro from PATH
-    EnVar::RemoveValue HKCU "Path" "$PROGRAMFILES64\maestro-bundle"
+    EnVar::DeleteValue HKCU "Path" "$PROGRAMFILES64\maestro-bundle"
 
     ; Remove $PROGRAMFILES64\maestro-uninstall.exe
     Delete "$PROGRAMFILES64\maestro-uninstall.exe"
 
     ; Remove uninstaller registry key
-    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\$PRODUCT_NAME"
+    DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 SectionEnd

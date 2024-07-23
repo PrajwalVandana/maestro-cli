@@ -27,6 +27,8 @@ jobs:
         #   "C:\Program Files\NSIS\makensis.exe" install-scripts\windows.nsi
         run: |
           makensis install-scripts/windows.nsi
+        with:
+          working-directory: ${{ steps.pyinstaller.outputs.executable_path }}
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:

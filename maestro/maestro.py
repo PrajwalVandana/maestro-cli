@@ -967,6 +967,7 @@ def add(
                             config.MAESTRO_DIR, "%(title)s.%(ext)s"
                         )
                     },
+                    "ffmpeg_location": helpers.FFMPEG_PATH,
                 }
             ) as ydl:
                 info = ydl.extract_info(path_, download=True)
@@ -1003,8 +1004,6 @@ def add(
                         "--format",
                         format_,
                         "--headless",
-                        "--ffmpeg",
-                        helpers.FFMPEG_PATH,
                     ],
                 )
             except FFmpegError:

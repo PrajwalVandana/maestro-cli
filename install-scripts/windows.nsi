@@ -1,18 +1,18 @@
-; !include "EnVar.nsh"
-
 !define PRODUCT_NAME "maestro-cli"
 
 OutFile "maestro-installer.exe"
 
 Section
-    ; Set output path to the installation directory.
+    ; Set installation directory
     SetOutPath $PROGRAMFILES64\maestro-bundle
 
+    ; Add files to installation directory
     File ..\dist\maestro\maestro.exe
     File /r ..\dist\maestro\_internal
 
     ; Add $PROGRAMFILES64\maestro-bundle to PATH
-    EnVar::AddValue HKCU "Path" "$PROGRAMFILES64\maestro-bundle"
+    EnVar::SetHKCU
+    EnVar::AddValue "Path" "$PROGRAMFILES64\maestro-bundle"
 
     ; Add uninstaller registry key
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}" "DisplayName" "${PRODUCT_NAME}"
@@ -20,21 +20,20 @@ Section
 SectionEnd
 
 Section -Post
-    ; Write uninstaller
     WriteUninstaller "$PROGRAMFILES64\maestro-uninstall.exe"
 SectionEnd
 
-; Uninstaller
 Section "Uninstall"
     ; Remove $PROGRAMFILES64\maestro-bundle
     RMDir /r "$PROGRAMFILES64\maestro-bundle"
 
-    ; Remove $PROGRAMFILES64\maestro from PATH
-    EnVar::DeleteValue HKCU "Path" "$PROGRAMFILES64\maestro-bundle"
-
-    ; Remove $PROGRAMFILES64\maestro-uninstall.exe
-    Delete "$PROGRAMFILES64\maestro-uninstall.exe"
+    ; Remove $PROGRAMFILES64\maestro-bundle from PATH
+    EnVar::SetHKCU
+    EnVar::DeleteValue "Path" "$PROGRAMFILES64\maestro-bundle"
 
     ; Remove uninstaller registry key
     DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
+
+    ; Remove uninstaller
+    Delete "$PROGRAMFILES64\maestro-uninstall.exe"
 SectionEnd

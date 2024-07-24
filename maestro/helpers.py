@@ -776,7 +776,7 @@ class PlaybackHandler:
             if self.username:
                 long_stream_message = (
                     prefix
-                    + f"Streaming at {config.MAESTRO_SITE}/listen/{self.username}!"
+                    + f"Streaming at {config.MAESTRO_SITE}/listen/{self.username}"
                 )
                 short_stream_message = prefix + f"Streaming as {self.username}!"
                 if (

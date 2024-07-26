@@ -14,8 +14,8 @@ import music_tag
 import requests
 
 from getpass import getpass
-from shutil import copy, move
 from random import randint
+from shutil import copy, move
 from time import sleep, time
 from urllib.parse import quote, quote_plus
 

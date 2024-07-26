@@ -9,8 +9,8 @@ import threading
 import click
 import keyring
 import keyring.errors
-import requests
 import music_tag
+import requests
 
 from collections import defaultdict
 from queue import Queue

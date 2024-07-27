@@ -2774,5 +2774,7 @@ def download_ffmpeg():
     spotdl_download_ffmpeg()
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
+    # check if frozen
+    if getattr(sys, "frozen", False):
+        multiprocessing.freeze_support()
     cli()

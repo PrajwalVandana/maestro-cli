@@ -20,7 +20,7 @@ jobs:
       - name: Run NSIS and zip dist
         run: |
           makensis install-scripts/windows.nsi
-          zip -r "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          Compress-Archive -Path "${{ steps.pyinstaller.outputs.executable_path }}/maestro/*" -Destination "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip"
       # - name: Upload installer as artifact
       #   uses: actions/upload-artifact@v4
       #   with:

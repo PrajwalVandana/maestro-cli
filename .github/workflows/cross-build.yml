@@ -20,7 +20,7 @@ jobs:
       - name: Run NSIS and zip dist
         run: |
           makensis install-scripts/windows.nsi
-          Compress-Archive -Path "${{ steps.pyinstaller.outputs.executable_path }}/maestro/*" -Destination "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip"
+          Compress-Archive -Path "${{ steps.pyinstaller.outputs.executable_path }}/maestro/*" -Destination "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows.zip"
       # - name: Upload installer as artifact
       #   uses: actions/upload-artifact@v4
       #   with:
@@ -36,7 +36,7 @@ jobs:
         with:
           files: |
             install-scripts/maestro-installer.exe
-            ${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip
+            ${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows.zip
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
@@ -78,7 +78,7 @@ jobs:
       - name: Rename .pkg, compress dist
         run: |
           mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
-          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon-dist' || 'maestro-cli-mac-intel-dist' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       # - name: Upload .pkg
       #   uses: actions/upload-artifact@v4
       #   with:
@@ -94,7 +94,7 @@ jobs:
         with:
           files: |
             ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg
-            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon-dist' || 'maestro-cli-mac-intel-dist' }}.tar.gz
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true

@@ -7,6 +7,6 @@ from maestro.maestro import cli
 
 if __name__ == "__main__":
     # check if frozen
-    if getattr(sys, "frozen", False):
+    if getattr(sys, "frozen", default=False):
         freeze_support()
     cli()

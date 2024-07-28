@@ -2775,6 +2775,6 @@ def download_ffmpeg():
 
 if __name__ == "__main__":
     # check if frozen
-    if getattr(sys, "frozen", False):
+    if getattr(sys, "frozen", default=False):
         multiprocessing.freeze_support()
     cli()

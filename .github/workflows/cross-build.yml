@@ -20,18 +20,30 @@ jobs:
       - name: Run NSIS
         run: |
           makensis install-scripts/windows.nsi
-      - name: Upload installer
-        uses: actions/upload-artifact@v4
+      # - name: Upload installer as artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: maestro-windows
+      #     path: install-scripts/maestro-installer.exe
+      # - name: Upload executable as artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: maestro-windows-dist
+      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: maestro-windows
-          path: install-scripts/maestro-installer.exe
-      - name: Upload executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: maestro-windows-dist
-          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
-  pyinstaller-build-mac-x86:
-    runs-on: macos-12
+          files: |
+            install-scripts/maestro-installer.exe
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: true
+  pyinstaller-build-mac:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-12, macos-latest]
     steps:
       - name: Build executable
         uses: PrajwalVandana/pyinstaller@c7c491de8409921df7045f681695d4d5ab71a4e0
@@ -65,61 +77,25 @@ jobs:
       - name: Rename .pkg
         run: |
           mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-      - name: Upload .pkg
-        uses: actions/upload-artifact@v4
+      # - name: Upload .pkg
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ matrix.os == 'macos-12' && 'maestro-mac-apple-silicon' || 'maestro-mac-intel' }}
+      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
+      # - name: Upload executable
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ matrix.os == 'macos-12' && 'maestro-mac-apple-silicon-dist' || 'maestro-mac-intel-dist' }}
+      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: maestro-mac-intel
-          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-      - name: Upload executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: maestro-mac-intel-dist
-          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
-  pyinstaller-build-mac-arm:
-    runs-on: macos-latest
-    steps:
-      - name: Build executable
-        uses: PrajwalVandana/pyinstaller@c7c491de8409921df7045f681695d4d5ab71a4e0
-        id: pyinstaller
-        with:
-          python_ver: '3.12'
-          spec: specs/maestro-mac-arm.spec
-          requirements: requirements.txt
-      - name: Read version from __version__.py
-        id: version
-        # read VERSION = "a.b.c" from __version__.py
-        run: |
-          VERSION=$(sed -n 's/VERSION = "\([^"]*\)"/\1/p' maestro/__version__.py)
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-      - name: Add install script
-        run: |
-          mkdir -p "${{ steps.pyinstaller.outputs.executable_path }}/Scripts"
-          mv install-scripts/mac "${{ steps.pyinstaller.outputs.executable_path }}/Scripts/postinstall"
-      - name: Create .pkg
-        id: pkgbuild
-        # main branch
-        # uses: PrajwalVandana/generate-mac-installer-github-action@fd5c2a03cfc2be65e32095573392ed03423a4208
-        # dev branch
-        uses: PrajwalVandana/generate-mac-installer-github-action@9d0c29930827283cce48688cb2154b47c92a4042
-        with:
-          root-directory:  "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
-          scripts-directory:  "${{ steps.pyinstaller.outputs.executable_path }}/Scripts"
-          identifier: com.maestro.maestro-cli
-          version: ${{ steps.version.outputs.version }}
-          install-location: /usr/local/bin/maestro-bundle/
-      - name: Rename .pkg
-        run: |
-          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-      - name: Upload .pkg
-        uses: actions/upload-artifact@v4
-        with:
-          name: maestro-mac-apple-silicon
-          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-      - name: Upload executable
-        uses: actions/upload-artifact@v4
-        with:
-          name: maestro-mac-apple-silicon-dist
-          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          files: |
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: true
   pyinstaller-build-linux:
     runs-on: ubuntu-20.04
     steps:
@@ -133,8 +109,17 @@ jobs:
       - name: Add install script
         run: |
           mv install-scripts/ubuntu "${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro"
-      - name: Upload executable
-        uses: actions/upload-artifact@v4
+      # - name: Upload executable
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: maestro-ubuntu
+      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
         with:
-          name: maestro-ubuntu
-          path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          files: |
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          token: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          prerelease: true

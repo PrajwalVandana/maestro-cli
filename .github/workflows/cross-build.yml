@@ -17,9 +17,10 @@ jobs:
         uses: repolevedavaj/install-nsis@v1.0.2
         with:
           nsis-version: 3.08
-      - name: Run NSIS
+      - name: Run NSIS and zip dist
         run: |
           makensis install-scripts/windows.nsi
+          zip -r "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       # - name: Upload installer as artifact
       #   uses: actions/upload-artifact@v4
       #   with:
@@ -35,7 +36,7 @@ jobs:
         with:
           files: |
             install-scripts/maestro-installer.exe
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip"
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
@@ -74,9 +75,10 @@ jobs:
           identifier: com.maestro.maestro-cli
           version: ${{ steps.version.outputs.version }}
           install-location: /usr/local/bin/maestro-bundle/
-      - name: Rename .pkg
+      - name: Rename .pkg, compress dist
         run: |
-          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
+          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
+          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon-dist' || 'maestro-cli-mac-intel-dist' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       # - name: Upload .pkg
       #   uses: actions/upload-artifact@v4
       #   with:
@@ -91,8 +93,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+            "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
+            "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon-dist' || 'maestro-cli-mac-intel-dist' }}.tar.gz"
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
@@ -106,9 +108,10 @@ jobs:
           python_ver: '3.12'
           spec: specs/maestro-ubuntu.spec
           requirements: requirements.txt
-      - name: Add install script
+      - name: Add install script and compress
         run: |
           mv install-scripts/ubuntu "${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro"
+          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/maestro-ubuntu.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       # - name: Upload executable
       #   uses: actions/upload-artifact@v4
       #   with:
@@ -118,8 +121,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-ubuntu.tar.gz"
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true

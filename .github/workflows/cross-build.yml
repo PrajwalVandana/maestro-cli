@@ -36,7 +36,7 @@ jobs:
         with:
           files: |
             install-scripts/maestro-installer.exe
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip"
+            ${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows-dist.zip
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
@@ -93,8 +93,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
-            "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon-dist' || 'maestro-cli-mac-intel-dist' }}.tar.gz"
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon-dist' || 'maestro-cli-mac-intel-dist' }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
@@ -121,7 +121,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            "${{ steps.pyinstaller.outputs.executable_path }}/maestro-ubuntu.tar.gz"
+            ${{ steps.pyinstaller.outputs.executable_path }}/maestro-ubuntu.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true

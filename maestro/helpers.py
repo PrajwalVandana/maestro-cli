@@ -1226,6 +1226,24 @@ def init_curses(stdscr):
         pass
 
 
+def create_stats_files():
+    if not os.path.exists(config.STATS_DIR):
+        os.makedirs(config.STATS_DIR)
+    if not os.path.exists(config.TOTAL_STATS_PATH):
+        with (
+            open(config.TOTAL_STATS_PATH, "w", encoding="utf-8") as f,
+            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
+        ):
+            for line in g:
+                f.write(f"{line.strip().split('|')[0]}|0\n")
+    if not os.path.exists(config.CUR_YEAR_STATS_PATH):
+        with (
+            open(config.CUR_YEAR_STATS_PATH, "w", encoding="utf-8") as f,
+            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
+        ):
+            for line in g:
+                f.write(f"{line.strip().split('|')[0]}|0\n")
+
 class SongParamType(click.ParamType):
     name = "song"
 
@@ -1292,10 +1310,6 @@ def embed_artwork(yt_dlp_info):
     m = music_tag.load_file(yt_dlp_info["requested_downloads"][0]["filepath"])
     m["artwork"] = image_data
     m.save()
-
-
-def discord_join_event_handler(arg):
-    print_to_logfile("Join event:", arg)
 
 
 def add_song(

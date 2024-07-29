@@ -73,6 +73,8 @@ def _play(
     else:
         next_playlist = None
 
+    helpers.create_stats_files()
+
     player = helpers.PlaybackHandler(
         stdscr,
         playlist,
@@ -725,12 +727,17 @@ def _play(
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 def cli():
     """A command line interface for playing music."""
-
+    # ~/.maestro-files
     if not os.path.exists(config.MAESTRO_DIR):
         os.makedirs(config.MAESTRO_DIR)
 
-    update_settings = False
+    # ~/.maestro-files/songs.txt
+    if not os.path.exists(config.SONGS_INFO_PATH):
+        with open(config.SONGS_INFO_PATH, "x", encoding="utf-8") as _:
+            pass
+
     # ensure config.SETTINGS has all settings
+    update_settings = False
     if not os.path.exists(config.SETTINGS_FILE):
         config.SETTINGS = config.DEFAULT_SETTINGS
         update_settings = True
@@ -743,49 +750,9 @@ def cli():
                 config.SETTINGS[key] = config.DEFAULT_SETTINGS[key]
                 update_settings = True
 
+    # ~/.maestro-files/songs
     if not os.path.exists(config.SETTINGS["song_directory"]):
         os.makedirs(config.SETTINGS["song_directory"])
-
-    if not os.path.exists(config.SONGS_INFO_PATH):
-        with open(config.SONGS_INFO_PATH, "x", encoding="utf-8") as _:
-            pass
-
-    if not os.path.exists(config.STATS_DIR):
-        os.makedirs(config.STATS_DIR)
-    if not os.path.exists(config.TOTAL_STATS_PATH):
-        with (
-            open(config.TOTAL_STATS_PATH, "w", encoding="utf-8") as f,
-            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
-        ):
-            for line in g:
-                f.write(f"{line.strip().split('|')[0]}|0\n")
-    if not os.path.exists(config.CUR_YEAR_STATS_PATH):
-        with (
-            open(config.CUR_YEAR_STATS_PATH, "w", encoding="utf-8") as f,
-            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
-        ):
-            for line in g:
-                f.write(f"{line.strip().split('|')[0]}|0\n")
-
-    t = time()
-    if t - config.SETTINGS["last_version_sync"] > 24 * 60 * 60:  # 1 day
-        config.SETTINGS["last_version_sync"] = t
-        try:
-            import requests
-
-            response = requests.get(
-                "https://pypi.org/pypi/maestro-music/json", timeout=5
-            )
-            latest_version = response.json()["info"]["version"]
-            if helpers.versiontuple(latest_version) > helpers.versiontuple(
-                VERSION
-            ):
-                click.secho(
-                    f"A new version of maestro is available. Run 'pip install --upgrade maestro-music' to update to version {latest_version}.",
-                    fg="yellow",
-                )
-        except Exception as e:
-            print_to_logfile("Failed to check for updates:", e)
 
     # ensure config.SETTINGS_FILE is up to date
     if update_settings:
@@ -793,6 +760,7 @@ def cli():
             json.dump(config.SETTINGS, g)
 
     # ensure config.LOGFILE is not too large
+    t = time()
     if os.path.exists(config.LOGFILE) and os.path.getsize(config.LOGFILE) > 1e6:
         # move to backup
         backup_path = os.path.join(config.OLD_LOG_DIR, f"maestro-{int(t)}.log")
@@ -1253,11 +1221,11 @@ def remove(args, force, tag):
         with open(config.SONGS_INFO_PATH, "w", encoding="utf-8") as songs_file:
             songs_file.write("\n".join(lines))
 
-        for stats_file in os.listdir(config.STATS_DIR):  # delete stats
-            if not stats_file.endswith(".txt"):
+        for stats_fname in os.listdir(config.STATS_DIR):  # delete stats
+            if not stats_fname.endswith(".txt"):
                 continue
 
-            stats_path = os.path.join(config.STATS_DIR, stats_file)
+            stats_path = os.path.join(config.STATS_DIR, stats_fname)
             with open(stats_path, "r", encoding="utf-8") as stats_file:
                 stats_lines = stats_file.read().splitlines()
 
@@ -2015,9 +1983,10 @@ def list_(
 
     import music_tag
 
+    helpers.create_stats_files()
+
     if search_tags:
         search_tags = set(search_tags)
-
     if exclude_tags:
         exclude_tags = set(exclude_tags)
 
@@ -2234,6 +2203,8 @@ def entry(songs, year, song_info):
                 return
             stats_path = os.path.join(config.STATS_DIR, f"{year}.txt")
 
+    helpers.create_stats_files()
+
     try:
         with (
             open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file,
@@ -2279,11 +2250,13 @@ def entry(songs, year, song_info):
                     song_ids.remove(song_id)
     except FileNotFoundError:
         click.secho(f"No stats found for year {year}.", fg="red")
+        return
 
     if song_ids:
         song_ids = [str(id_) for id_ in song_ids]
         click.secho(
-            f"No songs found with IDs: {', '.join(song_ids)}.", fg="red"
+            f"Could not find {helpers.pluralize(len(song_ids), "song")} with {helpers.pluralize(len(song_ids), "ID", False)}: {', '.join(song_ids)}.",
+            fg="red",
         )
 
 

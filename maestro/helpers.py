@@ -9,8 +9,6 @@ import threading
 logging.disable(logging.CRITICAL)
 
 import click
-import music_tag
-import requests
 
 from getpass import getpass
 from random import randint
@@ -509,8 +507,9 @@ class PlaybackHandler:
     def update_discord_metadata(self):
         if self.discord_updating:
             return
-        self.discord_updating = True
         if self.can_update_discord and self.update_discord:
+            self.discord_updating = True
+
             t = time()
             if self.discord_last_update + 15 > t:
                 sleep(15 - (t - self.discord_last_update))
@@ -559,7 +558,6 @@ class PlaybackHandler:
                 try:
                     self.discord_rpc.set_activity(**d)
                     self.discord_last_update = time()
-                    self.discord_updating = False
                 except Exception as e:  # pylint: disable=bare-except
                     print_to_logfile("Discord update error:", e)
                     song_name, artist_name, album_name = "", "", ""
@@ -567,11 +565,13 @@ class PlaybackHandler:
                     try:
                         self.discord_rpc = self.connect_to_discord()
                         self.discord_connected = 1
+                        self.discord_updating = False
                         self.update_discord_metadata()
                     except Exception as err:
                         print_to_logfile("Discord connection error:", err)
                         self.discord_connected = 0
-                        self.discord_updating = False
+                finally:
+                    self.discord_updating = False
 
     def update_mac_now_playing_metadata(self):
         from maestro.icon import img as default_artwork
@@ -596,6 +596,8 @@ class PlaybackHandler:
             self.update_now_playing = True
 
     def _update_icecast_metadata(self):
+        import requests
+
         # self.break_stream_loop = True
         return requests.post(
             config.UPDATE_METADATA_URL,
@@ -638,6 +640,8 @@ class PlaybackHandler:
         ).start()
 
     def update_stream_metadata(self):
+        import requests
+
         self.break_stream_loop = True
         if self.discord_connected or self.stream:
             if not requests.post(
@@ -665,6 +669,8 @@ class PlaybackHandler:
             self.threaded_update_icecast_metadata()
 
     def update_metadata(self):
+        import music_tag
+
         def f():
             song_data = music_tag.load_file(self.song_path)
             self.img_data = (
@@ -1253,6 +1259,9 @@ SONG = SongParamType()
 
 
 def embed_artwork(yt_dlp_info):
+    import music_tag
+    import requests
+
     yt_dlp_info["thumbnails"].sort(key=lambda d: d["preference"])
     best_thumbnail = yt_dlp_info["thumbnails"][-1]  # default thumbnail
 
@@ -1301,6 +1310,8 @@ def add_song(
     clip_end,
     skip_dupes,
 ):
+    import music_tag
+
     song_fname = os.path.split(path)[1]
     if "|" in song_fname:
         song_fname = song_fname.replace("|", "-")
@@ -1661,6 +1672,8 @@ def signup(username=None, password=None, login_=True):
         )
         return
 
+    import requests
+
     response = requests.get(
         config.USER_EXISTS_URL, params={"user": username}, timeout=5
     )
@@ -1717,6 +1730,8 @@ def login(username=None, password=None):
             f"Logging in as user '{username}' will log out current user '{current_username}'.",
             fg="yellow",
         )
+
+    import requests
 
     if password is None:
         password = getpass("Password:")
@@ -1876,6 +1891,8 @@ def print_entry(entry_list, highlight=None, show_song_info=False):
         click.echo()  # newline
 
     if show_song_info:
+        import music_tag
+
         song_data = music_tag.load_file(
             os.path.join(config.SETTINGS["song_directory"], fname)
         )

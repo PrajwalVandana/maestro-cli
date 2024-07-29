@@ -7,8 +7,6 @@ import sys
 import threading
 
 import click
-import music_tag
-import requests
 
 from collections import defaultdict
 from queue import Queue
@@ -497,6 +495,8 @@ def _play(
                                         for line in songs_file:
                                             details = line.strip().split("|")
                                             if int(details[0]) == song_id:
+                                                import music_tag
+
                                                 song_data = music_tag.load_file(
                                                     os.path.join(
                                                         config.SETTINGS["song_directory"],
@@ -771,6 +771,8 @@ def cli():
     if t - config.SETTINGS["last_version_sync"] > 24 * 60 * 60:  # 1 day
         config.SETTINGS["last_version_sync"] = t
         try:
+            import requests
+
             response = requests.get(
                 "https://pypi.org/pypi/maestro-music/json", timeout=5
             )
@@ -1066,6 +1068,8 @@ def add(
                 "Cannot pass '-n/--name' option when adding multiple songs.",
                 fg="yellow",
             )
+
+    import music_tag
 
     if len(paths) == 1 and name is not None:  # renaming
         ext = os.path.splitext(paths[0])[1].lower()
@@ -1582,6 +1586,8 @@ def play(
 
     For the color vision deficient, both modes also have indicators in the status bar.
     """
+    import music_tag
+
     playlist = []
     songs_not_found = []
     exclude_tags = set(exclude_tags)
@@ -1776,6 +1782,8 @@ def rename(original, new_name, renaming_tag):
                         fg="red",
                     )
                     return
+
+                import music_tag
 
                 m = music_tag.load_file(full_song_path)
                 m["tracktitle"] = new_name
@@ -2005,6 +2013,8 @@ def list_(
                 click.secho(f"No stats found for year {year}.", fg="red")
                 return
 
+    import music_tag
+
     if search_tags:
         search_tags = set(search_tags)
 
@@ -2208,6 +2218,8 @@ def entry(songs, year, song_info):
         ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
         artist - album (album artist), unless -nI/--no-artist-info is passed
     """
+    import music_tag
+
     song_ids = set(songs)
 
     if year is None:
@@ -2465,6 +2477,8 @@ def clip_(song, start, end, editor):
                 return
             editor = False
 
+        import music_tag
+
         song_path = os.path.join(config.SETTINGS["song_directory"], song_name)
         duration = music_tag.load_file(song_path)["#length"].value
 
@@ -2608,6 +2622,8 @@ def metadata(songs, pairs):
             return
 
         click.secho(f"Valid pairs: {valid_pairs}", fg="green")
+
+    import music_tag
 
     with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as songs_file:
         lines = songs_file.readlines()

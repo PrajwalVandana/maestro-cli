@@ -114,7 +114,9 @@ WAVEFORM_FLATTEN_FACTOR = 20
 STREAM_SAMPLE_RATE = 44100
 STREAM_CHUNK_SIZE = 256
 
-ICECAST_SERVER = "maestro-icecast.eastus2.cloudapp.azure.com"  # Azure-hosted Icecast server
+ICECAST_SERVER = (
+    "maestro-icecast.eastus2.cloudapp.azure.com"  # Azure-hosted Icecast server
+)
 
 MAESTRO_SITE = "https://maestro-music.vercel.app"
 IMAGE_URL = f"{MAESTRO_SITE}/api/get_artwork/"
@@ -132,6 +134,7 @@ UPDATE_TIMESTAMP_URL = urljoin(AUTH_SERVER, "update_timestamp")
 # endregion
 
 # endregion
+
 
 def print_to_logfile(*args, **kwargs):
     if "file" in kwargs:

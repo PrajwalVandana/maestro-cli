@@ -9,7 +9,6 @@ import threading
 logging.disable(logging.CRITICAL)
 
 import click
-import keyring
 import music_tag
 import requests
 
@@ -19,16 +18,10 @@ from shutil import copy, move
 from time import sleep, time
 from urllib.parse import quote, quote_plus
 
-from spotdl.utils.ffmpeg import get_ffmpeg_path
-
 from maestro import config
 from maestro.config import print_to_logfile
 
 # endregion
-
-
-# check if ffmpeg is installed without try/except
-FFMPEG_PATH = str(get_ffmpeg_path())
 
 
 def is_safe_username(url):
@@ -117,10 +110,12 @@ class FFmpegProcessHandler:
         self.password = password
 
     def start(self):
+        from spotdl.utils.ffmpeg import get_ffmpeg_path
+
         self.process = subprocess.Popen(
             # fmt: off
             [
-                FFMPEG_PATH,
+                str(get_ffmpeg_path()),
                 "-re",  # Read input at native frame rate
                 "-f", "s16le",  # Raw PCM 16-bit little-endian audio
                 "-ar", str(config.STREAM_SAMPLE_RATE),  # Set the audio sample rate
@@ -1641,10 +1636,14 @@ def clip_editor_output(
 
 
 def get_username():
+    import keyring
+
     return keyring.get_password("maestro-music", "username")
 
 
 def get_password():
+    import keyring
+
     return keyring.get_password("maestro-music", "password")
 
 
@@ -1706,6 +1705,8 @@ def login(username=None, password=None):
             fg="red",
         )
         return
+
+    import keyring
 
     current_username = keyring.get_password("maestro-music", "username")
     if current_username == username:

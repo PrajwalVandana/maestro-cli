@@ -7,8 +7,6 @@ import sys
 import threading
 
 import click
-import keyring
-import keyring.errors
 import music_tag
 import requests
 
@@ -18,12 +16,10 @@ from random import randint
 from shutil import move, copy, rmtree
 from time import sleep, time
 
-from spotdl.utils.ffmpeg import FFmpegError, download_ffmpeg as spotdl_download_ffmpeg
-
 from maestro import config
 from maestro import helpers
 from maestro.__version__ import VERSION
-from maestro.helpers import print_to_logfile  # pylint: disable=unused-import
+from maestro.config import print_to_logfile  # pylint: disable=unused-import
 
 # endregion
 
@@ -938,9 +934,6 @@ def add(
         return
 
     if youtube or spotify:
-        from spotdl import console_entry_point as original_spotdl_entry_point
-        from yt_dlp import YoutubeDL
-
         if youtube and spotify:
             click.secho(
                 "Cannot pass both '-Y/--youtube' and '-S/--spotify' flags.",
@@ -949,6 +942,9 @@ def add(
             return
 
         if youtube:
+            from spotdl.utils.ffmpeg import get_ffmpeg_path
+            from yt_dlp import YoutubeDL
+
             with YoutubeDL(
                 {
                     "noplaylist": not playlist_,
@@ -967,7 +963,7 @@ def add(
                             config.MAESTRO_DIR, "%(title)s.%(ext)s"
                         )
                     },
-                    "ffmpeg_location": helpers.FFMPEG_PATH,
+                    "ffmpeg_location": str(get_ffmpeg_path()),
                 }
             ) as ydl:
                 info = ydl.extract_info(path_, download=True)
@@ -977,6 +973,11 @@ def add(
                 else:
                     helpers.embed_artwork(info)
         else:
+            from spotdl import (
+                console_entry_point as original_spotdl_entry_point,
+            )
+            from spotdl.utils.ffmpeg import FFmpegError
+
             if format_ == "vorbis":  # for spotdl only
                 format_ = "ogg"
 
@@ -1661,6 +1662,8 @@ def play(
     if not playlist:
         click.secho("No songs found matching tag criteria.", fg="red")
     else:
+        from keyring.errors import NoKeyringError
+
         try:
             username = helpers.get_username()
             password = helpers.get_password()
@@ -1687,7 +1690,7 @@ def play(
                     )
                     username = None
                     password = None
-        except keyring.errors.NoKeyringError as e:
+        except NoKeyringError as e:
             if stream:
                 click.secho(
                     f"No keyring available. Cannot stream without login.\n{e}",
@@ -2719,6 +2722,8 @@ def logout(force):
         if input().lower() != "y":
             return
 
+    import keyring
+
     try:
         username = keyring.get_password("maestro-music", "username")
         keyring.delete_password("maestro-music", "username")
@@ -2771,10 +2776,13 @@ def download_ffmpeg():
     """
     Download the ffmpeg binary for your OS. Required for clip editing.
     """
+    from spotdl.utils.ffmpeg import download_ffmpeg as spotdl_download_ffmpeg
+
     spotdl_download_ffmpeg()
+
 
 if __name__ == "__main__":
     # check if frozen
-    if getattr(sys, "frozen", default=False):
+    if getattr(sys, "frozen", False):
         multiprocessing.freeze_support()
     cli()

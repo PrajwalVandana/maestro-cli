@@ -656,8 +656,6 @@ def _play(
                         lines[j] = f"{song_id}|{listened}\n"
                         break
 
-                print_to_logfile(lines[j])
-
                 # write out
                 stats_file.seek(0)
                 stats_file.write("".join(lines))
@@ -691,7 +689,6 @@ def _play(
             player.quit()
             if player.can_mac_now_playing:
                 app_helper_process.terminate()
-            # print_to_logfile(player.song_id, player.song_title)
             stats_thread.join()  # wait for stats to update
             return
 
@@ -720,7 +717,7 @@ def _play(
         elif next_song == 0:
             if player.looping_current_song == config.LOOP_MODES["one"]:
                 player.looping_current_song = config.LOOP_MODES["none"]
-        elif next_song > 1:
+        elif next_song > 1:  # user selected ID next_song-1
             player.i = next_song - 1
 
 

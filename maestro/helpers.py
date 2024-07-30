@@ -630,7 +630,7 @@ class PlaybackHandler:
                             f"Icecast Server error {response.status_code}: {response.text}"
                         )
                 except Exception as e:  # retry in 5 seconds
-                    # print_to_logfile("Update metadata failed:", e)
+                    print_to_logfile("Update metadata failed:", e)
                     last_metadata_update_attempt = t
             sleep(0.01)
 

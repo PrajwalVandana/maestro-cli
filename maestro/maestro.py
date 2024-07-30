@@ -250,8 +250,8 @@ def _play(
                             player.scroller.scroll_forward()
                             player.update_screen()
                         elif c == curses.KEY_ENTER:
-                            player.i = player.scroller.pos - 1
-                            next_song = 1
+                            # +1 b/c song ID can be 1
+                            next_song = player.scroller.pos + 1
                             player.playback.stop()
                             break
                         elif c == curses.KEY_DC:
@@ -292,18 +292,14 @@ def _play(
                         elif ch is not None:
                             if ch in "nN":
                                 if (
-                                    player.i == len(player.playlist) - 1
-                                    and not loop
+                                    not player.i == len(player.playlist) - 1
+                                    or loop
                                 ):
-                                    pass
-                                else:
                                     next_song = 1
                                     player.playback.stop()
                                     break
                             elif ch in "bB":
-                                if player.i == 0:
-                                    pass
-                                else:
+                                if player.i != 0:
                                     next_song = -1
                                     player.playback.stop()
                                     break
@@ -660,6 +656,8 @@ def _play(
                         lines[j] = f"{song_id}|{listened}\n"
                         break
 
+                print_to_logfile(lines[j])
+
                 # write out
                 stats_file.seek(0)
                 stats_file.write("".join(lines))
@@ -681,17 +679,20 @@ def _play(
                 stats_file.write("".join(lines))
                 stats_file.truncate()
 
-        threading.Thread(
+        stats_thread = threading.Thread(
             target=stats_update,
             args=(player.song_id, player.paused),
             daemon=True,
-        ).start()
+        )
+        stats_thread.start()
         # endregion
 
         if player.ending and not player.restarting:
             player.quit()
             if player.can_mac_now_playing:
                 app_helper_process.terminate()
+            # print_to_logfile(player.song_id, player.song_title)
+            stats_thread.join()  # wait for stats to update
             return
 
         if next_song == -1:
@@ -719,6 +720,8 @@ def _play(
         elif next_song == 0:
             if player.looping_current_song == config.LOOP_MODES["one"]:
                 player.looping_current_song = config.LOOP_MODES["none"]
+        elif next_song > 1:
+            player.i = next_song - 1
 
 
 # endregion

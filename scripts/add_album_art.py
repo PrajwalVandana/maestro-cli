@@ -1,7 +1,7 @@
 """
 Add album art to songs that don't have it, using the title of the song to search
 Spotify for the album art. Can fail sometimes; the 'custom_album_art.py' script
-offers more control over the process, but requires manual input.
+offers more control over the process, but requires manual non-CLI input.
 
 Usage: python add_album_art.py <path_to_songs_directory>
 """

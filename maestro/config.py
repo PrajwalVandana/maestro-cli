@@ -55,18 +55,12 @@ OLD_LOG_DIR = os.path.join(MAESTRO_DIR, "old-logs/")
 DEFAULT_SETTINGS = {
     "song_directory": os.path.join(MAESTRO_DIR, "songs/"),
     "last_version_sync": 0,
-    # "data_outlets": {
-    #     "file": [],
-    #     "serial": [],
-    # },
 }
 SETTINGS = {}
 
-SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
-
-STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
-CUR_YEAR_STATS_PATH = os.path.join(STATS_DIR, f"{CUR_YEAR}.txt")
-TOTAL_STATS_PATH = os.path.join(STATS_DIR, "total.txt")
+OLD_SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
+SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.json")
+OLD_STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
 # endregion
 
 # region player

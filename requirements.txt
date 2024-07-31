@@ -12,6 +12,7 @@ numpy ~= 1.26  # 2.0.0 breaks librosa
 windows-curses; sys_platform == 'win32'  # Windows curses support
 keyring  # Credential storage
 requests  # HTTP requests
+msgspec  # Faster JSON serialization
 
 # PyObjC dependencies
 pyobjc-core; sys_platform == 'darwin'

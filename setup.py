@@ -65,6 +65,7 @@ setup(
         "windows-curses; sys_platform == 'win32'",  # Windows curses support
         "keyring",  # Credential storage
         "requests",  # HTTP requests
+        "msgspec",  # Faster JSON serialization
     ]
     + MAC_DEPS,
     entry_points={

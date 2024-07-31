@@ -1,5 +1,6 @@
 # region imports
 
+import atexit
 import curses
 import logging
 import os
@@ -9,10 +10,10 @@ import threading
 logging.disable(logging.CRITICAL)
 
 import click
+import msgspec
 
 from getpass import getpass
 from random import randint
-from shutil import copy, move
 from time import sleep, time
 from urllib.parse import quote, quote_plus
 
@@ -20,6 +21,283 @@ from maestro import config
 from maestro.config import print_to_logfile
 
 # endregion
+
+
+class Song:
+    def __init__(self, song_id: int):
+        if song_id < 1:
+            raise ValueError("Song ID must be greater than 0.")
+        self._song_id = song_id
+        self._metadata = None
+        self._metadata_changed = False
+        atexit.register(self._save)
+
+    def __eq__(self, value):
+        if not isinstance(value, type(self)):
+            return False
+        return value.song_id == self.song_id
+
+    def __hash__(self):
+        return hash(self.song_id)
+
+    def __repr__(self):
+        return f"Song(ID={self.song_id})"
+
+    @property
+    def song_id(self):
+        return self._song_id
+
+    @property
+    def song_file(self):
+        """e.g. song.mp3"""
+        return SONG_DATA[self._song_id]["filename"]
+
+    @property
+    def song_path(self):
+        """e.g. /path/to/song.mp3"""
+        return os.path.join(config.SETTINGS["song_directory"], self.song_file)
+
+    @property
+    def song_title(self):
+        """e.g. 'song'"""
+        return os.path.splitext(self.song_file)[0]
+
+    @song_title.setter
+    def song_title(self, v):
+        if self._metadata is None:
+            self._load_metadata()
+
+        SONG_DATA[self._song_id]["filename"] = (
+            v + os.path.splitext(self.song_file)[1]
+        )
+
+        self._metadata["tracktitle"] = v
+        self._metadata_changed = True
+
+    @property
+    def tags(self) -> set[str]:
+        return SONG_DATA[self._song_id]["tags"]
+
+    @tags.setter
+    def tags(self, v: set[str]):
+        SONG_DATA[self._song_id]["tags"] = v
+
+    @property
+    def clips(self) -> dict[str, list[int, int]]:
+        return SONG_DATA[self._song_id]["clips"]
+
+    @property
+    def set_clip(self) -> str:
+        return SONG_DATA[self._song_id]["set-clip"]
+
+    @set_clip.setter
+    def set_clip(self, v: str):
+        SONG_DATA[self._song_id]["set-clip"] = v
+
+    @property
+    def listen_times(self) -> dict[int | str, float]:
+        return SONG_DATA[self._song_id]["stats"]
+
+    def _load_metadata(self):
+        import music_tag
+
+        self._metadata = music_tag.load_file(self.song_path)
+
+    @property
+    def artist(self):
+        if self._metadata is None:
+            self._load_metadata()
+        return self._metadata["artist"].value or "No Artist"
+
+    @artist.setter
+    def artist(self, v):
+        if self._metadata is None:
+            self._load_metadata()
+        self.set_metadata("artist", v)
+
+    @property
+    def album(self):
+        if self._metadata is None:
+            self._load_metadata()
+        return self._metadata["album"].value or "No Album"
+
+    @album.setter
+    def album(self, v):
+        if self._metadata is None:
+            self._load_metadata()
+        self.set_metadata("album", v)
+
+    @property
+    def album_artist(self):
+        if self._metadata is None:
+            self._load_metadata()
+        return self._metadata["albumartist"].value or "No Album Artist"
+
+    @album_artist.setter
+    def album_artist(self, v):
+        if self._metadata is None:
+            self._load_metadata()
+        self.set_metadata("albumartist", v)
+
+    @property
+    def duration(self):
+        if self._metadata is None:
+            self._load_metadata()
+        return self._metadata["#length"].value
+
+    @property
+    def artwork(self):
+        if self._metadata is None:
+            self._load_metadata()
+        return (
+            self._metadata["artwork"].first
+            if "artwork" in self._metadata
+            else None
+        )
+
+    def get_metadata(self, key):
+        if self._metadata is None:
+            self._load_metadata()
+
+        if key not in self._metadata:
+            raise KeyError(f"Metadata key '{key}' not found.")
+        return self._metadata[key]
+
+    def set_metadata(self, key, value):
+        if self._metadata is None:
+            self._load_metadata()
+
+        if key not in self._metadata:
+            raise KeyError(f"Metadata key '{key}' not found.")
+        if key.startswith("#"):
+            raise ValueError(f"{key} is not editable.")
+
+        if key == "tracktitle":
+            self.song_title = value
+        else:
+            self._metadata[key] = value
+        self._metadata_changed = True
+
+    def remove_self(self):
+        del SONG_DATA[self.song_id]
+
+    def _save(self):
+        if self._metadata_changed:
+            self._metadata.save()
+
+
+class SongData:
+    def __init__(self):
+        self.songs = None
+        atexit.register(self._save)
+
+    def load(self):
+        self.songs = {}
+        with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as f:
+            s = f.read()
+            if not s:
+                return
+            d = msgspec.json.decode(s)
+            for k, v in d.items():
+                self.songs[int(k)] = v
+
+                v["tags"] = set(v["tags"])
+
+                v["stats_"] = {}
+                for year in v["stats"]:
+                    if year.isdigit():
+                        v["stats_"][int(year)] = v["stats"][year]
+                    else:
+                        v["stats_"][year] = v["stats"][year]
+                v["stats"] = v.pop("stats_")
+                if "set-clip" not in v:
+                    v["set-clip"] = "default"
+
+    def __getitem__(self, key):
+        if self.songs is None:
+            self.load()
+        return self.songs[key]
+
+    def __setitem__(self, key, value):
+        if self.songs is None:
+            self.load()
+        self.songs[key] = value
+
+    def __delitem__(self, key):
+        if self.songs is None:
+            self.load()
+        del self.songs[key]
+
+    def __iter__(self):
+        if self.songs is None:
+            self.load()
+        return iter(self.songs)
+
+    def items(self):
+        if self.songs is None:
+            self.load()
+        return self.songs.items()
+
+    def values(self):
+        if self.songs is None:
+            self.load()
+        return self.songs.values()
+
+    def _save(self):
+        if self.songs is not None:
+            with open(config.SONGS_INFO_PATH, "wb") as f:
+                f.write(msgspec.json.encode(self.songs))
+
+    def add_song(self, filename, tags=None) -> int:
+        if tags is None:
+            tags = set()
+
+        song_id = max(self) + 1
+        self.songs[song_id] = {
+            "filename": os.path.split(filename)[1],
+            "tags": set(tags),
+            "clips": {},
+            "stats": {
+                config.CUR_YEAR: 0.0,
+                "total": 0.0,
+            },
+            "set-clip": "default",
+        }
+
+        song = Song(song_id)
+        song.set_metadata("tracktitle", song.song_title)
+
+        return song_id
+
+
+SONG_DATA = SongData()
+
+
+class Songs:
+    def __init__(self):
+        self.songs = None
+        self._song_data = SONG_DATA
+
+    def load(self):
+        self.songs = {Song(k) for k in self._song_data}
+
+    def __contains__(self, value: Song):
+        if self.songs is None:
+            self.load()
+        return value in self.songs
+
+    def __iter__(self):
+        if self.songs is None:
+            self.load()
+        return iter(self.songs)
+
+    def __len__(self):
+        if self.songs is None:
+            self.load()
+        return len(self.songs)
+
+
+SONGS = Songs()
 
 
 def is_safe_username(url):
@@ -147,7 +425,9 @@ class FFmpegProcessHandler:
 
 
 class PlaybackHandler:
-    def __init__(self, stdscr, playlist, clip_mode, visualize, stream, creds):
+    def __init__(
+        self, stdscr, playlist: list[Song], clip_mode, visualize, stream, creds
+    ):
         from just_playback import Playback
 
         self.stdscr = stdscr
@@ -207,7 +487,6 @@ class PlaybackHandler:
         if self.stream:
             self.ffmpeg_process.start()
         self.break_stream_loop = False
-        self.img_data = None
         self.streaming_thread = threading.Thread(
             target=self._streaming_loop,
             daemon=True,
@@ -252,49 +531,40 @@ class PlaybackHandler:
             )
 
         while True:
-            cur_song_ids = set(
-                map(lambda x: x[0], self.playlist[self.i : self.i + 5])
-            )
             keys_to_delete = []
             for k in self.audio_data:
-                if k not in cur_song_ids:
+                if k not in self.playlist[self.i : self.i + 5]:
                     keys_to_delete.append(k)
             for k in keys_to_delete:
                 del self.audio_data[k]
 
             for i in range(self.i, min(self.i + 5, len(self.playlist))):
-                song_id = self.playlist[i][0]
+                song = self.playlist[i]
 
-                if self.song_id != song_id and (
-                    self.song_id not in self.audio_data
+                if self.song != song and (
+                    self.song not in self.audio_data
                     or (
-                        self.visualize
-                        and self.audio_data[self.song_id][0] is None
+                        self.visualize and self.audio_data[self.song][0] is None
                     )
-                    or (
-                        self.stream and self.audio_data[self.song_id][1] is None
-                    )
+                    or (self.stream and self.audio_data[self.song][1] is None)
                 ):
                     break
-                if song_id in self.audio_data and (
-                    (
-                        self.audio_data[song_id][0] is not None
-                        or not self.visualize
-                    )
+                if song in self.audio_data and (
+                    (self.audio_data[song][0] is not None or not self.visualize)
                     and (
-                        self.audio_data[song_id][1] is not None
-                        or not self.stream
+                        self.audio_data[song][1] is not None or not self.stream
                     )
                     or self._librosa is None
                 ):
                     continue
 
                 song_path = os.path.join(  # NOTE: NOT SAME AS self.song_path
-                    config.SETTINGS["song_directory"], self.playlist[i][1]
+                    config.SETTINGS["song_directory"],
+                    self.playlist[i].song_file,
                 )
 
-                if song_id not in self.audio_data:
-                    self.audio_data[song_id] = [
+                if song not in self.audio_data:
+                    self.audio_data[song] = [
                         (
                             self._librosa.amplitude_to_db(
                                 np.abs(
@@ -325,11 +595,11 @@ class PlaybackHandler:
                     ]
                 else:
                     if (
-                        self.audio_data[song_id][0] is None
+                        self.audio_data[song][0] is None
                         and self.visualize
                         and self.can_visualize
                     ):
-                        self.audio_data[song_id][0] = (
+                        self.audio_data[song][0] = (
                             self._librosa.amplitude_to_db(
                                 np.abs(
                                     self._librosa.stft(
@@ -343,8 +613,8 @@ class PlaybackHandler:
                             )
                             + 80
                         )
-                    if self.audio_data[song_id][1] is None and self.stream:
-                        self.audio_data[song_id][1] = np.int16(
+                    if self.audio_data[song][1] is None and self.stream:
+                        self.audio_data[song][1] = np.int16(
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
                             )
@@ -360,8 +630,8 @@ class PlaybackHandler:
                 self.stream
                 and self.username is not None
                 and self.audio_data is not None
-                and self.song_id in self.audio_data
-                and self.audio_data[self.song_id][1] is not None
+                and self.song in self.audio_data
+                and self.audio_data[self.song][1] is not None
                 and self.playback is not None
                 # is 0 for a while after resuming, and is -1 if playback is
                 # inactive or file is not loaded
@@ -369,7 +639,7 @@ class PlaybackHandler:
             ):
                 for fpos in range(
                     int(self.playback.curr_pos * config.STREAM_SAMPLE_RATE),
-                    self.audio_data[self.song_id][1].shape[1],
+                    self.audio_data[self.song][1].shape[1],
                     config.STREAM_CHUNK_SIZE,
                 ):
                     try:
@@ -379,7 +649,7 @@ class PlaybackHandler:
                         #     self.playback.curr_pos,
                         # )  # DEBUG
                         self.ffmpeg_process.write(
-                            self.audio_data[self.song_id][1][
+                            self.audio_data[self.song][1][
                                 :,
                                 fpos : fpos + config.STREAM_CHUNK_SIZE,
                             ]
@@ -430,32 +700,44 @@ class PlaybackHandler:
         self._stream = value
 
     @property
+    def song(self):
+        return self.playlist[self.i]
+
+    @property
     def song_id(self):
-        return self.playlist[self.i][0]
+        return self.song.song_id
 
     @property
     def song_file(self):
-        return self.playlist[self.i][1]
+        return self.song.song_file
 
     @property
     def song_path(self):
-        return os.path.join(config.SETTINGS["song_directory"], self.song_file)
+        return self.song.song_path
 
     @property
     def song_title(self):
-        return os.path.splitext(self.song_file)[0]
+        return self.song.song_title
 
     @property
     def song_artist(self):
-        return self.playlist[self.i][-3]
+        return self.song.artist
 
     @property
     def song_album(self):
-        return self.playlist[self.i][-2]
+        return self.song.album
 
     @property
     def album_artist(self):
-        return self.playlist[self.i][-1]
+        return self.song.album_artist
+
+    @property
+    def artwork(self):
+        return (
+            self.song.artwork.raw_thumbnail([1024, 1024])
+            if self.song.artwork
+            else None
+        )
 
     # endregion
 
@@ -550,10 +832,10 @@ class PlaybackHandler:
                             }
                         ]
                         if self.username
-                        else []
+                        else None
                     ),
                 )
-                d = {k: v for k, v in d.items() if v}
+                d = {k: v for k, v in d.items() if v is not None}
 
                 try:
                     self.discord_rpc.set_activity(**d)
@@ -581,7 +863,7 @@ class PlaybackHandler:
             self.mac_now_playing.pos = 0
             self.mac_now_playing.length = self.duration
             self.mac_now_playing.cover = (
-                self.img_data if self.img_data else default_artwork
+                self.artwork if self.artwork else default_artwork
             )
 
             multiprocessing_put_word(
@@ -647,7 +929,7 @@ class PlaybackHandler:
             if not requests.post(
                 config.UPDATE_ARTWORK_URL,
                 params={"mount": self.username},
-                files={"artwork": self.img_data},
+                files={"artwork": self.artwork},
                 auth=(self.username, self.password),
                 timeout=5,
             ).ok:
@@ -669,16 +951,7 @@ class PlaybackHandler:
             self.threaded_update_icecast_metadata()
 
     def update_metadata(self):
-        import music_tag
-
         def f():
-            song_data = music_tag.load_file(self.song_path)
-            self.img_data = (
-                song_data["artwork"].first.raw_thumbnail([600, 600])
-                if "artwork" in song_data
-                else None
-            )
-
             self.update_mac_now_playing_metadata()
             self.update_stream_metadata()
             self.update_discord_metadata()
@@ -765,7 +1038,7 @@ class PlaybackHandler:
             elif not self.can_show_visualization:
                 visualize_message = "Window too small for visualization."
                 visualize_color = 14
-            elif self.song_id not in self.audio_data:
+            elif self.song not in self.audio_data:
                 visualize_message = "Loading visualization..."
                 visualize_color = 12
             elif not self.compiled:
@@ -827,7 +1100,9 @@ class PlaybackHandler:
         )
 
         # for aligning song names
-        longest_song_id_length = max(len(song[0]) for song in self.playlist)
+        longest_song_id_length = max(
+            len(str(song.song_id)) for song in self.playlist
+        )
 
         for j in range(
             self.scroller.top, self.scroller.top + self.scroller.win_size
@@ -837,8 +1112,12 @@ class PlaybackHandler:
 
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
-                    " " * (longest_song_id_length - len(self.playlist[j][0]))
-                    + f"{self.playlist[j][0]} ",
+                    " "
+                    * (
+                        longest_song_id_length
+                        - len(str(self.playlist[j].song_id))
+                    )
+                    + f"{self.playlist[j].song_id} ",
                     screen_width,
                     length_so_far,
                     curses.color_pair(2),
@@ -846,7 +1125,7 @@ class PlaybackHandler:
                 if j == self.i:
                     length_so_far = addstr_fit_to_width(
                         self.stdscr,
-                        f"{os.path.splitext(self.playlist[j][1])[0]} ",
+                        f"{self.playlist[j].song_title} ",
                         screen_width,
                         length_so_far,
                         curses.color_pair(song_display_color) | curses.A_BOLD,
@@ -854,7 +1133,7 @@ class PlaybackHandler:
                 else:
                     length_so_far = addstr_fit_to_width(
                         self.stdscr,
-                        f"{os.path.splitext(self.playlist[j][1])[0]} ",
+                        f"{self.playlist[j].song_title} ",
                         screen_width,
                         length_so_far,
                         (
@@ -865,7 +1144,7 @@ class PlaybackHandler:
                     )
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
-                    f"{', '.join(self.playlist[j][2].split(','))}",
+                    f"{', '.join(self.playlist[j].tags)}",
                     screen_width,
                     length_so_far,
                     curses.color_pair(2),
@@ -1131,8 +1410,8 @@ class PlaybackHandler:
                 0,
             )
             if (
-                self.song_id not in self.audio_data
-                or self.audio_data[self.song_id][0] is None
+                self.song not in self.audio_data
+                or self.audio_data[self.song][0] is None
             ):
                 self.stdscr.addstr(
                     (
@@ -1145,7 +1424,7 @@ class PlaybackHandler:
                     self.compiled = False
 
                     def thread_func():
-                        vdata = self.audio_data[self.song_id][0]
+                        vdata = self.audio_data[self.song][0]
                         render(
                             self.stdscr.getmaxyx()[1],
                             vdata,
@@ -1162,7 +1441,7 @@ class PlaybackHandler:
                     ).rstrip()
                 )
             elif self.compiled:
-                vdata = self.audio_data[self.song_id][0]
+                vdata = self.audio_data[self.song][0]
                 rendered_lines = render(
                     self.stdscr.getmaxyx()[1],
                     vdata,
@@ -1226,30 +1505,18 @@ def init_curses(stdscr):
         pass
 
 
-def create_stats_files():
-    if not os.path.exists(config.STATS_DIR):
-        os.makedirs(config.STATS_DIR)
-    if not os.path.exists(config.TOTAL_STATS_PATH):
-        with (
-            open(config.TOTAL_STATS_PATH, "w", encoding="utf-8") as f,
-            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
-        ):
-            for line in g:
-                f.write(f"{line.strip().split('|')[0]}|0\n")
-    if not os.path.exists(config.CUR_YEAR_STATS_PATH):
-        with (
-            open(config.CUR_YEAR_STATS_PATH, "w", encoding="utf-8") as f,
-            open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as g,
-        ):
-            for line in g:
-                f.write(f"{line.strip().split('|')[0]}|0\n")
-
 class SongParamType(click.ParamType):
     name = "song"
 
-    def convert(self, value, param, ctx):
+    def convert(self, value, param, ctx) -> Song:
+        if value.isdecimal():
+            value = int(value)
+
         if type(value) == int:
-            return value
+            song = Song(value)
+            if song in SONGS:
+                return song
+            self.fail(f"No song found with ID {value}.", param, ctx)
 
         if not value.isdecimal():
             results = search_song(value)
@@ -1258,25 +1525,22 @@ class SongParamType(click.ParamType):
 
             for result in results:
                 if len(result) == 1:
-                    return int(result[0][0])
+                    return result[0]
                 if len(result) > 1:
                     break
 
-            for details in sum(results, []):
-                if param is not None:  # called by click
-                    print_entry(details, value)
+            if param is not None:  # called by click
+                for song in sum(results, []):
+                    print_entry(song, value)
             self.fail("Multiple songs found", param, ctx)
 
-        song_id = int(value)
-        if song_id < 1:
-            self.fail("Song ID must be positive.", param, ctx)
-        return song_id
+        self.fail("Invalid song argument", param, ctx)
 
 
-SONG = SongParamType()
+CLICK_SONG = SongParamType()
 
 
-def embed_artwork(yt_dlp_info):
+def yt_embed_artwork(yt_dlp_info):
     import music_tag
     import requests
 
@@ -1312,109 +1576,16 @@ def embed_artwork(yt_dlp_info):
     m.save()
 
 
-def add_song(
-    path,
-    tags,
-    move_,
-    songs_file,
-    lines,
-    song_id,
-    prepend_newline,
-    clip_start,
-    clip_end,
-    skip_dupes,
-):
-    import music_tag
-
-    song_fname = os.path.split(path)[1]
-    if "|" in song_fname:
-        song_fname = song_fname.replace("|", "-")
-        click.secho(
-            f"The song \"{song_fname}\" contains one or more '|' characters, which are not allowed—all ocurrences have been replaced with '-'.",
-            fg="yellow",
-        )
-
-    for line in lines:
-        details = line.split("|")
-        song_name, song_ext = os.path.splitext(song_fname)
-        if os.path.splitext(details[1])[0] == song_name:
-            if skip_dupes:
-                click.secho(
-                    f"Song with name '{song_name}' already exists, skipping.",
-                    fg="yellow",
-                )
-                os.remove(path)
-                return
-            click.secho(
-                f"Song with name '{song_name}' already exists, 'copy' will be appended to the song name.",
-                fg="yellow",
-            )
-            song_fname = song_name + " copy" + song_ext
-            break
-
-    dest_path = os.path.join(config.SETTINGS["song_directory"], song_fname)
-
-    if move_:
-        move(path, dest_path)
-    else:
-        copy(path, dest_path)
-
-    tags = list(set(tags))
-
-    if prepend_newline:
-        songs_file.write("\n")
-    songs_file.write(f"{song_id}|{song_fname}|{','.join(tags)}|")
-    if clip_start is not None:
-        songs_file.write(f"{clip_start} {clip_end}")
-    songs_file.write("\n")
-
-    for stats_file in os.listdir(config.STATS_DIR):
-        if not stats_file.endswith(".txt"):
-            continue
-
-        with open(
-            os.path.join(config.STATS_DIR, stats_file), "r+", encoding="utf-8"
-        ) as stats_file:
-            stats_file_contents = stats_file.read()
-            if stats_file_contents and not stats_file_contents.endswith("\n"):
-                stats_file.write("\n")
-            stats_file.write(f"{song_id}|0\n")
-
-    if not tags:
-        tags_string = ""
-    elif len(tags) == 1:
-        tags_string = f" and tag '{tags[0]}'"
-    else:
-        tags_string = f" and tags {', '.join([repr(tag) for tag in tags])}"
-
-    if clip_start is not None:
-        clip_string = f" and clip [{format_seconds(clip_start, show_decimal=True)}, {format_seconds(clip_end, show_decimal=True)}]"
-    else:
-        clip_string = ""
-
-    song_metadata = music_tag.load_file(dest_path)
-    click.secho(
-        f"Added song '{song_fname}' with ID {song_id}"
-        + tags_string
-        + clip_string
-        + f" and metadata (artist: {song_metadata['artist'] if song_metadata['artist'] else '<None>'}, album: {song_metadata['album'] if song_metadata['album'] else '<None>'}, albumartist: {song_metadata['albumartist'] if song_metadata['albumartist'] else '<None>'}).",
-        fg="green",
-    )
-
-
-def clip_editor(stdscr, details, start=None, end=None):
+def clip_editor(stdscr, song: Song, name, start=None, end=None):
     from just_playback import Playback
 
-    song_name = details[1]
-    song_path = os.path.join(config.SETTINGS["song_directory"], song_name)
-
     playback = Playback()
-    playback.load_file(song_path)
+    playback.load_file(song.song_path)
 
     init_curses(stdscr)
 
-    if details[3]:
-        clip_start, clip_end = [float(x) for x in details[3].split()]
+    if name in song.clips:
+        clip_start, clip_end = song.clips[name]
     else:
         clip_start, clip_end = 0, playback.duration
 
@@ -1441,7 +1612,7 @@ def clip_editor(stdscr, details, start=None, end=None):
         if change_output:
             clip_editor_output(
                 stdscr,
-                details,
+                song,
                 playback.curr_pos,
                 playback.paused,
                 playback.duration,
@@ -1545,7 +1716,7 @@ def clip_editor(stdscr, details, start=None, end=None):
 
 def clip_editor_output(
     stdscr,
-    details,
+    song: Song,
     pos,
     paused,
     duration,
@@ -1634,28 +1805,98 @@ def clip_editor_output(
         stdscr.insstr("|", curses.color_pair(5))  # hacky fix for curses bug
         stdscr.move(stdscr.getyx()[0] + 1, 0)
 
+    stdscr.move(stdscr.getyx()[0] + 1, 0)  # 1-line spacing
+
+    # region pause indicator, song ID+title, tags
     length_so_far = 0
     length_so_far = addstr_fit_to_width(
         stdscr,
-        ("| " if paused else "> ") + f"({details[0]}) ",
+        ("| " if paused else "> ") + f"({song.song_id}) ",
         screen_width,
         length_so_far,
         curses.color_pair(3),
     )
     length_so_far = addstr_fit_to_width(
         stdscr,
-        f"{details[1]} ",
+        f"{song.song_title} ",
         screen_width,
         length_so_far,
         curses.color_pair(3) | curses.A_BOLD,
     )
     length_so_far = addstr_fit_to_width(
         stdscr,
-        f"{', '.join(details[2].split(','))} ",
+        f"{', '.join(song.tags)} ",
         screen_width,
         length_so_far,
         curses.color_pair(2),
     )
+    stdscr.move(stdscr.getyx()[0] + 1, 0)
+    # endregion
+
+    # region credits
+    length_so_far = 0
+    length_so_far = addstr_fit_to_width(
+        stdscr,
+        f"{song.artist} - ",
+        screen_width,
+        length_so_far,
+        curses.color_pair(2),
+    )
+    try:
+        length_so_far = addstr_fit_to_width(
+            stdscr,
+            song.album,
+            screen_width,
+            length_so_far,
+            curses.color_pair(2) | curses.A_ITALIC,
+        )
+    except:  # pylint: disable=bare-except
+        print_to_logfile("Failed to italicize text in curses.")
+        length_so_far = addstr_fit_to_width(
+            stdscr,
+            song.album,
+            screen_width,
+            length_so_far,
+            curses.color_pair(2),
+        )
+    addstr_fit_to_width(
+        stdscr,
+        f" ({song.album_artist})",
+        screen_width,
+        length_so_far,
+        curses.color_pair(2),
+    )
+    stdscr.move(stdscr.getyx()[0] + 1, 0)
+    # endregion
+
+    stdscr.move(stdscr.getyx()[0] + 1, 0)  # 1-line spacing
+
+    # region controls
+    controls = [
+        ("t", "toggle between editing the start and end of the clip"),
+        ("LEFT/RIGHT", "move whichever clip end you are editing by 0.1 seconds"),
+        ("SHIFT+LEFT/RIGHT", "move whichever clip end you are editing by 1 second"),
+        ("SPACE", "play/pause"),
+        ("ENTER", "exit the editor and save the clip"),
+        ("q", "exit the editor without saving the clip"),
+    ]
+    for control in controls:
+        length_so_far = 0
+        length_so_far = addstr_fit_to_width(
+            stdscr,
+            f"{control[0]}: ",
+            screen_width,
+            length_so_far,
+            curses.A_BOLD,
+        )
+        length_so_far = addstr_fit_to_width(
+            stdscr,
+            f"{control[1]}",
+            screen_width,
+            length_so_far,
+        )
+        stdscr.move(stdscr.getyx()[0] + 1, 0)
+    # endregion
 
     stdscr.refresh()
 
@@ -1792,91 +2033,75 @@ def format_seconds(secs, show_decimal=False, digital=True, include_hours=None):
     )
 
 
-def search_song(phrase, songs_file=None):
+def search_song(phrase):
     """
     CASE INSENSITIVE. Returns a tuple of three lists:
-    0: songs that are the phrase
+    0: songs that match the phrase exactly
     1: songs that start with the phrase
     1: songs that contain the phrase but do not start with it
     """
-    songs_file = songs_file or open(
-        config.SONGS_INFO_PATH, "r", encoding="utf-8"
-    )
     phrase = phrase.lower()
 
     results = [], [], []  # is, starts, contains but does not start
-    for line in songs_file:
-        details = line.strip().split("|")
-        song_name = os.path.splitext(details[1].lower())[0]
-
-        if song_name == phrase:
-            results[0].append(details)
-        elif song_name.startswith(phrase):
-            results[1].append(details)
-        elif phrase in song_name:
-            results[2].append(details)
+    for song in SONGS:
+        song_title = song.song_title.lower()
+        if song_title == phrase:
+            results[0].append(song)
+        elif song_title.startswith(phrase):
+            results[1].append(song)
+        elif phrase in song_title:
+            results[2].append(song)
 
     return results
 
 
-def print_entry(entry_list, highlight=None, show_song_info=False):
+def print_entry(
+    song: Song, highlight: str | None = None, year: int | str | None = None
+):
     """
-    ordered iterable of STRINGS
-
-    0: song ID
-    1: song name
-    2: tags
-    3: clip
-
-    optional:
-    4: seconds listened
-    5: total duration (must be passed if 4 is passed)
-
     Pretty prints ([] means optional)
-        <song ID> <song name> [<total duration> <seconds listened> <times listened>] <clip> <tags>
+        <song ID> <song name> <total duration> <seconds listened> <times listened> <clip> <tags>
             [<artist> - <album> (<album artist>)]
-    """
-    entry_list = list(entry_list)
 
-    click.secho(entry_list[0] + " ", fg="bright_black", nl=False)
-    fname = entry_list[1]
-    entry_list[1] = os.path.splitext(entry_list[1])[0]
+    highlight: a string to highlight (the first occurrence of) in the song name
+    """
+    click.secho(f"{song.song_id} ", fg="bright_black", nl=False)
     if highlight is None:
-        click.secho(entry_list[1] + " ", fg="blue", nl=False, bold=True)
+        click.secho(song.song_title + " ", fg="blue", nl=False, bold=True)
     else:
-        highlight_loc = entry_list[1].lower().find(highlight.lower())
+        highlight_loc = song.song_title.lower().find(highlight.lower())
         click.secho(
-            entry_list[1][:highlight_loc],
-            fg="white",
-            nl=False,
-        )
-        click.secho(
-            entry_list[1][highlight_loc : highlight_loc + len(highlight)],
+            song.song_title[:highlight_loc],
             fg="blue",
             nl=False,
             bold=True,
         )
         click.secho(
-            entry_list[1][highlight_loc + len(highlight) :] + " ",
-            fg="white",
+            song.song_title[highlight_loc : highlight_loc + len(highlight)],
+            fg="yellow",
             nl=False,
+            bold=True,
+        )
+        click.secho(
+            song.song_title[highlight_loc + len(highlight) :] + " ",
+            fg="blue",
+            nl=False,
+            bold=True,
         )
 
-    if len(entry_list) > 4:  # len should == 6
-        secs_listened = float(entry_list[4])
-        total_duration = float(entry_list[5])
-        click.secho(
-            format_seconds(
-                total_duration,
-                show_decimal=True,
-                digital=False,
-            )
-            + " ",
-            nl=False,
+    click.secho(
+        format_seconds(
+            song.duration,
+            show_decimal=True,
+            digital=False,
         )
+        + " ",
+        nl=False,
+    )
+    if year is not None:
         click.secho(
             format_seconds(
-                secs_listened,
+                song.listen_times[year],
                 show_decimal=True,
                 digital=False,
             )
@@ -1885,51 +2110,39 @@ def print_entry(entry_list, highlight=None, show_song_info=False):
             nl=False,
         )
         click.secho(
-            f"{secs_listened / total_duration:0.2f} ", fg="green", nl=False
+            f"{song.listen_times[year] / song.duration:0.2f} ",
+            fg="green",
+            nl=False,
         )
 
-    if entry_list[3]:
-        decimal_format_seconds = lambda x: format_seconds(
-            float(x), show_decimal=True
+    if song.set_clip in song.clips:
+        start, end = map(
+            lambda f: format_seconds(f, show_decimal=True),
+            song.clips[song.set_clip],
         )
-        start, end = map(decimal_format_seconds, entry_list[3].split())
         click.secho(
             f"[{start}, {end}] ",
             fg="magenta",
             nl=False,
         )
 
-    if entry_list[2]:
-        click.secho(", ".join(entry_list[2].split(",")), fg="bright_black")
-    else:
-        click.echo()  # newline
+    click.secho(", ".join(song.tags), fg="bright_black")
 
-    if show_song_info:
-        import music_tag
-
-        song_data = music_tag.load_file(
-            os.path.join(config.SETTINGS["song_directory"], fname)
-        )
-        artist, album, album_artist = (
-            song_data["artist"].value,
-            song_data["album"].value,
-            song_data["albumartist"].value,
-        )
-        click.secho(
-            f"{(len(entry_list[0])+1)*' '}{artist if artist else 'No Artist'} - ",
-            fg="bright_black",
-            nl=False,
-        )
-        click.secho(
-            (album if album else "No Album"),
-            italic=True,
-            fg="bright_black",
-            nl=False,
-        )
-        click.secho(
-            f" ({album_artist if album_artist else 'No Album Artist'})",
-            fg="bright_black",
-        )
+    click.secho(
+        f"{(len(str(song.song_id))+1)*' '}{song.artist if song.artist else 'No Artist'} - ",
+        fg="bright_black",
+        nl=False,
+    )
+    click.secho(
+        (song.album if song.album else "No Album"),
+        italic=True,
+        fg="bright_black",
+        nl=False,
+    )
+    click.secho(
+        f" ({song.album_artist if song.album_artist else 'No Album Artist'})",
+        fg="bright_black",
+    )
 
 
 def multiprocessing_put_word(q, word):

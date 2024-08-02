@@ -17,3 +17,4 @@ sound_vis_cache/
 gui_helper.py
 **/*.spotdl
 dist/**
+profile.*

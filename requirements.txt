@@ -13,8 +13,14 @@ windows-curses; sys_platform == 'win32'  # Windows curses support
 keyring  # Credential storage
 requests  # HTTP requests
 msgspec  # Faster JSON serialization
+syncedlyrics  # Search for synced lyrics
+pylrc  # LRC file parsing
+safer  # safe file writing
+unidecode  # transliteration
+pykakasi  # Japanese transliteration
+indic_transliteration  # Indic transliteration
 
-# PyObjC dependencies
+# PyObjC dependencies for macOS
 pyobjc-core; sys_platform == 'darwin'
 pyobjc-framework-ApplicationServices; sys_platform == 'darwin'
 pyobjc-framework-AVFoundation; sys_platform == 'darwin'

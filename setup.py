@@ -1,5 +1,6 @@
 from os.path import normpath
 
+from pkg_resources import parse_requirements
 from setuptools import setup, find_packages
 
 
@@ -8,19 +9,8 @@ with open(normpath("maestro/__version__.py"), encoding="utf-8") as f:
     exec(f.read(), d)  # pylint: disable=exec-used
 VERSION = d["VERSION"]
 
-MAC_DEPS = [
-    dep + "; sys_platform == 'darwin'"
-    for dep in [
-        "pyobjc-core",
-        "pyobjc-framework-ApplicationServices",
-        "pyobjc-framework-AVFoundation",
-        "pyobjc-framework-Cocoa",
-        "pyobjc-framework-CoreAudio",
-        "pyobjc-framework-CoreMedia",
-        "pyobjc-framework-MediaPlayer",
-        "pyobjc-framework-Quartz",
-    ]
-]
+with open("requirements.txt", "r", encoding="utf-8") as f:
+    install_requires = [str(r) for r in parse_requirements(f)]
 
 setup(
     name="maestro-music",
@@ -50,27 +40,10 @@ setup(
         "audio-visualizer",
     ],
     packages=find_packages(include=["maestro"]),
-    install_requires=[
-        "click",  # CLI handling
-        "just_playback",  # Audio playback
-        "music-tag",  # Metadata handling
-        "pillow",  # Image processing (for album art)
-        "pypresence",  # Discord Rich Presence
-        "yt-dlp",  # YouTube downloads
-        "spotdl",  # Spotify downloads
-        "ytmusicapi",  # Song recommendation (experimental)
-        "librosa",  # Audio processing
-        "numba",  # JIT compilation
-        "numpy",
-        "windows-curses; sys_platform == 'win32'",  # Windows curses support
-        "keyring",  # Credential storage
-        "requests",  # HTTP requests
-        "msgspec",  # Faster JSON serialization
-    ]
-    + MAC_DEPS,
+    install_requires=install_requires,
     entry_points={
         "console_scripts": [
-            "maestro = maestro.maestro:cli",
+            "maestro = maestro.main:cli",
         ],
     },
 )

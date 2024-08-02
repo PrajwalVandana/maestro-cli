@@ -8,8 +8,6 @@ from urllib.parse import urljoin
 
 DISCORD_ID = 1039038199881810040
 
-CUR_YEAR = date.today().year
-EXTS = (".mp3", ".wav", ".flac", ".ogg")
 PROMPT_MODES = {
     "insert": 0,
     "add": 1,
@@ -21,6 +19,7 @@ LOOP_MODES = {
     "inf": 2,
 }
 
+EXTS = (".mp3", ".wav", ".flac", ".ogg")
 METADATA_KEYS = (
     "album",
     "albumartist",
@@ -45,6 +44,32 @@ METADATA_KEYS = (
     "#bitspersample",
     "#samplerate",
 )
+INDIC_SCRIPTS = (
+    "bengali",
+    "assamese",
+    "modi",
+    "malayalam",
+    "devanagari",
+    "sinhala",
+    "tibetan",
+    "gurmukhi",
+    "tamil",
+    "balinese",
+    "thai",
+    "burmese",
+    "telugu",
+    "kannada",
+    "gujarati",
+    "urdu",
+    "lao",
+    "javanese",
+    "manipuri",
+    "oriya",
+    "khmer",
+)
+
+CUR_YEAR = date.today().year
+
 
 # region paths
 MAESTRO_DIR = os.path.join(os.path.expanduser("~"), ".maestro-files/")
@@ -56,11 +81,11 @@ DEFAULT_SETTINGS = {
     "song_directory": os.path.join(MAESTRO_DIR, "songs/"),
     "last_version_sync": 0,
 }
-SETTINGS = {}
 
 OLD_SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.json")
 OLD_STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
+OVERRIDE_LYRICS_DIR = os.path.join(MAESTRO_DIR, "override-lyrics/")
 # endregion
 
 # region player
@@ -78,6 +103,67 @@ SCRUB_TIME = 5  # in seconds
 VOLUME_STEP = 1
 MIN_PROGRESS_BAR_WIDTH = 20
 MIN_VOLUME_BAR_WIDTH, MAX_VOLUME_BAR_WIDTH = 10, 40
+
+_FARTHEST_RIGHT_CONTROL_DESC = 5
+INDENT_CONTROL_DESC = 0
+PLAY_CONTROLS = [
+    ("SPACE", "pause/play"),
+    ("b", "go back to previous song"),
+    ("r", "replay song"),
+    ("n", "skip to next song"),
+    (
+        "l",
+        "loop the current song once ('l' in status bar). press again to loop infinitely ('L' in status bar). press once again to turn off looping",
+    ),
+    ("c", "toggle clip mode"),
+    ("v", "toggle visualization"),
+    ("LEFT", "rewind 5s"),
+    ("RIGHT", "fast forward 5s"),
+    ("[", "decrease volume"),
+    ("]", "increase volume"),
+    ("m", "mute/unmute"),
+    (
+        "e",
+        "end the song player after the current song finishes (indicator in status bar, 'e' to cancel)",
+    ),
+    ("q", "quit the song player immediately"),
+    (
+        "UP/DOWN",
+        "to scroll through the queue (mouse scrolling should also work)",
+    ),
+    ("p", "snap back to the currently playing song"),
+    (
+        "g",
+        "go to the next page/loop of the queue (ignored if not repeating queue)",
+    ),
+    (
+        "BACKSPACE/DELETE",
+        "delete the selected (not necessarily currently playing!) song from the queue",
+    ),
+    ("d", "toggle Discord rich presence"),
+    (
+        "a",
+        "add a song to the end of the queue. Opens a prompt to enter the song name or ID: ENTER to confirm, ESC to cancel.",
+    ),
+    (
+        "i",
+        "insert a song in the queue after the selected song. Opens a prompt like 'a'.",
+    ),
+    ("t", "add a tag to all songs in the queue. Opens a prompt like 'a'."),
+    (
+        "s",
+        "toggle stream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login",
+    ),
+    ("y", "toggle lyrics"),
+    (
+        "o",
+        "reload song data (useful if you've changed e.g lyrics, tags, or metadata while playing)",
+    ),
+    ("?", "toggle this help message"),
+]
+for key, desc in PLAY_CONTROLS:
+    if INDENT_CONTROL_DESC < len(key) <= _FARTHEST_RIGHT_CONTROL_DESC:
+        INDENT_CONTROL_DESC = len(key)
 # endregion
 
 # region visualizer
@@ -128,6 +214,9 @@ UPDATE_TIMESTAMP_URL = urljoin(AUTH_SERVER, "update_timestamp")
 # endregion
 
 # endregion
+
+
+settings = {}
 
 
 def print_to_logfile(*args, **kwargs):

@@ -36,6 +36,7 @@ def _play(
     stream,
     username,
     password,
+    lyrics,
 ):
     helpers.init_curses(stdscr)
 
@@ -80,6 +81,7 @@ def _play(
         visualize,
         stream,
         (username, password) if username and password else (None, None),
+        lyrics,
     )
     player.volume = volume
     if can_mac_now_playing:
@@ -116,14 +118,22 @@ def _play(
         else:
             player.clip = (0, player.playback.duration)
         player.paused = False
-        # latter is clip-agnostic, former is clip-aware
-        player.duration = player.playback.duration
+
+        player.lyrics = (
+            player.song.parsed_override_lyrics or player.song.parsed_lyrics
+        )
+        if player.lyrics is not None:
+            player.lyrics_scroller = helpers.Scroller(
+                len(player.lyrics), player.screen_height
+            )
 
         player.update_metadata()
         player.playback.play()
         player.set_volume(volume)
         # print_to_logfile("Changed song", player.playback.curr_pos)  # DEBUG
 
+        # latter is clip-agnostic, former is clip-aware
+        player.duration = player.playback.duration
         if player.clip_mode:
             clip_start, clip_end = player.clip
             player.duration = clip_end - clip_start
@@ -227,307 +237,358 @@ def _play(
                     except (ValueError, OverflowError):
                         ch = None
 
-                    if player.prompting is None:
-                        if c == curses.KEY_LEFT:
-                            player.seek(
-                                player.playback.curr_pos - config.SCRUB_TIME
-                            )
+                    if c == curses.KEY_UP:
+                        player.scroll_backward()
+                        player.update_screen()
+                    elif c == curses.KEY_DOWN:
+                        player.scroll_forward()
+                        player.update_screen()
+                    elif c == curses.KEY_SLEFT:
+                        if player.can_show_lyrics:
+                            player.lyrics_width += 1
                             player.update_screen()
-                        elif c == curses.KEY_RIGHT:
-                            player.seek(
-                                player.playback.curr_pos + config.SCRUB_TIME
-                            )
+                    elif c == curses.KEY_SRIGHT:
+                        if player.can_show_lyrics:
+                            player.lyrics_width -= 1
                             player.update_screen()
-                        elif c == curses.KEY_UP:
-                            player.scroller.scroll_backward()
-                            player.update_screen()
-                        elif c == curses.KEY_DOWN:
-                            player.scroller.scroll_forward()
-                            player.update_screen()
-                        elif c == curses.KEY_ENTER:
-                            # -1 because pos can be 0
-                            next_song = -player.scroller.pos - 1
-                            player.playback.stop()
-                            break
-                        elif c == curses.KEY_DC:
-                            selected_song = player.scroller.pos
-                            deleted_song = player.playlist[selected_song]
-                            del player.playlist[selected_song]
-
-                            if loop:
-                                for i in range(len(next_playlist)):
-                                    if next_playlist[i][0] == deleted_song:
-                                        del next_playlist[i]
-                                        break
-
-                            player.scroller.num_lines -= 1
-                            if (
-                                selected_song == player.i
-                            ):  # deleted current song
-                                next_song = 1
-                                # will be incremented to i
-                                player.scroller.pos = player.i - 1
-                                player.i -= 1
+                    else:
+                        if player.prompting is None:
+                            if c == curses.KEY_LEFT:
+                                player.seek(
+                                    player.playback.curr_pos - config.SCRUB_TIME
+                                )
+                                player.update_screen()
+                            elif c == curses.KEY_RIGHT:
+                                player.seek(
+                                    player.playback.curr_pos + config.SCRUB_TIME
+                                )
+                                player.update_screen()
+                            elif c == curses.KEY_ENTER:
+                                # -2 because pos can be 0
+                                next_song = -player.scroller.pos - 2
                                 player.playback.stop()
                                 break
-                            # deleted song before current
-                            if selected_song < player.i:
-                                player.i -= 1
-                            # deleted last song
-                            if selected_song == player.scroller.num_lines:
-                                player.scroller.pos -= 1
-                        elif ch is not None:
-                            if ch in "nN":
-                                if (
-                                    not player.i == len(player.playlist) - 1
-                                    or loop
-                                ):
-                                    next_song = 1
-                                    player.playback.stop()
-                                    break
-                            elif ch in "bB":
-                                if player.i != 0:
-                                    next_song = -1
-                                    player.playback.stop()
-                                    break
-                            elif ch in "rR":
-                                player.restarting = True
-                                player.playback.stop()
-                                next_song = 0
-                                break
-                            elif ch in "lL":
-                                player.looping_current_song = (
-                                    player.looping_current_song + 1
-                                ) % len(config.LOOP_MODES)
-                                player.update_screen()
-                            elif ch in "cC":
-                                player.clip_mode = not player.clip_mode
-                                if player.clip_mode:
-                                    (
-                                        clip_start,
-                                        clip_end,
-                                    ) = player.clip
-                                    player.duration = clip_end - clip_start
-                                    if (
-                                        player.playback.curr_pos < clip_start
-                                        or player.playback.curr_pos > clip_end
-                                    ):
-                                        player.seek(clip_start)
-                                else:
-                                    player.duration = player.playback.duration
-                                player.update_screen()
-                            elif ch in "pP":
-                                player.scroller.pos = player.i
-                                player.scroller.resize()
-                                player.update_screen()
-                            elif ch in "gG":
+                            elif c == curses.KEY_DC:
+                                selected_song = player.scroller.pos
+                                deleted_song = player.playlist[selected_song]
+                                del player.playlist[selected_song]
+
                                 if loop:
+                                    for i in range(len(next_playlist)):
+                                        if next_playlist[i][0] == deleted_song:
+                                            del next_playlist[i]
+                                            break
+
+                                player.scroller.num_lines -= 1
+                                if (
+                                    selected_song == player.i
+                                ):  # deleted current song
+                                    next_song = 1
+                                    # will be incremented to i
+                                    player.scroller.pos = player.i - 1
+                                    player.i -= 1
                                     player.playback.stop()
-                                    next_song = 2
                                     break
-                            elif ch in "eE":
-                                player.ending = not player.ending
-                                player.update_screen()
-                            elif ch in "qQ":
-                                player.ending = True
-                                break
-                            elif ch in "dD":
-                                if player.update_discord:
-                                    player.update_discord = False
-                                    if player.discord_rpc is not None:
-                                        player.discord_rpc.close()
-                                    player.discord_connected = 0
-                                else:
+                                # deleted song before current
+                                if selected_song < player.i:
+                                    player.i -= 1
+                                # deleted last song
+                                if selected_song == player.scroller.num_lines:
+                                    player.scroller.pos -= 1
+                            elif c == 27:
+                                if player.show_help:
+                                    player.show_help = False
+                                    player.update_screen()
+                            elif ch is not None:
+                                if ch in "nN":
+                                    if (
+                                        not player.i == len(player.playlist) - 1
+                                        or loop
+                                    ):
+                                        next_song = 1
+                                        player.playback.stop()
+                                        break
+                                elif ch in "bB":
+                                    if player.i != 0:
+                                        next_song = -1
+                                        player.playback.stop()
+                                        break
+                                elif ch in "rR":
+                                    player.restarting = True
+                                    player.playback.stop()
+                                    next_song = 0
+                                    break
+                                elif ch in "lL":
+                                    player.looping_current_song = (
+                                        player.looping_current_song + 1
+                                    ) % len(config.LOOP_MODES)
+                                    player.update_screen()
+                                elif ch in "cC":
+                                    player.clip_mode = not player.clip_mode
+                                    if player.clip_mode:
+                                        clip_start, clip_end = player.clip
+                                        player.duration = clip_end - clip_start
+                                        if (
+                                            player.playback.curr_pos
+                                            < clip_start
+                                            or player.playback.curr_pos
+                                            > clip_end
+                                        ):
+                                            player.seek(clip_start)
+                                    else:
+                                        player.duration = (
+                                            player.playback.duration
+                                        )
+                                    player.update_screen()
+                                elif ch in "pP":
+                                    player.scroller.pos = player.i
+                                    player.scroller.refresh()
+                                    player.update_screen()
+                                elif ch in "gG":
+                                    if loop:
+                                        player.playback.stop()
+                                        next_song = 2
+                                        break
+                                elif ch in "eE":
+                                    player.ending = not player.ending
+                                    player.update_screen()
+                                elif ch in "qQ":
+                                    player.ending = True
+                                    break
+                                elif ch in "dD":
+                                    if player.update_discord:
+                                        player.update_discord = False
+                                        if player.discord_rpc is not None:
+                                            player.discord_rpc.close()
+                                        player.discord_connected = 0
+                                    else:
 
-                                    def f():
-                                        player.initialize_discord()
-                                        player.update_discord_metadata()
+                                        def f():
+                                            player.initialize_discord()
+                                            player.update_discord_metadata()
 
-                                    threading.Thread(
-                                        target=f,
-                                        daemon=True,
-                                    ).start()
-                            elif ch in "iI":
-                                player.prompting = (
-                                    "",
-                                    0,
-                                    config.PROMPT_MODES["insert"],
-                                )
-                                curses.curs_set(True)
-                                screen_size = stdscr.getmaxyx()
-                                player.scroller.resize(screen_size[0] - 3)
-                                player.update_screen()
-                            elif ch in "aA":
-                                player.prompting = (
-                                    "",
-                                    0,
-                                    config.PROMPT_MODES["add"],
-                                )
-                                curses.curs_set(True)
-                                screen_size = stdscr.getmaxyx()
-                                player.scroller.resize(screen_size[0] - 3)
-                                player.update_screen()
-                            elif ch in "tT":
-                                player.prompting = (
-                                    "",
-                                    0,
-                                    config.PROMPT_MODES["tag"],
-                                )
-                                curses.curs_set(True)
-                                screen_size = stdscr.getmaxyx()
-                                player.scroller.resize(screen_size[0] - 3)
-                                player.update_screen()
-                            elif ch in "mM":
-                                if player.volume == 0:
-                                    player.volume = prev_volume
-                                else:
-                                    player.volume = 0
-
-                                player.update_screen()
-                            elif ch in "vV":
-                                player.visualize = not player.visualize
-                                player.update_screen()
-                            elif ch in "sS":
-                                player.stream = not player.stream
-                                if player.stream:
-                                    if player.username is not None:
                                         threading.Thread(
-                                            target=player.update_stream_metadata,
+                                            target=f,
                                             daemon=True,
                                         ).start()
-                                        player.ffmpeg_process.start()
-                                else:
-                                    player.ffmpeg_process.terminate()
-                                player.update_screen()
-                            elif ch == " ":
-                                player.paused = not player.paused
-
-                                if player.paused:
-                                    player.playback.pause()
-                                    pause_start = time()
-                                else:
-                                    player.playback.resume()
-                                    start_time += time() - pause_start
-
-                                if player.can_mac_now_playing:
-                                    player.mac_now_playing.paused = (
-                                        player.paused
+                                elif ch in "iI":
+                                    player.prompting = (
+                                        "",
+                                        0,
+                                        config.PROMPT_MODES["insert"],
                                     )
+                                    curses.curs_set(True)
+                                    screen_size = stdscr.getmaxyx()
+                                    player.scroller.resize(screen_size[0] - 3)
+                                    player.update_screen()
+                                elif ch in "aA":
+                                    player.prompting = (
+                                        "",
+                                        0,
+                                        config.PROMPT_MODES["add"],
+                                    )
+                                    curses.curs_set(True)
+                                    screen_size = stdscr.getmaxyx()
+                                    player.scroller.resize(screen_size[0] - 3)
+                                    player.update_screen()
+                                elif ch in "tT":
+                                    player.prompting = (
+                                        "",
+                                        0,
+                                        config.PROMPT_MODES["tag"],
+                                    )
+                                    curses.curs_set(True)
+                                    screen_size = stdscr.getmaxyx()
+                                    player.scroller.resize(screen_size[0] - 3)
+                                    player.update_screen()
+                                elif ch in "mM":
+                                    if player.volume == 0:
+                                        player.volume = prev_volume
+                                    else:
+                                        player.volume = 0
+
+                                    player.update_screen()
+                                elif ch in "vV":
+                                    player.visualize = not player.visualize
+                                    player.update_screen()
+                                elif ch in "sS":
+                                    player.stream = not player.stream
+                                    if player.stream:
+                                        if player.username is not None:
+                                            threading.Thread(
+                                                target=player.update_stream_metadata,
+                                                daemon=True,
+                                            ).start()
+                                            player.ffmpeg_process.start()
+                                    else:
+                                        player.ffmpeg_process.terminate()
+                                    player.update_screen()
+                                elif ch == " ":
+                                    player.paused = not player.paused
+
                                     if player.paused:
-                                        player.mac_now_playing.pause()
+                                        player.playback.pause()
+                                        pause_start = time()
                                     else:
-                                        player.mac_now_playing.resume()
-                                    player.update_now_playing = True
+                                        player.playback.resume()
+                                        start_time += time() - pause_start
 
-                                player.update_screen()
-                            elif ch == "[":
-                                player.volume = max(
-                                    0, player.volume - config.VOLUME_STEP
-                                )
-                                player.update_screen()
-                                prev_volume = player.volume
-                            elif ch == "]":
-                                player.volume = min(
-                                    100, player.volume + config.VOLUME_STEP
-                                )
-                                player.update_screen()
-                                prev_volume = player.volume
-                    else:
-                        if c == curses.KEY_LEFT:
-                            # pylint: disable=unsubscriptable-object
-                            player.prompting = (
-                                player.prompting[0],
-                                max(player.prompting[1] - 1, 0),
-                                player.prompting[2],
-                            )
-                            player.update_screen()
-                        elif c == curses.KEY_RIGHT:
-                            # pylint: disable=unsubscriptable-object
-                            player.prompting = (
-                                player.prompting[0],
-                                min(
-                                    player.prompting[1] + 1,
-                                    len(player.prompting[0]),
-                                ),
-                                player.prompting[2],
-                            )
-                            player.update_screen()
-                        elif c == curses.KEY_UP:
-                            player.scroller.scroll_backward()
-                            player.update_screen()
-                        elif c == curses.KEY_DOWN:
-                            player.scroller.scroll_forward()
-                            player.update_screen()
-                        elif c == curses.KEY_DC:
-                            # pylint: disable=unsubscriptable-object
-                            player.prompting_delete_char()
-                            player.update_screen()
-                        elif c == curses.KEY_ENTER:
-                            # pylint: disable=unsubscriptable-object
-                            # fmt: off
-                            if player.prompting[2] in (
-                                config.PROMPT_MODES["add"],
-                                config.PROMPT_MODES["insert"],
-                            ):
-                                try:
-                                    song = helpers.CLICK_SONG(player.prompting[0])
-                                    if player.prompting[2] == config.PROMPT_MODES["insert"]:
-                                        player.playlist.insert(
-                                            player.scroller.pos + 1,
-                                            song,
+                                    if player.can_mac_now_playing:
+                                        player.mac_now_playing.paused = (
+                                            player.paused
                                         )
-                                        inserted_pos = player.scroller.pos + 1
-                                        if player.i > player.scroller.pos:
-                                            player.i += 1
+                                        if player.paused:
+                                            player.mac_now_playing.pause()
+                                        else:
+                                            player.mac_now_playing.resume()
+                                        player.update_now_playing = True
+
+                                    player.update_screen()
+                                elif ch == "[":
+                                    player.volume = max(
+                                        0, player.volume - config.VOLUME_STEP
+                                    )
+                                    player.update_screen()
+                                    prev_volume = player.volume
+                                elif ch == "]":
+                                    player.volume = min(
+                                        100, player.volume + config.VOLUME_STEP
+                                    )
+                                    player.update_screen()
+                                    prev_volume = player.volume
+                                elif ch in "yY":
+                                    player.wants_lyrics = (
+                                        not player.wants_lyrics
+                                    )
+                                elif ch in "oO":
+                                    helpers.SONG_DATA.load()
+                                    helpers.SONGS.load()
+                                    for song in player.playlist:
+                                        song.reset()
+
+                                    if (
+                                        player.song.set_clip
+                                        in player.song.clips
+                                    ):
+                                        player.clip = player.song.clips[
+                                            player.song.set_clip
+                                        ]
                                     else:
-                                        player.playlist.append(song)
-                                        inserted_pos = len(player.playlist) - 1
+                                        player.clip = (
+                                            0,
+                                            player.playback.duration,
+                                        )
+                                    player.duration = (
+                                        player.clip[1] - player.clip[0]
+                                    )
 
-                                    if loop:
-                                        if reshuffle >= 0:
-                                            next_playlist.insert(randint(max(0, inserted_pos-reshuffle), min(len(playlist)-1, inserted_pos+reshuffle)), song)
-                                        elif reshuffle == -1:
-                                            next_playlist.insert(randint(0, len(playlist) - 1), song)
+                                    player.lyrics = (
+                                        player.song.parsed_override_lyrics
+                                        or player.song.parsed_lyrics
+                                    )
+                                    if player.lyrics is not None:
+                                        player.lyrics_scroller = (
+                                            helpers.Scroller(
+                                                len(player.lyrics),
+                                                player.screen_height,
+                                            )
+                                        )
 
-                                    player.scroller.num_lines += 1
+                                    player.update_screen()
+                                elif ch == "?":
+                                    player.show_help = not player.show_help
+                        else:
+                            if c == curses.KEY_LEFT:
+                                # pylint: disable=unsubscriptable-object
+                                player.prompting = (
+                                    player.prompting[0],
+                                    max(player.prompting[1] - 1, 0),
+                                    player.prompting[2],
+                                )
+                                player.update_screen()
+                            elif c == curses.KEY_RIGHT:
+                                # pylint: disable=unsubscriptable-object
+                                player.prompting = (
+                                    player.prompting[0],
+                                    min(
+                                        player.prompting[1] + 1,
+                                        len(player.prompting[0]),
+                                    ),
+                                    player.prompting[2],
+                                )
+                                player.update_screen()
+                            elif c == curses.KEY_DC:
+                                # pylint: disable=unsubscriptable-object
+                                player.prompting_delete_char()
+                                player.update_screen()
+                            elif c == curses.KEY_ENTER:
+                                # pylint: disable=unsubscriptable-object
+                                # fmt: off
+                                if player.prompting[2] in (
+                                    config.PROMPT_MODES["add"],
+                                    config.PROMPT_MODES["insert"],
+                                ):
+                                    try:
+                                        song = helpers.CLICK_SONG(player.prompting[0])
+                                        if player.prompting[2] == config.PROMPT_MODES["insert"]:
+                                            player.playlist.insert(
+                                                player.scroller.pos + 1,
+                                                song,
+                                            )
+                                            inserted_pos = player.scroller.pos + 1
+                                            if player.i > player.scroller.pos:
+                                                player.i += 1
+                                        else:
+                                            player.playlist.append(song)
+                                            inserted_pos = len(player.playlist) - 1
+
+                                        if loop:
+                                            if reshuffle >= 0:
+                                                next_playlist.insert(randint(max(0, inserted_pos-reshuffle), min(len(playlist)-1, inserted_pos+reshuffle)), song)
+                                            elif reshuffle == -1:
+                                                next_playlist.insert(randint(0, len(playlist) - 1), song)
+
+                                        player.scroller.num_lines += 1
+
+                                        player.prompting = None
+                                        curses.curs_set(False)
+                                        player.scroller.resize(screen_size[0] - 2)
+
+                                        player.update_screen()
+                                    except click.BadParameter:
+                                        pass
+                                elif (
+                                    "|" not in player.prompting[0]
+                                    and player.prompting[2]
+                                    == config.PROMPT_MODES["tag"]
+                                ):
+                                    tags = set(player.prompting[0].split(","))
+
+                                    for song in player.playlist:
+                                        song.tags |= tags
 
                                     player.prompting = None
                                     curses.curs_set(False)
                                     player.scroller.resize(screen_size[0] - 2)
 
                                     player.update_screen()
-                                except click.BadParameter:
-                                    pass
-                            elif (
-                                "|" not in player.prompting[0]
-                                and player.prompting[2]
-                                == config.PROMPT_MODES["tag"]
-                            ):
-                                tags = set(player.prompting[0].split(","))
-
-                                for song in player.playlist:
-                                    song.tags |= tags
-
+                            elif c == 27:  # ESC key
                                 player.prompting = None
                                 curses.curs_set(False)
                                 player.scroller.resize(screen_size[0] - 2)
-
                                 player.update_screen()
-                        elif c == 27:  # ESC key
-                            player.prompting = None
-                            curses.curs_set(False)
-                            player.scroller.resize(screen_size[0] - 2)
-                            player.update_screen()
-                        elif ch is not None:
-                            player.prompting = (
-                                # pylint: disable=unsubscriptable-object
-                                player.prompting[0][: player.prompting[1]]
-                                + ch
-                                + player.prompting[0][player.prompting[1] :],
-                                player.prompting[1] + 1,
-                                player.prompting[2],
-                            )
-                            player.update_screen()
+                            elif ch is not None:
+                                player.prompting = (
+                                    # pylint: disable=unsubscriptable-object
+                                    player.prompting[0][: player.prompting[1]]
+                                    + ch
+                                    + player.prompting[0][
+                                        player.prompting[1] :
+                                    ],
+                                    player.prompting[1] + 1,
+                                    player.prompting[2],
+                                )
+                                player.update_screen()
 
             if (
                 player.can_mac_now_playing
@@ -599,8 +660,8 @@ def _play(
         elif next_song == 0:
             if player.looping_current_song == config.LOOP_MODES["one"]:
                 player.looping_current_song = config.LOOP_MODES["none"]
-        elif next_song < -1:  # user pos -> - (pos + 1)
-            player.i = -next_song - 1
+        elif next_song < -1:  # user pos -> -(pos + 2)
+            player.i = -next_song - 2
         elif next_song == 2:
             next_next_playlist = next_playlist[:]
             if reshuffle:
@@ -620,6 +681,7 @@ def _play(
 @click.pass_context
 def cli(ctx: click.Context):
     """A command line interface for playing music."""
+
     # ~/.maestro-files
     if not os.path.exists(config.MAESTRO_DIR):
         os.makedirs(config.MAESTRO_DIR)
@@ -627,19 +689,19 @@ def cli(ctx: click.Context):
     # ensure config.SETTINGS has all settings
     update_settings = False
     if not os.path.exists(config.SETTINGS_FILE):
-        config.SETTINGS = config.DEFAULT_SETTINGS
+        config.settings = config.DEFAULT_SETTINGS
         update_settings = True
     else:
         with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
             s = f.read()
             if s:
-                config.SETTINGS = msgspec.json.decode(s)
+                config.settings = msgspec.json.decode(s)
                 for key in config.DEFAULT_SETTINGS:
-                    if key not in config.SETTINGS:
-                        config.SETTINGS[key] = config.DEFAULT_SETTINGS[key]
+                    if key not in config.settings:
+                        config.settings[key] = config.DEFAULT_SETTINGS[key]
                         update_settings = True
             else:
-                config.SETTINGS = config.DEFAULT_SETTINGS
+                config.settings = config.DEFAULT_SETTINGS
                 update_settings = True
 
     # ~/.maestro-files/songs.json
@@ -655,12 +717,12 @@ def cli(ctx: click.Context):
             pass
 
     # ~/.maestro-files/songs/
-    if not os.path.exists(config.SETTINGS["song_directory"]):
-        os.makedirs(config.SETTINGS["song_directory"])
+    if not os.path.exists(config.settings["song_directory"]):
+        os.makedirs(config.settings["song_directory"])
 
     t = time()
-    if t - config.SETTINGS["last_version_sync"] > 24 * 60 * 60:  # 1 day
-        config.SETTINGS["last_version_sync"] = t
+    if t - config.settings["last_version_sync"] > 24 * 60 * 60:  # 1 day
+        config.settings["last_version_sync"] = t
         update_settings = True
         try:
             import requests
@@ -681,8 +743,10 @@ def cli(ctx: click.Context):
 
     # ensure config.SETTINGS_FILE is up to date
     if update_settings:
-        with open(config.SETTINGS_FILE, "wb") as g:
-            g.write(msgspec.json.encode(config.SETTINGS))
+        import safer
+
+        with safer.open(config.SETTINGS_FILE, "wb") as g:
+            g.write(msgspec.json.encode(config.settings))
 
     # ensure config.LOGFILE is not too large (1 MB)
     t = time()
@@ -739,7 +803,7 @@ def cli(ctx: click.Context):
     "-f",
     "--format",
     "format_",
-    type=click.Choice(["wav", "mp3", "flac", "vorbis"]),
+    type=click.Choice(("wav", "mp3", "flac", "vorbis")),
     help="Specify the format of the song if downloading from YouTube, YouTube Music, or Spotify URL.",
     default="mp3",
     show_default=True,
@@ -764,6 +828,12 @@ def cli(ctx: click.Context):
     default=False,
     help="Skip adding song names that are already in the database. If not passed, 'copy' is appended to any duplicate names.",
 )
+@click.option(
+    "-L/-nL",
+    "--lyrics/--no-lyrics",
+    default=True,
+    help="Search for and download lyrics for the song.",
+)
 def add(
     path_,
     tags,
@@ -776,13 +846,15 @@ def add(
     playlist_,
     metadata_pairs,
     skip_dupes,
+    lyrics,
 ):
     """
     Add a new song.
 
     Adds the audio file located at PATH. If PATH is a folder, adds all files
-    in PATH (including files in subfolders if '-r' is passed). The name of each
-    song will be the filename (unless '-n' is passed).
+    in PATH (including files in subfolders if '-R/--recursive' is passed). If
+    '-M/--move' is passed, the file is moved from PATH to maestro's internal
+    song database instead of copied.
 
     If the '-Y/--youtube' flag is passed, PATH is treated as a YouTube or
     YouTube Music URL instead of a file path.
@@ -791,6 +863,13 @@ def add(
     track URL, album URL, playlist URL, artist URL, or search query instead of
     a file path.
 
+    The default format for downloading from YouTube, YouTube Music, or Spotify
+    is 'mp3'. The '-f/--format' option can be used to specify the format: 'wav',
+    'mp3', 'flac', or 'vorbis' (.ogg container).
+
+    If adding only one song, the '-n/--name' option can be used to specify the
+    name of the song. Do not include an extension (e.g. '.wav').
+
     The '-m/--metadata' option can be used to add metadata to the song. It takes
     a string of the format 'key1:value1|key2:value2|...'. If adding multiple
     songs, the metadata is added to each song.
@@ -798,6 +877,13 @@ def add(
     Possible editable metadata keys are: album, albumartist, artist, artwork,
     comment, compilation, composer, discnumber, genre, lyrics, totaldiscs,
     totaltracks, tracknumber, tracktitle, year, isrc
+
+    If the '-nD/--skip-dupes' flag is passed, song names that are already in
+    the database are skipped. If not passed, 'copy' is appended to any duplicate
+    names.
+
+    If the '-L/--lyrics' flag is passed, maestro attempts to download lyrics
+    (synced if possible).
 
     Keys are not case sensitive and can contain arbitrary whitespace, '-', and
     '_' characters. In other words, 'Album Artist', 'album-artist', and
@@ -935,13 +1021,14 @@ def add(
     if not paths:
         click.secho("No songs to add.", fg="red")
         return
-    if len(paths) > 1 and name is not None:
-        click.secho(
-            "Cannot pass '-n/--name' option when adding multiple songs.",
-            fg="yellow",
-        )
 
-    if len(paths) == 1 and name is not None:  # renaming
+    if name is not None:  # renaming
+        if len(paths) > 1:
+            click.secho(
+                "Cannot pass '-n/--name' option when adding multiple songs.",
+                fg="yellow",
+            )
+
         ext = os.path.splitext(paths[0])[1].lower()
         if not os.path.isdir(paths[0]) and ext not in config.EXTS:
             click.secho(f"'{ext}' is not supported.", fg="red")
@@ -974,7 +1061,7 @@ def add(
         )
 
     for path in paths:
-        import music_tag
+        import syncedlyrics
 
         ext = os.path.splitext(path)[1].lower()
         if not os.path.isdir(path) and ext not in config.EXTS:
@@ -983,7 +1070,7 @@ def add(
 
         song_fname = os.path.split(path)[1]
         song_title = os.path.splitext(song_fname)[0]
-        dest_path = os.path.join(config.SETTINGS["song_directory"], song_fname)
+        dest_path = os.path.join(config.settings["song_directory"], song_fname)
 
         for song in helpers.SONGS:
             if song.song_title == song_title:
@@ -993,16 +1080,16 @@ def add(
                         fg="yellow",
                     )
                     os.remove(path)
-                    break
-                click.secho(
-                    f"Song with name '{song_title}' already exists, 'copy' will be appended to the song name.",
-                    fg="yellow",
-                )
-                song_fname = song_title + " copy" + ext
+                else:
+                    click.secho(
+                        f"Song with name '{song_title}' already exists, 'copy' will be appended to the song name.",
+                        fg="yellow",
+                    )
+                    song_fname = song_title + " copy" + ext
 
-                dest_path = os.path.join(
-                    config.SETTINGS["song_directory"], song_fname
-                )
+                    dest_path = os.path.join(
+                        config.settings["song_directory"], song_fname
+                    )
                 break
 
         if move_:
@@ -1010,7 +1097,41 @@ def add(
         else:
             copy(path, dest_path)
 
-        song_id = helpers.SONG_DATA.add_song(dest_path, tags)
+        song = helpers.SONG_DATA.add_song(dest_path, tags)
+
+        if metadata_pairs is not None:
+            for path in paths:
+                for key, value in metadata_pairs:
+                    song.set_metadata(key, value)
+
+        if lyrics:
+            try:
+                lyrics = syncedlyrics.search(
+                    f"{song.artist} - {song_title}", allow_plain_format=True
+                )
+            except TypeError:
+                try:
+                    lyrics = syncedlyrics.search(song_title)
+                except Exception as e:
+                    click.secho(
+                        f'Failed to download lyrics for "{song_title}": {e}',
+                        fg="red",
+                    )
+            except Exception as e:
+                click.secho(
+                    f'Failed to download lyrics for "{song_title}": {e}',
+                    fg="red",
+                )
+            else:
+                if lyrics:
+                    click.secho(
+                        f'Downloaded lyrics for "{song_title}".', fg="green"
+                    )
+                    song.raw_lyrics = lyrics
+                else:
+                    click.secho(
+                        f'No lyrics found for "{song_title}".', fg="yellow"
+                    )
 
         if not tags:
             tags_string = ""
@@ -1019,17 +1140,10 @@ def add(
         else:
             tags_string = f" and tags {', '.join([repr(tag) for tag in tags])}"
 
-        song_metadata = music_tag.load_file(dest_path)
-        if metadata_pairs is not None:
-            for path in paths:
-                for key, value in metadata_pairs:
-                    song_metadata[key] = value
-                song_metadata.save()
-
         click.secho(
-            f"Added song '{song_fname}' with ID {song_id}"
+            f"Added song '{song.song_file}' with ID {song.song_id}"
             + tags_string
-            + f" and metadata (artist: {song_metadata['artist'] if song_metadata['artist'] else '<None>'}, album: {song_metadata['album'] if song_metadata['album'] else '<None>'}, albumartist: {song_metadata['albumartist'] if song_metadata['albumartist'] else '<None>'}).",
+            + f" and metadata (artist: {song.artist}, album: {song.album}, albumartist: {song.album_artist}).",
             fg="green",
         )
 
@@ -1077,10 +1191,10 @@ def remove(args, force, tag):
                     )
                     continue
             click.secho(
-                f'Removed song "{song.song_title}" with ID {song.song_id}.',
+                f'Removed song "{song.song_title}" (ID {song.song_id}).',
                 fg="green",
             )
-            song.remove_self()
+            song.remove_from_data()
     else:
         tags_to_remove = set(args)
         if not force:
@@ -1246,7 +1360,20 @@ def untag(songs, tags, all_):
     default=False,
     help="Visualize the song being played. Ignored if required dependencies are not installed.",
 )
-@click.option("-S/-nS", "--stream/--no-stream", "stream", default=False)
+@click.option(
+    "-S/-nS",
+    "--stream/--no-stream",
+    "stream",
+    default=False,
+    help="Stream to maestro-music.vercel.app/listen/[USERNAME].",
+)
+@click.option(
+    "-Y/-nY",
+    "--lyrics/--no-lyrics",
+    "lyrics",
+    default=False,
+    help="Download lyrics for each song.",
+)
 def play(
     tags,
     exclude_tags,
@@ -1261,6 +1388,7 @@ def play(
     match_all,
     visualize,
     stream,
+    lyrics,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your queue, unless the '-M/--match-all' flag is passed, in which case
@@ -1286,10 +1414,14 @@ def play(
     \x1b[1mg\x1b[0m\t\tgo to the next pa[g]e/loop of the queue (ignored if not repeating queue)
     \x1b[1mBACKSPACE/DELETE\x1b[0m\tdelete the selected (not necessarily currently playing!) song from the queue
     \x1b[1md\x1b[0m\t\ttoggle [D]iscord rich presence
-    \x1b[1ma\x1b[0m\t\t[a]dd a song (by ID) to the end of the queue. Opens a prompt to enter the ID: ENTER to confirm, ESC to cancel.
-    \x1b[1mi\x1b[0m\t\t[i]nsert a song (by ID) in the queue after the selected song. Opens a prompt like 'a'.
+    \x1b[1ma\x1b[0m\t\t[a]dd a song to the end of the queue. Opens a prompt to enter the song name or ID: ENTER to confirm, ESC to cancel.
+    \x1b[1mi\x1b[0m\t\t[i]nsert a song in the queue after the selected song. Opens a prompt like 'a'.
     \x1b[1mt\x1b[0m\t\tadd a [t]ag to all songs in the queue. Opens a prompt like 'a'.
     \x1b[1ms\x1b[0m\t\ttoggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login
+    \x1b[1my\x1b[0m\t\ttoggle l[y]rics
+    \x1b[1mSHIFT+LEFT/RIGHT[0m\tincrease/decrease width of lyrics window
+    \x1b[1mo\x1b[0m\t\trel[o]ad song data (useful if you've changed e.g lyrics, tags, or metadata while playing)
+    \x1b[1m?\x1b[0m\t\ttoggle this help message
 
     \b
     song color indicates mode:
@@ -1398,6 +1530,7 @@ def play(
             stream,
             username,
             password,
+            lyrics,
         )
 
     if songs_not_found:
@@ -1792,15 +1925,17 @@ def clips_(songs: tuple[helpers.Song]):
     for song in songs:
         if not song.clips:
             click.secho(
-                f"No clips for \"{song.song_title}\" (ID {song.song_id}).",
+                f'No clips for "{song.song_title}" (ID {song.song_id}).',
             )
             continue
         click.echo("Clips for ", nl=False)
         click.secho(song.song_title, fg="blue", bold=True, nl=False)
-        click.echo(f" with ID {song.song_id}:")
+        click.echo(f" (ID {song.song_id}):")
 
         if "default" in song.clips:
-            click.echo(f"\tdefault: {song.clips['default'][0]}, {song.clips['default'][1]}")
+            click.echo(
+                f"\tdefault: {song.clips['default'][0]}, {song.clips['default'][1]}"
+            )
         for clip_name, (start, end) in song.clips.items():
             if clip_name == "default":
                 continue
@@ -1871,6 +2006,9 @@ def clip_(song: helpers.Song, name, start, end, editor):
             return
         editor = False
 
+        # hacky fix for end being past end of song sometimes
+        end = min(end, song.duration)
+
     if end is None:
         end = song.duration
     if start > song.duration:
@@ -1939,8 +2077,9 @@ def unclip(songs: tuple[helpers.Song], names, all_, force):
     Remove clips from song(s).
 
     Removes any clips with names passed to '-n/--name' from each song in SONGS.
+    If no names are passed, removes the clip 'default' from each song.
 
-    If the '-A/--all' flag is passed, exactly one of SONGS or '-n/--name' must
+    If the '-A/--all' flag is passed, at most one of SONGS or '-n/--name' must
     be passed. If name(s) are passed, all clips with those names will be
     removed. If SONGS are passed, all clips for each song will be removed.
     Prompts for confirmation unless '-F/--force' is passed.
@@ -1985,11 +2124,7 @@ def unclip(songs: tuple[helpers.Song], names, all_, force):
         return
 
     if not (names or all_):
-        click.secho(
-            "No clip names passed. Pass the '-A/--all' flag to remove all clips from each song.",
-            fg="red",
-        )
-        return
+        names = ("default",)
 
     for song in songs:
         if not names:
@@ -2006,7 +2141,7 @@ def unclip(songs: tuple[helpers.Song], names, all_, force):
         )
     else:
         click.secho(
-            f"Removed {helpers.pluralize(len(names), 'clip', False)} {', '.join(map(lambda n: f'\'{n}\'', names))} from {helpers.pluralize(len(songs), 'song')}.",
+            f"Removed {helpers.pluralize(len(names), 'clip', False)} {', '.join(map(repr, names))} from {helpers.pluralize(len(songs), 'song')}.",
             fg="green",
         )
 
@@ -2035,7 +2170,7 @@ def set_clip(songs: tuple[helpers.Song], name, force):
         songs = helpers.SONGS
         if not force:
             click.echo(
-                f"Are you sure you want to set the clip for all {helpers.pluralize(len(helpers.SONGS), 'song')} to '{name}'? This cannot be undone. [y/n] ",
+                f"Are you sure you want to set the clip for all {helpers.pluralize(songs, 'song')} to '{name}'? This cannot be undone. [y/n] ",
                 nl=False,
             )
             if input().lower() != "y":
@@ -2111,12 +2246,12 @@ def metadata(songs: tuple[helpers.Song], pairs):
         else:
             click.echo("Metadata for ", nl=False)
             click.secho(song.song_title, fg="blue", bold=True, nl=False)
-            click.echo(f" with ID {song.song_id}:")
+            click.echo(f" (ID {song.song_id}):")
 
             for key in config.METADATA_KEYS:
                 try:
                     click.echo(
-                        f"\t{key if not key.startswith('#') else key[1:]}: {song.get_metadata(key).value}"
+                        f"\t{key if not key.startswith('#') else key[1:]}: {song.get_metadata(key)}"
                     )
                 except KeyError:
                     pass
@@ -2134,7 +2269,7 @@ def dir_(directory):
     """
 
     if directory is None:
-        click.echo(config.SETTINGS["song_directory"])
+        click.echo(config.settings["song_directory"])
         return
 
     if not os.path.exists(directory):
@@ -2301,11 +2436,13 @@ def migrate():
                 stats = float(details[1])
                 d[song_id]["stats"][year] = stats
 
-    with open(config.SONGS_INFO_PATH, "wb") as f:
+    import safer
+
+    with safer.open(config.SONGS_INFO_PATH, "wb") as f:
         f.write(msgspec.json.encode(d))
 
-    # move old files to old_data
-    old_data_dir = os.path.join(config.MAESTRO_DIR, "old_data/")
+    # move old files to old-data
+    old_data_dir = os.path.join(config.MAESTRO_DIR, "old-data/")
     os.makedirs(old_data_dir, exist_ok=True)
     move(config.OLD_SONGS_INFO_PATH, old_data_dir)
     move(config.OLD_STATS_DIR, old_data_dir)
@@ -2317,17 +2454,438 @@ def migrate():
 
 
 @cli.command(name="format-data")
-@click.argument("indent", type=int, default=2)
+@click.argument("indent", type=int, default=4)
 def format_data(indent: int):
     """
     Format the song data file to be more human-readable. The INDENT argument
     specifies the number of spaces to indent each level of the JSON file.
     """
-    with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as f:
+    import safer
+
+    with safer.open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as f:
         data = msgspec.json.decode(f.read())
 
     with open(config.SONGS_INFO_PATH, "wb") as f:
         f.write(msgspec.json.format(msgspec.json.encode(data), indent=indent))
+
+    click.secho(
+        f"Formatted '{config.SONGS_INFO_PATH}' with an indent of {indent}.",
+        fg="green",
+    )
+
+
+@cli.command(name="lyrics")
+@click.argument("songs", required=False, type=helpers.CLICK_SONG, nargs=-1)
+@click.option(
+    "-U/-nU",
+    "--update/--no-update",
+    "updating",
+    default=False,
+    help="Update lyrics for song(s).",
+)
+@click.option(
+    "-R/-nR",
+    "--remove/--no-remove",
+    "removing",
+    default=False,
+    help="Remove lyrics for song(s).",
+)
+@click.option(
+    "-n", "--name", "name", help="Name to use instead of the song title."
+)
+@click.option(
+    "-F/-nF",
+    "--force/--no-force",
+    "force",
+    default=False,
+    help="Skip confirmation prompt.",
+)
+@click.option(
+    "-A/-nA",
+    "--all/--no-all",
+    "all_",
+    default=False,
+    help="Update lyrics for all songs.",
+)
+def lyrics_(songs: tuple[helpers.Song], updating, removing, name, force, all_):
+    """
+    Display or update the lyrics for song(s). Shows the overridden lyrics if
+    they exist instead of the core metadata lyrics.
+
+    Updates (core metadata, not any overridden) lyrics if '-U/--update' is
+    passed, downloading synced lyrics if available. If the song has lyrics,
+    prompts for confirmation before updating unless '-F/--force' is passed.
+    If '-R/--remove' is passed, removes the lyrics for each song (prompts for
+    confirmation). Cannot pass both.
+
+    If '-A/--all' is passed, updates/removes lyrics for all songs. Errors if
+    SONGS are passed with '-A/--all'. Prompts for confirmation unless
+    '-F/--force' is passed. Ignored if not updating.
+
+    If the '-n/--name' flag is passed, uses NAME as the song title to search for
+    lyrics instead of the actual song title. Ignored if not updating.
+    """
+    import syncedlyrics
+
+    if not (updating or removing):
+        for song in songs:
+            lyrics = song.parsed_override_lyrics or song.parsed_lyrics
+
+            if lyrics is None:
+                click.secho(
+                    f'No lyrics found for "{song.song_title}" (ID: {song.song_id}).',
+                    fg="red",
+                )
+                return
+
+            click.echo("Lyrics for ", nl=False)
+            click.secho(song.song_title, fg="blue", bold=True, nl=False)
+            click.echo(f" (ID {song.song_id}):")
+
+            if helpers.is_timed_lyrics(lyrics):
+                for lyric in lyrics:
+                    click.echo(
+                        f"\t[{helpers.format_seconds(lyric.time, show_decimal=True)}] "
+                        + lyric.text
+                    )
+            else:
+                click.echo("\n".join([f"\t{lyric}" for lyric in lyrics]))
+        return
+
+    if len(songs) > 1 and name:
+        click.secho(
+            "Cannot pass a name when updating lyrics for multiple songs.",
+            fg="red",
+        )
+        return
+    if not (songs or all_):
+        click.secho(
+            "No songs passed. Use '-A/--all' to update lyrics for all songs.",
+            fg="red",
+        )
+        return
+    if songs and all_:
+        click.secho(
+            "Cannot pass songs with '-A/--all'.",
+            fg="red",
+        )
+        return
+
+    if all_:
+        if not force:
+            click.echo(
+                "Are you sure you want to update lyrics for all songs? This cannot be undone. [y/n] ",
+                nl=False,
+            )
+            if input().lower() != "y":
+                return
+        songs = helpers.SONGS
+        force = True
+
+    for song in songs:
+        if removing:
+            if not force:
+                click.echo(
+                    f'Are you sure you want to remove lyrics for "{song.song_title}" (ID {song.song_id})? This cannot be undone. [y/n] ',
+                    nl=False,
+                )
+                if input().lower() != "y":
+                    continue
+            song.raw_lyrics = None
+            click.secho(
+                f'Removed lyrics for "{song.song_title}" (ID {song.song_id}).',
+                fg="green",
+            )
+            continue
+
+        song_title = name or f"{song.artist} - {song.song_title}"
+
+        if song.raw_lyrics is not None:
+            if not force:
+                click.echo(
+                    f'Lyrics already exist for "{song.song_title}" (ID {song.song_id}). Overwrite? [y/n] ',
+                    nl=False,
+                )
+                if input().lower() != "y":
+                    continue
+
+        try:
+            lyrics = syncedlyrics.search(song_title, allow_plain_format=True)
+        except TypeError as e:
+            print_to_logfile(
+                f"TypeError with allow_plain_format=True in syncedlyrics.search: {e}"
+            )
+            try:
+                lyrics = syncedlyrics.search(song_title)
+            except Exception as f:
+                click.secho(
+                    f'Failed to download lyrics for "{song_title}": {f}',
+                    fg="red",
+                )
+        except Exception as e:
+            click.secho(
+                f'Failed to download lyrics for "{song_title}": {e}',
+                fg="red",
+            )
+        else:
+            if lyrics:
+                click.secho(
+                    f'Downloaded lyrics for "{song.song_title}" (ID {song.song_id})'
+                    + (f' using name "{name}"' if name else "")
+                    + ".",
+                    fg="green",
+                )
+                song.raw_lyrics = lyrics
+            else:
+                click.secho(f'No lyrics found for "{song_title}".', fg="yellow")
+
+
+@cli.command(name="translit")
+@click.argument("songs", required=True, type=helpers.CLICK_SONG, nargs=-1)
+@click.option(
+    "--lang",
+    type=click.Choice(("japanese", "german") + config.INDIC_SCRIPTS),
+    help="Language-specific transliteration support.",
+)
+@click.option(
+    "-O/-nO",
+    "--add-override/--no-add-override",
+    "override",
+    default=False,
+    help="Add override lyrics.",
+)
+@click.option(
+    "-R/-nR",
+    "--replace/--no-replace",
+    "replace_",
+    default=False,
+    help="Replace lyrics with transliterated lyrics.",
+)
+@click.option(
+    "-F/-nF",
+    "--force/--no-force",
+    "force",
+    default=False,
+    help="Skip confirmation prompt.",
+)
+def transliterate(songs, lang, override, replace_, force):
+    """
+    Transliterate foreign-script song lyrics to ASCII. This is NOT translation,
+    but rather converting the script to a more readable form using the
+    'unidecode' package. For example, "తెలుగు" would be transliterated
+    to "telugu".
+
+    If '-O/--add-override' is passed, adds the transliterated lyrics as an
+    override for each song to maestro's internal data (prompts for confirmation
+    if override already exists unless '-F/--force' is passed). This retains the
+    original lyric metadata while allowing maestro to display the transliterated
+    lyrics instead in 'maestro play'. You can replace the original lyrics with
+    the transliterated lyrics by passing the '-R/--replace' flag, which prompts
+    for confirmation unless '-F/--force' is passed. Cannot pass both
+    -O/--add-override' and '-R/--replace'.
+
+    Unidecode is not perfect and may not work well with all languages; for
+    example, 'ä' becomes 'a' instead of 'ae', and Japanese characters are
+    treated as Chinese characters (although maestro uses 'pykakasi' as a
+    workaround for Japanese).
+
+    If you're having issues, you can try explicitly passing the "--lang" option
+    with either "japanese" or "german" to improve transliteration. The former
+    will skip unidecode and use pykakasi only, while the latter will replace
+    'ä', 'ö', 'ü' with 'ae', 'oe', 'ue' before running unidecode.
+
+    Indic scripts are also supported using
+    'indic_transliteration':
+        bengali, assamese, modi (i.e. Marathi), malayalam, devanagari, sinhala,
+        tibetan, gurmukhi (i.e. Punjabi), tamil, balinese, thai, burmese, telugu,
+        kannada, gujarati, urdu, lao, javanese, manipuri, oriya, khmer
+    """
+    if not songs:
+        click.secho("No songs passed.", fg="red")
+        return
+
+    if override and replace_:
+        click.secho(
+            "Cannot pass both '-O/--add-override' and '-R/--replace'.", fg="red"
+        )
+        return
+
+    import re
+
+    from unidecode import unidecode
+
+    JA_REGEX = re.compile(
+        "[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]"
+    )
+
+    for song in songs:
+        lyrics = song.parsed_lyrics
+        if lyrics is None:
+            click.secho(
+                f'No lyrics found for "{song.song_title}" (ID: {song.song_id}).',
+                fg="red",
+            )
+            return
+
+        if helpers.is_timed_lyrics(lyrics):
+            if lang == "de":
+                for lyric in lyrics:
+                    lyric.text = (
+                        lyric.text.replace("ä", "ae")
+                        .replace("ö", "oe")
+                        .replace("ü", "ue")
+                    )
+
+            if lang == "ja" or JA_REGEX.search(song.raw_lyrics):
+                from pykakasi import kakasi
+
+                kks = kakasi()
+                for lyric in lyrics:
+                    lyric.text = " ".join(
+                        [t["hepburn"] for t in kks.convert(lyric.text)]
+                    )
+
+            if lang in config.INDIC_SCRIPTS:
+                from indic_transliteration import sanscript
+
+                for lyric in lyrics:
+                    lyric.text = (
+                        sanscript.transliterate(lyric.text, lang, "iast")
+                        .replace("c", "ch")
+                        .replace("ā", "aa")
+                        .replace("t", "th")
+                        .replace("ṭ", "t")
+                        .replace("ī", "ee")
+                        .replace("ū", "oo")
+                        .replace("è", "e")
+                        .replace("ò", "o")
+                        .replace("ṣ", "sh")
+                        .replace("ḍ", "d")
+                        .replace("ṇ", "n")
+                    )
+                    # replace ṃ with n if not at end of word, else m
+                    lyric.text = re.sub(r"ṃ(?=\w)", "n", lyric.text)
+                    lyric.text = lyric.text.replace("ṃ", "m")
+
+            if lang != "ja" and lang not in config.INDIC_SCRIPTS:
+                for lyric in lyrics:
+                    lyric.text = unidecode(lyric.text)
+
+            lyrics_lrc = lyrics.toLRC()
+            if override:
+                if song.raw_override_lyrics is not None:
+                    if not force:
+                        click.echo(
+                            f'Override lyrics already exist for "{song.song_title}" (ID {song.song_id}), do you want to replace them? This action cannot be undone. [y/n] ',
+                            nl=False,
+                        )
+                        if input().lower() != "y":
+                            continue
+                song.raw_override_lyrics = lyrics_lrc
+                click.secho(
+                    f'Added override lyrics for "{song.song_title}" (ID {song.song_id}).',
+                    fg="green",
+                )
+            elif replace_:
+                if not force:
+                    click.echo(
+                        f'Are you sure you want to replace the lyrics for "{song.song_title}" (ID {song.song_id}) with the transliterated lyrics? This action cannot be undone. [y/n] ',
+                        nl=False,
+                    )
+                    if input().lower() != "y":
+                        continue
+                song.raw_lyrics = lyrics_lrc
+                click.secho(
+                    f'Replaced lyrics for "{song.song_title}" (ID {song.song_id}).',
+                    fg="green",
+                )
+            else:
+                click.echo("Transliterated lyrics for ", nl=False)
+                click.secho(song.song_title, fg="blue", bold=True, nl=False)
+                click.echo(f" (ID {song.song_id}):")
+                click.echo(
+                    "\n".join(
+                        [f"\t{lyric}" for lyric in lyrics_lrc.splitlines()]
+                    )
+                )
+        else:
+            if lang == "de":
+                for i in range(len(lyrics)):
+                    lyrics[i] = (
+                        lyrics[i]
+                        .replace("ä", "ae")
+                        .replace("ö", "oe")
+                        .replace("ü", "ue")
+                    )
+
+            if lang == "ja" or JA_REGEX.search(song.raw_lyrics):
+                from pykakasi import kakasi
+
+                kks = kakasi()
+                for i in range(len(lyrics)):
+                    lyrics[i] = " ".join(
+                        [t["hepburn"] for t in kks.convert(lyrics[i])]
+                    )
+
+            if lang in config.INDIC_SCRIPTS:
+                from indic_transliteration import sanscript
+
+                for i in range(len(lyrics)):
+                    lyrics[i] = (
+                        sanscript.transliterate(lyrics[i], lang, "iast")
+                        .replace("c", "ch")
+                        .replace("ā", "aa")
+                        .replace("t", "th")
+                        .replace("ṭ", "t")
+                        .replace("ī", "ee")
+                        .replace("ū", "oo")
+                        .replace("è", "e")
+                        .replace("ò", "o")
+                        .replace("ṣ", "sh")
+                        .replace("ḍ", "d")
+                        .replace("ṇ", "n")
+                    )
+                    # replace ṃ with n if not at end of word, else m
+                    lyrics[i] = re.sub(r"ṃ(?=\w)", "n", lyrics[i])
+                    lyrics[i] = lyrics[i].replace("ṃ", "m")
+
+            if lang != "ja" and lang not in config.INDIC_SCRIPTS:
+                for i in range(len(lyrics)):
+                    lyrics[i] = unidecode(lyrics[i])
+
+            lyrics_text = "\n".join(lyrics)
+            if override:
+                if song.raw_override_lyrics is not None:
+                    if not force:
+                        click.echo(
+                            f'Override lyrics already exist for "{song.song_title}" (ID {song.song_id}), do you want to replace them? This action cannot be undone. [y/n] ',
+                            nl=False,
+                        )
+                        if input().lower() != "y":
+                            continue
+                song.raw_override_lyrics = lyrics_text
+                click.secho(
+                    f'Added override lyrics for "{song.song_title}" (ID {song.song_id}).',
+                    fg="green",
+                )
+            elif replace_:
+                if not force:
+                    click.echo(
+                        f'Are you sure you want to replace the lyrics for "{song.song_title}" (ID {song.song_id}) with the transliterated lyrics? This action cannot be undone. [y/n] ',
+                        nl=False,
+                    )
+                    if input().lower() != "y":
+                        continue
+                song.raw_lyrics = lyrics_text
+                click.secho(
+                    f'Replaced lyrics for "{song.song_title}" (ID {song.song_id}).',
+                    fg="green",
+                )
+            else:
+                click.echo("Transliterated lyrics for ", nl=False)
+                click.secho(song.song_title, fg="blue", bold=True, nl=False)
+                click.echo(f" (ID {song.song_id}):")
+                click.echo("\n".join([f"\t{lyric}" for lyric in lyrics]))
 
 
 if __name__ == "__main__":

@@ -30,7 +30,15 @@ class Song:
         self._song_id = song_id
         self._metadata = None
         self._metadata_changed = False
+        self._parsed_lyrics = False
+        self._parsed_override_lyrics = False
         atexit.register(self._save)
+
+    def reset(self):
+        self._metadata = None
+        self._metadata_changed = False
+        self._parsed_lyrics = False
+        self._parsed_override_lyrics = False
 
     def __eq__(self, value):
         if not isinstance(value, type(self)):
@@ -44,6 +52,12 @@ class Song:
         return f"Song(ID={self.song_id})"
 
     @property
+    def override_lyrics_path(self):
+        return os.path.join(
+            config.OVERRIDE_LYRICS_DIR, f"{self.song_title}.lrc"
+        )
+
+    @property
     def song_id(self):
         return self._song_id
 
@@ -55,7 +69,7 @@ class Song:
     @property
     def song_path(self):
         """e.g. /path/to/song.mp3"""
-        return os.path.join(config.SETTINGS["song_directory"], self.song_file)
+        return os.path.join(config.settings["song_directory"], self.song_file)
 
     @property
     def song_title(self):
@@ -105,45 +119,31 @@ class Song:
 
     @property
     def artist(self):
-        if self._metadata is None:
-            self._load_metadata()
-        return self._metadata["artist"].value or "No Artist"
+        return self.get_metadata("artist") or "No Artist"
 
     @artist.setter
     def artist(self, v):
-        if self._metadata is None:
-            self._load_metadata()
         self.set_metadata("artist", v)
 
     @property
     def album(self):
-        if self._metadata is None:
-            self._load_metadata()
-        return self._metadata["album"].value or "No Album"
+        return self.get_metadata("album") or "No Album"
 
     @album.setter
     def album(self, v):
-        if self._metadata is None:
-            self._load_metadata()
         self.set_metadata("album", v)
 
     @property
     def album_artist(self):
-        if self._metadata is None:
-            self._load_metadata()
-        return self._metadata["albumartist"].value or "No Album Artist"
+        return self.get_metadata("albumartist") or "No Album Artist"
 
     @album_artist.setter
     def album_artist(self, v):
-        if self._metadata is None:
-            self._load_metadata()
         self.set_metadata("albumartist", v)
 
     @property
     def duration(self):
-        if self._metadata is None:
-            self._load_metadata()
-        return self._metadata["#length"].value
+        return self.get_metadata("#length")
 
     @property
     def artwork(self):
@@ -155,30 +155,108 @@ class Song:
             else None
         )
 
-    def get_metadata(self, key):
+    @property
+    def raw_lyrics(self) -> str | None:
+        return self.get_metadata("lyrics")
+
+    @raw_lyrics.setter
+    def raw_lyrics(self, v):
+        if self._metadata is None:
+            self._load_metadata()
+
+        if v is None and "lyrics" in self._metadata:
+            del self._metadata["lyrics"]
+        else:
+            self._metadata["lyrics"] = v
+        self._parsed_lyrics = False
+        self._metadata_changed = True
+
+    @property
+    def raw_override_lyrics(self) -> str | None:
+        if not os.path.exists(self.override_lyrics_path):
+            return None
+        with open(self.override_lyrics_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @raw_override_lyrics.setter
+    def raw_override_lyrics(self, v):
+        import safer
+
+        if v is None:
+            if os.path.exists(self.override_lyrics_path):
+                os.remove(self.override_lyrics_path)
+        else:
+            os.makedirs(config.OVERRIDE_LYRICS_DIR, exist_ok=True)
+            with safer.open(self.override_lyrics_path, "w", encoding="utf-8") as f:
+                f.write(v)
+
+        self._parsed_override_lyrics = False
+
+    def _parse_lyrics(self, raw_lyrics):
+        if raw_lyrics is None:
+            return None
+
+        raw_lyrics_list = raw_lyrics.splitlines()
+        for line in raw_lyrics_list:
+            if not line.startswith("["):  # not LRC format
+                return raw_lyrics_list
+
+        import pylrc
+
+        return pylrc.parse(raw_lyrics) if raw_lyrics else None
+
+    @property
+    def parsed_lyrics(self):
+        if self._parsed_lyrics is False:
+            self._parsed_lyrics = self._parse_lyrics(self.raw_lyrics)
+        return self._parsed_lyrics
+
+    @property
+    def parsed_override_lyrics(self):
+        if self._parsed_override_lyrics is False:
+            self._parsed_override_lyrics = self._parse_lyrics(
+                self.raw_override_lyrics
+            )
+        return self._parsed_override_lyrics
+
+    def get_metadata(self, key, resolve=True):
+        """
+        Get metadata value for `key`.
+
+        If 'resolve' is False, then a MetadataItem is returned instead of the
+        resolved value.
+        """
         if self._metadata is None:
             self._load_metadata()
 
         if key not in self._metadata:
-            raise KeyError(f"Metadata key '{key}' not found.")
+            return None
+        if resolve:
+            return self._metadata[key].value
         return self._metadata[key]
 
     def set_metadata(self, key, value):
         if self._metadata is None:
             self._load_metadata()
 
-        if key not in self._metadata:
-            raise KeyError(f"Metadata key '{key}' not found.")
+        if key not in config.METADATA_KEYS:
+            raise ValueError(f"{key} is not a valid metadata key.")
         if key.startswith("#"):
             raise ValueError(f"{key} is not editable.")
 
         if key == "tracktitle":
-            self.song_title = value
+            self.song_title = value  # also change filename
+        elif key == "lyrics":
+            self.raw_lyrics = value  # unset self._parsed_lyrics
+        elif value is None:
+            if key in self._metadata:
+                del self._metadata[key]
         else:
             self._metadata[key] = value
+
         self._metadata_changed = True
 
-    def remove_self(self):
+    def remove_from_data(self):
         del SONG_DATA[self.song_id]
 
     def _save(self):
@@ -244,11 +322,13 @@ class SongData:
         return self.songs.values()
 
     def _save(self):
+        import safer
+
         if self.songs is not None:
-            with open(config.SONGS_INFO_PATH, "wb") as f:
+            with safer.open(config.SONGS_INFO_PATH, "wb") as f:
                 f.write(msgspec.json.encode(self.songs))
 
-    def add_song(self, filename, tags=None) -> int:
+    def add_song(self, filename, tags=None):
         if tags is None:
             tags = set()
 
@@ -267,34 +347,38 @@ class SongData:
         song = Song(song_id)
         song.set_metadata("tracktitle", song.song_title)
 
-        return song_id
+        return song
 
 
 SONG_DATA = SongData()
 
 
 class Songs:
+    """
+    Wrapper around dict of all `Song` objects.
+    """
+
     def __init__(self):
-        self.songs = None
+        self._songs = None
         self._song_data = SONG_DATA
 
     def load(self):
-        self.songs = {Song(k) for k in self._song_data}
+        self._songs = {Song(k) for k in self._song_data}
 
     def __contains__(self, value: Song):
-        if self.songs is None:
+        if self._songs is None:
             self.load()
-        return value in self.songs
+        return value in self._songs
 
     def __iter__(self):
-        if self.songs is None:
+        if self._songs is None:
             self.load()
-        return iter(self.songs)
+        return iter(self._songs)
 
     def __len__(self):
-        if self.songs is None:
+        if self._songs is None:
             self.load()
-        return len(self.songs)
+        return len(self._songs)
 
 
 SONGS = Songs()
@@ -355,6 +439,9 @@ class Scroller:
             self.win_size = win_size
         self.top = max(0, self.pos - (self.win_size - 1) // 2)
         self.top = max(0, min(self.num_lines - self.win_size, self.top))
+
+    def refresh(self):
+        self.resize()
 
 
 def fit_string_to_width(s, width, length_so_far):
@@ -426,7 +513,14 @@ class FFmpegProcessHandler:
 
 class PlaybackHandler:
     def __init__(
-        self, stdscr, playlist: list[Song], clip_mode, visualize, stream, creds
+        self,
+        stdscr: "curses._CursesWindow",
+        playlist: list[Song],
+        clip_mode,
+        visualize,
+        stream,
+        creds,
+        wants_lyrics,
     ):
         from just_playback import Playback
 
@@ -442,6 +536,7 @@ class PlaybackHandler:
         self.visualize = visualize  # want to visualize
         self._stream = stream
         self.username, self.password = creds
+        self.wants_lyrics = wants_lyrics
 
         self.playback = Playback()
         self._paused = False
@@ -470,7 +565,7 @@ class PlaybackHandler:
         self.can_show_visualization = (
             self.visualize
             # space to show visualization
-            and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
+            and self.screen_height > config.VISUALIZER_HEIGHT + 5
         )
 
         self.audio_data = None
@@ -492,6 +587,15 @@ class PlaybackHandler:
             daemon=True,
         )
         self.streaming_thread.start()
+
+        self.lyrics: list | None = None
+        self.lyrics_scroller = Scroller(0, 0)
+        self.lyrics_width = 50
+
+        self.show_help = False
+        self.help_pos = 0
+
+        self.focus = 0  # 0: playlist, 1: lyrics
 
     def _load_audio(self, path, sr):
         import numpy as np
@@ -559,7 +663,7 @@ class PlaybackHandler:
                     continue
 
                 song_path = os.path.join(  # NOTE: NOT SAME AS self.song_path
-                    config.SETTINGS["song_directory"],
+                    config.settings["song_directory"],
                     self.playlist[i].song_file,
                 )
 
@@ -677,7 +781,8 @@ class PlaybackHandler:
     @paused.setter
     def paused(self, value):
         self._paused = value
-        self.threaded_update_icecast_metadata()
+        if self.stream:
+            self.threaded_update_icecast_metadata()
 
     @property
     def volume(self):
@@ -739,6 +844,18 @@ class PlaybackHandler:
             else None
         )
 
+    @property
+    def screen_height(self):
+        return self.stdscr.getmaxyx()[0]
+
+    @property
+    def screen_width(self):
+        return self.stdscr.getmaxyx()[1]
+
+    @property
+    def can_show_lyrics(self):
+        return self.wants_lyrics and self.lyrics is not None
+
     # endregion
 
     def seek(self, pos):
@@ -746,11 +863,27 @@ class PlaybackHandler:
         if self.playback is not None:
             self.playback.seek(pos)
             self.break_stream_loop = True
-            self.threaded_update_icecast_metadata()
+            if self.stream:
+                self.threaded_update_icecast_metadata()
             if self.can_mac_now_playing and self.mac_now_playing is not None:
                 self.mac_now_playing.pos = round(pos)
                 self.update_now_playing = True
             self.last_timestamp = pos
+
+    def scroll_forward(self):
+        if self.show_help:
+            self.help_pos += 1
+        else:
+            self.scroller.scroll_forward()
+
+    def scroll_backward(self):
+        if self.show_help:
+            self.help_pos -= 1
+        else:
+            self.scroller.scroll_backward()
+
+    def toggle_focus(self):
+        self.focus = 1 - self.focus
 
     def set_volume(self, v):
         """Set volume w/o changing self.volume."""
@@ -973,13 +1106,19 @@ class PlaybackHandler:
     def output(self, pos):
         from maestro.jit_funcs import render
 
+        screen_height = self.screen_height
+        if self.can_show_lyrics:
+            screen_width = self.screen_width - self.lyrics_width
+        else:
+            screen_width = self.screen_width
+
         self.can_show_visualization = (
             self.visualize
             and self.can_visualize
-            and self.stdscr.getmaxyx()[0] > config.VISUALIZER_HEIGHT + 5
+            and screen_height > config.VISUALIZER_HEIGHT + 5
         )
         self.scroller.resize(
-            self.stdscr.getmaxyx()[0]
+            screen_height
             - 3  # -3 for status bar
             - 1  # -1 for header
             - (self.prompting != None)  # - add mode
@@ -991,8 +1130,6 @@ class PlaybackHandler:
             pos -= self.clip[0]
 
         self.stdscr.erase()
-
-        screen_width = self.stdscr.getmaxyx()[1]
 
         length_so_far = 0
         if self.update_discord:
@@ -1139,7 +1276,7 @@ class PlaybackHandler:
                         (
                             curses.color_pair(4)
                             if (j == self.scroller.pos)
-                            else curses.color_pair(1)
+                            else curses.A_NORMAL
                         ),
                     )
                 length_so_far = addstr_fit_to_width(
@@ -1168,7 +1305,6 @@ class PlaybackHandler:
                     + self.prompting[0],
                     screen_width,
                     0,
-                    curses.color_pair(1),
                 )
             else:
                 adding_song_length = addstr_fit_to_width(
@@ -1176,7 +1312,6 @@ class PlaybackHandler:
                     "Add tag to songs: " + self.prompting[0],
                     screen_width,
                     0,
-                    curses.color_pair(1),
                 )
             self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
@@ -1243,7 +1378,7 @@ class PlaybackHandler:
             curses.color_pair(16),
         )
         self.stdscr.move(
-            self.stdscr.getmaxyx()[0]
+            screen_height
             - 2
             - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0),
             0,
@@ -1303,7 +1438,7 @@ class PlaybackHandler:
         )
 
         self.stdscr.move(
-            self.stdscr.getmaxyx()[0]
+            screen_height
             - (config.VISUALIZER_HEIGHT if self.can_show_visualization else 0)
             - 1,
             0,
@@ -1356,7 +1491,7 @@ class PlaybackHandler:
         # right align volume bar
         if not volume_line_length_so_far >= screen_width:
             self.stdscr.move(
-                self.stdscr.getmaxyx()[0]
+                screen_height
                 - 3
                 - (
                     config.VISUALIZER_HEIGHT
@@ -1401,7 +1536,7 @@ class PlaybackHandler:
                 pos += self.clip[0]
 
             self.stdscr.move(
-                self.stdscr.getmaxyx()[0]
+                screen_height
                 - (
                     config.VISUALIZER_HEIGHT
                     if self.can_show_visualization
@@ -1415,7 +1550,7 @@ class PlaybackHandler:
             ):
                 self.stdscr.addstr(
                     (
-                        (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
+                        (" " * (screen_width - 1) + "\n")
                         * config.VISUALIZER_HEIGHT
                     ).rstrip()
                 )
@@ -1426,7 +1561,7 @@ class PlaybackHandler:
                     def thread_func():
                         vdata = self.audio_data[self.song][0]
                         render(
-                            self.stdscr.getmaxyx()[1],
+                            screen_width,
                             vdata,
                             min(round(pos * config.FPS), vdata.shape[2] - 1),
                             config.VISUALIZER_HEIGHT,
@@ -1436,14 +1571,14 @@ class PlaybackHandler:
                     threading.Thread(target=thread_func, daemon=True).start()
                 self.stdscr.addstr(
                     (
-                        (" " * (self.stdscr.getmaxyx()[1] - 1) + "\n")
+                        (" " * (screen_width - 1) + "\n")
                         * config.VISUALIZER_HEIGHT
                     ).rstrip()
                 )
             elif self.compiled:
                 vdata = self.audio_data[self.song][0]
                 rendered_lines = render(
-                    self.stdscr.getmaxyx()[1],
+                    screen_width,
                     vdata,
                     min(
                         round(pos * config.FPS),
@@ -1461,7 +1596,7 @@ class PlaybackHandler:
         if self.prompting is not None:
             # pylint: disable=unsubscriptable-object
             self.stdscr.move(
-                self.stdscr.getmaxyx()[0]
+                screen_height
                 - (
                     config.VISUALIZER_HEIGHT
                     if self.can_show_visualization
@@ -1471,6 +1606,104 @@ class PlaybackHandler:
                 adding_song_length
                 + (self.prompting[1] - len(self.prompting[0])),
             )
+
+        if self.can_show_lyrics:
+            lyric_padding = 2
+            cur_lyric_i = None
+            if is_timed_lyrics(self.lyrics):
+                for i, lyric in enumerate(self.lyrics):
+                    if lyric.time > pos:
+                        cur_lyric_i = i - 1
+                        break
+                if cur_lyric_i is None:
+                    cur_lyric_i = len(self.lyrics) - 1
+
+            num_lines = min(len(self.lyrics), screen_height)
+            if cur_lyric_i is not None:
+                self.lyrics_scroller.pos = cur_lyric_i
+                self.lyrics_scroller.resize(num_lines)
+
+            for i in range(
+                self.lyrics_scroller.top, self.lyrics_scroller.top + num_lines
+            ):
+                self.stdscr.move(
+                    i - self.lyrics_scroller.top, screen_width + lyric_padding
+                )
+                lyric = self.lyrics[i]  # pylint: disable=unsubscriptable-object
+
+                style = curses.A_BOLD
+                lyric_text = lyric if isinstance(lyric, str) else lyric.text
+                if cur_lyric_i is not None:
+                    if i == cur_lyric_i:
+                        style = curses.A_BOLD
+                        self.stdscr.move(
+                            self.stdscr.getyx()[0], self.stdscr.getyx()[1] - 1
+                        )
+                        lyric_text = ">" + lyric_text
+                    elif i < cur_lyric_i:
+                        style = curses.A_DIM
+                    else:
+                        style = curses.A_NORMAL
+                try:
+                    addstr_fit_to_width(
+                        self.stdscr,
+                        lyric_text,
+                        self.lyrics_width - lyric_padding,
+                        0,
+                        style,
+                    )
+                except curses.error:  # NOTE: hacky ...
+                    pass
+
+        if self.show_help:
+            l = 15
+            r = self.screen_width - l
+            t = 5
+            b = self.screen_height - t
+
+            if l < r and t < b:
+                # draw border
+                self.stdscr.addch(t, l, curses.ACS_ULCORNER)
+                self.stdscr.addch(t, r, curses.ACS_URCORNER)
+                self.stdscr.addch(b, l, curses.ACS_LLCORNER)
+                self.stdscr.addch(b, r, curses.ACS_LRCORNER)
+                for x in range(l + 1, r):
+                    self.stdscr.addch(t, x, curses.ACS_HLINE)
+                    self.stdscr.addch(b, x, curses.ACS_HLINE)
+                for y in range(t + 1, b):
+                    self.stdscr.addch(y, l, curses.ACS_VLINE)
+                    self.stdscr.addch(y, r, curses.ACS_VLINE)
+
+                # draw text
+                self.stdscr.move(t + 1, l + 1)
+                i = max(
+                    0,
+                    min(self.help_pos, len(config.PLAY_CONTROLS) - (b - t - 1)),
+                )
+                while self.stdscr.getyx()[0] < b:
+                    if i < len(config.PLAY_CONTROLS):
+                        key, desc = config.PLAY_CONTROLS[i]
+                        length_so_far = addstr_fit_to_width(
+                            self.stdscr,
+                            key
+                            + " " * (config.INDENT_CONTROL_DESC - len(key))
+                            + " ",
+                            r - l - 1,
+                            0,
+                            curses.color_pair(18) | curses.A_BOLD,
+                        )
+                        length_so_far = addstr_fit_to_width(
+                            self.stdscr,
+                            desc
+                            + " " * (r - l - 1 - length_so_far - len(desc)),
+                            r - l - 1,
+                            length_so_far,
+                            curses.color_pair(18),
+                        )
+                        i += 1
+                        self.stdscr.move(self.stdscr.getyx()[0] + 1, l + 1)
+                    else:
+                        self.stdscr.addstr(" " * (r - l - 1))
 
         self.stdscr.refresh()
 
@@ -1489,12 +1722,14 @@ def init_curses(stdscr):
     curses.init_pair(6, curses.COLOR_GREEN, -1)
     curses.init_pair(7, curses.COLOR_MAGENTA, -1)
 
+    curses.init_pair(11, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.init_pair(12, curses.COLOR_BLACK + 8, curses.COLOR_BLACK)
     curses.init_pair(13, curses.COLOR_BLUE, curses.COLOR_BLACK)
     curses.init_pair(14, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(15, curses.COLOR_YELLOW, curses.COLOR_BLACK)
     curses.init_pair(16, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(17, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+    curses.init_pair(18, -1, curses.COLOR_BLACK)
     # endregion
 
     curses.curs_set(False)
@@ -1874,8 +2109,14 @@ def clip_editor_output(
     # region controls
     controls = [
         ("t", "toggle between editing the start and end of the clip"),
-        ("LEFT/RIGHT", "move whichever clip end you are editing by 0.1 seconds"),
-        ("SHIFT+LEFT/RIGHT", "move whichever clip end you are editing by 1 second"),
+        (
+            "LEFT/RIGHT",
+            "move whichever clip end you are editing by 0.1 seconds",
+        ),
+        (
+            "SHIFT+LEFT/RIGHT",
+            "move whichever clip end you are editing by 1 second",
+        ),
         ("SPACE", "play/pause"),
         ("ENTER", "exit the editor and save the clip"),
         ("q", "exit the editor without saving the clip"),
@@ -2157,3 +2398,9 @@ def versiontuple(v):
 
 def pluralize(count, word, include_count=True):
     return f"{count} " * include_count + word + ("s" if count != 1 else "")
+
+
+def is_timed_lyrics(lyrics):
+    from pylrc.classes import Lyrics
+
+    return isinstance(lyrics, Lyrics)

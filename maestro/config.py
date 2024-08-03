@@ -8,11 +8,8 @@ from urllib.parse import urljoin
 
 DISCORD_ID = 1039038199881810040
 
-PROMPT_MODES = {
-    "insert": 0,
-    "add": 1,
-    "tag": 2,
-}
+PROMPT_MODES_LIST = ["insert", "append", "tag", "find"]
+PROMPT_MODES = {mode: i for i, mode in enumerate(PROMPT_MODES_LIST)}
 LOOP_MODES = {
     "none": 0,
     "one": 1,
@@ -86,6 +83,7 @@ OLD_SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.txt")
 SONGS_INFO_PATH = os.path.join(MAESTRO_DIR, "songs.json")
 OLD_STATS_DIR = os.path.join(MAESTRO_DIR, "stats/")
 OVERRIDE_LYRICS_DIR = os.path.join(MAESTRO_DIR, "override-lyrics/")
+TRANSLATED_LYRICS_DIR = os.path.join(MAESTRO_DIR, "translated-lyrics/")
 # endregion
 
 # region player
@@ -108,58 +106,60 @@ _FARTHEST_RIGHT_CONTROL_DESC = 5
 INDENT_CONTROL_DESC = 0
 PLAY_CONTROLS = [
     ("SPACE", "pause/play"),
-    ("b", "go back to previous song"),
-    ("r", "replay song"),
-    ("n", "skip to next song"),
+    ("b", "go [b]ack to previous song"),
+    ("r", "[r]eplay song"),
+    ("n", "skip to [n]ext song"),
     (
         "l",
-        "loop the current song once ('l' in status bar). press again to loop infinitely ('L' in status bar). press once again to turn off looping",
+        "[l]oop the current song once ('l' in status bar). press again to loop infinitely ('L' in status bar). press once again to turn off looping",
     ),
-    ("c", "toggle clip mode"),
-    ("v", "toggle visualization"),
+    ("c", "toggle [c]lip mode"),
+    ("v", "toggle [v]isualization"),
     ("LEFT", "rewind 5s"),
     ("RIGHT", "fast forward 5s"),
     ("[", "decrease volume"),
     ("]", "increase volume"),
-    ("m", "mute/unmute"),
+    ("m", "[m]ute/unmute"),
     (
         "e",
-        "end the song player after the current song finishes (indicator in status bar, 'e' to cancel)",
+        "[e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)",
     ),
-    ("q", "quit the song player immediately"),
+    ("q", "[q]uit the song player immediately"),
     (
         "UP/DOWN",
         "to scroll through the queue (mouse scrolling should also work)",
     ),
-    ("p", "snap back to the currently playing song"),
+    ("p", "sna[p] back to the currently playing song"),
     (
         "g",
-        "go to the next page/loop of the queue (ignored if not repeating queue)",
+        "go to the next pa[g]e/loop of the queue (ignored if not repeating queue)",
     ),
     (
         "BACKSPACE/DELETE",
         "delete the selected (not necessarily currently playing!) song from the queue",
     ),
-    ("d", "toggle Discord rich presence"),
+    ("d", "toggle [D]iscord rich presence"),
     (
         "a",
-        "add a song to the end of the queue. Opens a prompt to enter the song name or ID: ENTER to confirm, ESC to cancel.",
+        "[a]dd a song to the end of the queue (opens a prompt to enter the song name or ID: ENTER to confirm, ESC to cancel)",
     ),
     (
         "i",
-        "insert a song in the queue after the selected song. Opens a prompt like 'a'.",
+        "[i]nsert a song in the queue after the selected song (opens a prompt like 'a')",
     ),
-    ("t", "add a tag to all songs in the queue. Opens a prompt like 'a'."),
+    (",", "add (comma-separated) tag(s) to all songs in the queue (opens a prompt like 'a')"),
     (
         "s",
-        "toggle stream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login",
+        "toggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login",
     ),
-    ("y", "toggle lyrics"),
+    ("y", "toggle l[y]rics"),
     (
         "o",
-        "reload song data (useful if you've changed e.g lyrics, tags, or metadata while playing)",
+        "rel[o]ad song data (useful if you've changed e.g lyrics, tags, metadata, etc. while playing)",
     ),
     ("?", "toggle this help message"),
+    ("t", "toggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)"),
+    ("f", "[f]ind a song in the queue (opens a prompt like 'a')"),
 ]
 for key, desc in PLAY_CONTROLS:
     if INDENT_CONTROL_DESC < len(key) <= _FARTHEST_RIGHT_CONTROL_DESC:

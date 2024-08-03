@@ -28,17 +28,23 @@ class Song:
         if song_id < 1:
             raise ValueError("Song ID must be greater than 0.")
         self._song_id = song_id
+
         self._metadata = None
         self._metadata_changed = False
+
         self._parsed_lyrics = False
         self._parsed_override_lyrics = False
+        self._parsed_translated_lyrics = False
+
         atexit.register(self._save)
 
     def reset(self):
         self._metadata = None
         self._metadata_changed = False
+
         self._parsed_lyrics = False
         self._parsed_override_lyrics = False
+        self._parsed_translated_lyrics = False
 
     def __eq__(self, value):
         if not isinstance(value, type(self)):
@@ -55,6 +61,12 @@ class Song:
     def override_lyrics_path(self):
         return os.path.join(
             config.OVERRIDE_LYRICS_DIR, f"{self.song_title}.lrc"
+        )
+
+    @property
+    def translated_lyrics_path(self):
+        return os.path.join(
+            config.TRANSLATED_LYRICS_DIR, f"{self.song_title}.lrc"
         )
 
     @property
@@ -81,9 +93,20 @@ class Song:
         if self._metadata is None:
             self._load_metadata()
 
+        old_path = self.song_path
+        old_override_lyrics_path = self.override_lyrics_path
+        old_translated_lyrics_path = self.translated_lyrics_path
+
         SONG_DATA[self._song_id]["filename"] = (
             v + os.path.splitext(self.song_file)[1]
         )
+
+        if os.path.exists(old_path):
+            os.rename(old_path, self.song_path)
+        if os.path.exists(old_override_lyrics_path):
+            os.rename(old_override_lyrics_path, self.override_lyrics_path)
+        if os.path.exists(old_translated_lyrics_path):
+            os.rename(old_translated_lyrics_path, self.translated_lyrics_path)
 
         self._metadata["tracktitle"] = v
         self._metadata_changed = True
@@ -187,10 +210,33 @@ class Song:
                 os.remove(self.override_lyrics_path)
         else:
             os.makedirs(config.OVERRIDE_LYRICS_DIR, exist_ok=True)
-            with safer.open(self.override_lyrics_path, "w", encoding="utf-8") as f:
+            with safer.open(
+                self.override_lyrics_path, "w", encoding="utf-8"
+            ) as f:
                 f.write(v)
 
         self._parsed_override_lyrics = False
+
+    @property
+    def raw_translated_lyrics(self) -> str | None:
+        if not os.path.exists(self.translated_lyrics_path):
+            return None
+        with open(self.translated_lyrics_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    @raw_translated_lyrics.setter
+    def raw_translated_lyrics(self, v):
+        import safer
+
+        if v is None:
+            if os.path.exists(self.translated_lyrics_path):
+                os.remove(self.translated_lyrics_path)
+        else:
+            os.makedirs(config.TRANSLATED_LYRICS_DIR, exist_ok=True)
+            with safer.open(
+                self.translated_lyrics_path, "w", encoding="utf-8"
+            ) as f:
+                f.write(v)
 
     def _parse_lyrics(self, raw_lyrics):
         if raw_lyrics is None:
@@ -219,6 +265,14 @@ class Song:
             )
         return self._parsed_override_lyrics
 
+    @property
+    def parsed_translated_lyrics(self):
+        if self._parsed_translated_lyrics is False:
+            self._parsed_translated_lyrics = self._parse_lyrics(
+                self.raw_translated_lyrics
+            )
+        return self._parsed_translated_lyrics
+
     def get_metadata(self, key, resolve=True):
         """
         Get metadata value for `key`.
@@ -245,7 +299,7 @@ class Song:
             raise ValueError(f"{key} is not editable.")
 
         if key == "tracktitle":
-            self.song_title = value  # also change filename
+            self.song_title = value  # also change file names
         elif key == "lyrics":
             self.raw_lyrics = value  # unset self._parsed_lyrics
         elif value is None:
@@ -521,6 +575,7 @@ class PlaybackHandler:
         stream,
         creds,
         wants_lyrics,
+        wants_translated_lyrics,
     ):
         from just_playback import Playback
 
@@ -537,6 +592,7 @@ class PlaybackHandler:
         self._stream = stream
         self.username, self.password = creds
         self.wants_lyrics = wants_lyrics
+        self.wants_translated_lyrics = wants_translated_lyrics and wants_lyrics
 
         self.playback = Playback()
         self._paused = False
@@ -589,6 +645,7 @@ class PlaybackHandler:
         self.streaming_thread.start()
 
         self.lyrics: list | None = None
+        self.translated_lyrics: list | None = None
         self.lyrics_scroller = Scroller(0, 0)
         self.lyrics_width = 50
 
@@ -856,6 +913,12 @@ class PlaybackHandler:
     def can_show_lyrics(self):
         return self.wants_lyrics and self.lyrics is not None
 
+    @property
+    def can_show_translated_lyrics(self):
+        return (
+            self.wants_translated_lyrics and self.translated_lyrics is not None
+        )
+
     # endregion
 
     def seek(self, pos):
@@ -863,8 +926,8 @@ class PlaybackHandler:
         if self.playback is not None:
             self.playback.seek(pos)
             self.break_stream_loop = True
-            if self.stream:
-                self.threaded_update_icecast_metadata()
+            # if self.stream:
+            #     self.threaded_update_icecast_metadata()
             if self.can_mac_now_playing and self.mac_now_playing is not None:
                 self.mac_now_playing.pos = round(pos)
                 self.update_now_playing = True
@@ -1067,19 +1130,6 @@ class PlaybackHandler:
                 timeout=5,
             ).ok:
                 print_to_logfile("Failed to update artwork.")
-
-        if self.stream:
-            if not requests.post(
-                config.UPDATE_TIMESTAMP_URL,
-                params={"mount": self.username},
-                data={
-                    "timestamp": self.playback.curr_pos,
-                    "time_updated": time(),
-                },
-                auth=(self.username, self.password),
-                timeout=5,
-            ).ok:
-                print_to_logfile("Failed to update timestamp.")
 
             self.threaded_update_icecast_metadata()
 
@@ -1290,26 +1340,19 @@ class PlaybackHandler:
 
         if self.prompting is not None:
             # pylint: disable=unsubscriptable-object
-            if (
-                self.prompting[2] == config.PROMPT_MODES["add"]
-                or self.prompting[2] == config.PROMPT_MODES["insert"]
-            ):
+            if self.prompting[2] == config.PROMPT_MODES["tag"]:
                 adding_song_length = addstr_fit_to_width(
                     self.stdscr,
-                    (
-                        "Insert"
-                        if self.prompting[2] == config.PROMPT_MODES["insert"]
-                        else "Append"
-                    )
-                    + " song: "
-                    + self.prompting[0],
+                    "Add tag(s) to songs: " + self.prompting[0],
                     screen_width,
                     0,
                 )
             else:
                 adding_song_length = addstr_fit_to_width(
                     self.stdscr,
-                    "Add tag to songs: " + self.prompting[0],
+                    config.PROMPT_MODES_LIST[self.prompting[2]].capitalize()
+                    + " song: "
+                    + self.prompting[0],
                     screen_width,
                     0,
                 )
@@ -1593,22 +1636,8 @@ class PlaybackHandler:
                     if i < len(rendered_lines) - 1:
                         self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
-        if self.prompting is not None:
-            # pylint: disable=unsubscriptable-object
-            self.stdscr.move(
-                screen_height
-                - (
-                    config.VISUALIZER_HEIGHT
-                    if self.can_show_visualization
-                    else 0
-                )
-                - 4,  # 4 lines for status bar + adding entry
-                adding_song_length
-                + (self.prompting[1] - len(self.prompting[0])),
-            )
-
         if self.can_show_lyrics:
-            lyric_padding = 2
+            lyric_padding = 3
             cur_lyric_i = None
             if is_timed_lyrics(self.lyrics):
                 for i, lyric in enumerate(self.lyrics):
@@ -1618,7 +1647,15 @@ class PlaybackHandler:
                 if cur_lyric_i is None:
                     cur_lyric_i = len(self.lyrics) - 1
 
-            num_lines = min(len(self.lyrics), screen_height)
+            num_lines = min(
+                len(self.lyrics),
+                (
+                    (screen_height + 1) // 2
+                    if self.can_show_translated_lyrics
+                    else screen_height
+                ),
+            )
+
             if cur_lyric_i is not None:
                 self.lyrics_scroller.pos = cur_lyric_i
                 self.lyrics_scroller.resize(num_lines)
@@ -1626,24 +1663,25 @@ class PlaybackHandler:
             for i in range(
                 self.lyrics_scroller.top, self.lyrics_scroller.top + num_lines
             ):
-                self.stdscr.move(
-                    i - self.lyrics_scroller.top, screen_width + lyric_padding
+                vertical_pos = (i - self.lyrics_scroller.top) * (
+                    2 if self.can_show_translated_lyrics else 1
                 )
-                lyric = self.lyrics[i]  # pylint: disable=unsubscriptable-object
 
-                style = curses.A_BOLD
-                lyric_text = lyric if isinstance(lyric, str) else lyric.text
+                self.stdscr.move(vertical_pos, screen_width + lyric_padding)
+
+                style = curses.color_pair(9)
+                # pylint: disable=unsubscriptable-object
+                lyric_text = get_lyric(self.lyrics[i]).strip()
                 if cur_lyric_i is not None:
                     if i == cur_lyric_i:
-                        style = curses.A_BOLD
+                        style = curses.color_pair(9) | curses.A_BOLD
                         self.stdscr.move(
-                            self.stdscr.getyx()[0], self.stdscr.getyx()[1] - 1
+                            self.stdscr.getyx()[0], self.stdscr.getyx()[1] - 2
                         )
-                        lyric_text = ">" + lyric_text
+                        lyric_text = "> " + lyric_text
                     elif i < cur_lyric_i:
-                        style = curses.A_DIM
-                    else:
-                        style = curses.A_NORMAL
+                        style = curses.color_pair(9) | curses.A_DIM
+
                 try:
                     addstr_fit_to_width(
                         self.stdscr,
@@ -1652,8 +1690,42 @@ class PlaybackHandler:
                         0,
                         style,
                     )
-                except curses.error:  # NOTE: hacky ...
-                    pass
+                    while (
+                        self.stdscr.getyx()[1] < self.screen_width
+                        and self.stdscr.getyx()[0] == vertical_pos
+                    ):
+                        self.stdscr.addch(" ")
+                except curses.error:  # bottom right corner errors
+                    break
+
+                if (
+                    self.can_show_translated_lyrics
+                    and i < len(self.translated_lyrics)
+                    and self.stdscr.getyx()[0] < screen_height
+                ):
+                    style = curses.A_DIM
+                    if cur_lyric_i is not None and i == cur_lyric_i:
+                        style = curses.A_BOLD
+
+                    try:
+                        self.stdscr.move(
+                            vertical_pos + 1,
+                            screen_width + lyric_padding + 1,
+                        )
+                        addstr_fit_to_width(
+                            self.stdscr,
+                            get_lyric(self.translated_lyrics[i]).strip(),
+                            self.lyrics_width - lyric_padding - 1,
+                            0,
+                            style,
+                        )
+                        while (
+                            self.stdscr.getyx()[1] < self.screen_width
+                            and self.stdscr.getyx()[0] == vertical_pos + 1
+                        ):
+                            self.stdscr.addch(" ")
+                    except curses.error:  # bottom right corner errors
+                        break
 
         if self.show_help:
             l = 15
@@ -1705,6 +1777,20 @@ class PlaybackHandler:
                     else:
                         self.stdscr.addstr(" " * (r - l - 1))
 
+        if self.prompting is not None:
+            # pylint: disable=unsubscriptable-object
+            self.stdscr.move(
+                screen_height
+                - (
+                    config.VISUALIZER_HEIGHT
+                    if self.can_show_visualization
+                    else 0
+                )
+                - 4,  # 4 lines for status bar + adding entry
+                adding_song_length
+                + (self.prompting[1] - len(self.prompting[0])),
+            )
+
         self.stdscr.refresh()
 
 
@@ -1721,6 +1807,7 @@ def init_curses(stdscr):
     curses.init_pair(5, curses.COLOR_YELLOW, -1)
     curses.init_pair(6, curses.COLOR_GREEN, -1)
     curses.init_pair(7, curses.COLOR_MAGENTA, -1)
+    curses.init_pair(9, curses.COLOR_CYAN, -1)
 
     curses.init_pair(11, curses.COLOR_WHITE, curses.COLOR_BLACK)
     curses.init_pair(12, curses.COLOR_BLACK + 8, curses.COLOR_BLACK)
@@ -1730,6 +1817,7 @@ def init_curses(stdscr):
     curses.init_pair(16, curses.COLOR_GREEN, curses.COLOR_BLACK)
     curses.init_pair(17, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
     curses.init_pair(18, -1, curses.COLOR_BLACK)
+    curses.init_pair(19, curses.COLOR_CYAN, curses.COLOR_BLACK)
     # endregion
 
     curses.curs_set(False)
@@ -2404,3 +2492,45 @@ def is_timed_lyrics(lyrics):
     from pylrc.classes import Lyrics
 
     return isinstance(lyrics, Lyrics)
+
+
+def get_lyric(lyric_obj):
+    if isinstance(lyric_obj, str):
+        return lyric_obj
+    return lyric_obj.text  # pylrc.classes.LyricLine
+
+
+def set_lyric(lyrics, i, val):
+    if isinstance(lyrics[i], str):
+        lyrics[i] = val
+    else:
+        lyrics[i].text = val
+
+
+def display_lyrics(lyrics, song, prefix: str = ""):
+    if prefix:
+        prefix += " "
+
+    if lyrics is None:
+        click.secho(
+            f'No {prefix}lyrics found for "{song.song_title}" (ID: {song.song_id}).',
+            fg="red",
+        )
+        return
+
+    if prefix:
+        prefix = prefix.capitalize() + "l"
+    else:
+        prefix = "L"
+
+    click.echo(f"{prefix.capitalize()}yrics for ", nl=False)
+    click.secho(song.song_title, fg="blue", bold=True, nl=False)
+    click.echo(f" (ID {song.song_id}):")
+
+    if is_timed_lyrics(lyrics):
+        for lyric in lyrics:
+            click.echo(
+                f"\t[{format_seconds(lyric.time, show_decimal=True)}] {lyric.text}"
+            )
+    else:
+        click.echo("\n".join([f"\t{lyric}" for lyric in lyrics]))

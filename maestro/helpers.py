@@ -90,9 +90,6 @@ class Song:
 
     @song_title.setter
     def song_title(self, v):
-        if self._metadata is None:
-            self._load_metadata()
-
         old_path = self.song_path
         old_override_lyrics_path = self.override_lyrics_path
         old_translated_lyrics_path = self.translated_lyrics_path
@@ -108,6 +105,7 @@ class Song:
         if os.path.exists(old_translated_lyrics_path):
             os.rename(old_translated_lyrics_path, self.translated_lyrics_path)
 
+        self._load_metadata()
         self._metadata["tracktitle"] = v
         self._metadata_changed = True
 
@@ -244,7 +242,7 @@ class Song:
 
         raw_lyrics_list = raw_lyrics.splitlines()
         for line in raw_lyrics_list:
-            if not line.startswith("["):  # not LRC format
+            if line and not line.strip().startswith("["):  # not LRC format
                 return raw_lyrics_list
 
         import pylrc
@@ -648,11 +646,12 @@ class PlaybackHandler:
         self.translated_lyrics: list | None = None
         self.lyrics_scroller = Scroller(0, 0)
         self.lyrics_width = 50
+        self.lyric_pos = None
 
         self.show_help = False
         self.help_pos = 0
 
-        self.focus = 0  # 0: playlist, 1: lyrics
+        self._focus = 0  # 0: playlist, 1: lyrics
 
     def _load_audio(self, path, sr):
         import numpy as np
@@ -919,6 +918,14 @@ class PlaybackHandler:
             self.wants_translated_lyrics and self.translated_lyrics is not None
         )
 
+    @property
+    def focus(self):
+        return self._focus if self.can_show_lyrics else 0
+
+    @focus.setter
+    def focus(self, value):
+        self._focus = value if self.can_show_lyrics else 0
+
     # endregion
 
     def seek(self, pos):
@@ -936,17 +943,29 @@ class PlaybackHandler:
     def scroll_forward(self):
         if self.show_help:
             self.help_pos += 1
-        else:
+        elif self.focus == 1:
+            if self.lyric_pos is None:
+                self.lyric_pos = self.lyrics_scroller.pos
+            self.lyric_pos = min(self.lyric_pos + 1, len(self.lyrics) - 1)
+        elif self.focus == 0:
             self.scroller.scroll_forward()
 
     def scroll_backward(self):
         if self.show_help:
             self.help_pos -= 1
-        else:
+        elif self.focus == 1:
+            if self.lyric_pos is None:
+                self.lyric_pos = self.lyrics_scroller.pos
+            self.lyric_pos = max(self.lyric_pos - 1, 0)
+        elif self.focus == 0:
             self.scroller.scroll_backward()
 
-    def toggle_focus(self):
-        self.focus = 1 - self.focus
+    def snap_back(self):
+        if self.focus == 1:
+            self.lyric_pos = None
+        elif self.focus == 0:
+            self.scroller.pos = self.i
+            self.scroller.refresh()
 
     def set_volume(self, v):
         """Set volume w/o changing self.volume."""
@@ -1131,6 +1150,7 @@ class PlaybackHandler:
             ).ok:
                 print_to_logfile("Failed to update artwork.")
 
+        if self.stream:
             self.threaded_update_icecast_metadata()
 
     def update_metadata(self):
@@ -1157,7 +1177,7 @@ class PlaybackHandler:
         from maestro.jit_funcs import render
 
         screen_height = self.screen_height
-        if self.can_show_lyrics:
+        if self.wants_lyrics:
             screen_width = self.screen_width - self.lyrics_width
         else:
             screen_width = self.screen_width
@@ -1359,7 +1379,6 @@ class PlaybackHandler:
             self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
         length_so_far = 0
-
         length_so_far = addstr_fit_to_width(
             self.stdscr,
             ("| " if self.paused else "> ") + f"({self.song_id}) ",
@@ -1637,7 +1656,19 @@ class PlaybackHandler:
                         self.stdscr.move(self.stdscr.getyx()[0] + 1, 0)
 
         if self.can_show_lyrics:
-            lyric_padding = 3
+            from grapheme import graphemes
+
+            self.stdscr.redrawwin()  # workaround for foreign characters
+
+            num_lines = min(
+                len(self.lyrics),
+                (
+                    screen_height // 2
+                    if self.can_show_translated_lyrics
+                    else screen_height - 1
+                ),
+            )
+
             cur_lyric_i = None
             if is_timed_lyrics(self.lyrics):
                 for i, lyric in enumerate(self.lyrics):
@@ -1646,28 +1677,30 @@ class PlaybackHandler:
                         break
                 if cur_lyric_i is None:
                     cur_lyric_i = len(self.lyrics) - 1
-
-            num_lines = min(
-                len(self.lyrics),
-                (
-                    (screen_height + 1) // 2
-                    if self.can_show_translated_lyrics
-                    else screen_height
-                ),
+            self.lyrics_scroller.pos = (
+                self.lyric_pos or cur_lyric_i or self.lyrics_scroller.pos
             )
+            self.lyrics_scroller.resize(num_lines)
 
-            if cur_lyric_i is not None:
-                self.lyrics_scroller.pos = cur_lyric_i
-                self.lyrics_scroller.resize(num_lines)
+            self.stdscr.move(0, screen_width)
+            lyric_focus_msg = (
+                f"Focus: {'lyrics' if self.focus == 1 else 'playlist'}"
+            )
+            addstr_fit_to_width(
+                self.stdscr,
+                " " * (self.lyrics_width - len(lyric_focus_msg))
+                + lyric_focus_msg,
+                self.lyrics_width,
+                0,
+                curses.color_pair(19),
+            )
 
             for i in range(
                 self.lyrics_scroller.top, self.lyrics_scroller.top + num_lines
             ):
                 vertical_pos = (i - self.lyrics_scroller.top) * (
                     2 if self.can_show_translated_lyrics else 1
-                )
-
-                self.stdscr.move(vertical_pos, screen_width + lyric_padding)
+                ) + 1
 
                 style = curses.color_pair(9)
                 # pylint: disable=unsubscriptable-object
@@ -1675,26 +1708,36 @@ class PlaybackHandler:
                 if cur_lyric_i is not None:
                     if i == cur_lyric_i:
                         style = curses.color_pair(9) | curses.A_BOLD
+
                         self.stdscr.move(
-                            self.stdscr.getyx()[0], self.stdscr.getyx()[1] - 2
+                            vertical_pos,
+                            screen_width + config.LYRIC_PADDING - 2,
                         )
-                        lyric_text = "> " + lyric_text
+                        self.stdscr.addstr("> ", style)
+                    elif i == self.lyric_pos:
+                        style = curses.color_pair(4)
+
+                        self.stdscr.move(
+                            vertical_pos,
+                            screen_width + config.LYRIC_PADDING - 2,
+                        )
+                        self.stdscr.addstr("> ", style)
                     elif i < cur_lyric_i:
                         style = curses.color_pair(9) | curses.A_DIM
 
                 try:
-                    addstr_fit_to_width(
-                        self.stdscr,
-                        lyric_text,
-                        self.lyrics_width - lyric_padding,
-                        0,
-                        style,
-                    )
-                    while (
-                        self.stdscr.getyx()[1] < self.screen_width
-                        and self.stdscr.getyx()[0] == vertical_pos
-                    ):
-                        self.stdscr.addch(" ")
+                    width = 0
+                    for g in graphemes(lyric_text):
+                        width += 1
+                        # NOTE: why -1? No one knows.
+                        if width < self.lyrics_width - config.LYRIC_PADDING:
+                            self.stdscr.move(
+                                vertical_pos,
+                                screen_width + config.LYRIC_PADDING + width - 1,
+                            )
+                            self.stdscr.addstr(g, style)
+                        else:
+                            break
                 except curses.error:  # bottom right corner errors
                     break
 
@@ -1704,28 +1747,43 @@ class PlaybackHandler:
                     and self.stdscr.getyx()[0] < screen_height
                 ):
                     style = curses.A_DIM
-                    if cur_lyric_i is not None and i == cur_lyric_i:
-                        style = curses.A_BOLD
+                    if i == cur_lyric_i:
+                        style |= curses.A_BOLD
+                    elif i == self.lyric_pos:
+                        style |= curses.color_pair(4)
 
                     try:
-                        self.stdscr.move(
-                            vertical_pos + 1,
-                            screen_width + lyric_padding + 1,
-                        )
-                        addstr_fit_to_width(
-                            self.stdscr,
-                            get_lyric(self.translated_lyrics[i]).strip(),
-                            self.lyrics_width - lyric_padding - 1,
-                            0,
-                            style,
-                        )
-                        while (
-                            self.stdscr.getyx()[1] < self.screen_width
-                            and self.stdscr.getyx()[0] == vertical_pos + 1
+                        width = 0
+                        for g in graphemes(
+                            get_lyric(self.translated_lyrics[i]).strip()
                         ):
-                            self.stdscr.addch(" ")
+                            width += 1
+                            if (
+                                width
+                                < self.lyrics_width - config.LYRIC_PADDING - 1
+                            ):
+                                self.stdscr.move(
+                                    vertical_pos + 1,
+                                    screen_width
+                                    + config.LYRIC_PADDING
+                                    + 1
+                                    + width
+                                    - 1,
+                                )
+                                self.stdscr.addstr(g, style)
+                            else:
+                                break
                     except curses.error:  # bottom right corner errors
                         break
+        elif self.wants_lyrics:
+            self.stdscr.move(0, screen_width + config.LYRIC_PADDING)
+            addstr_fit_to_width(
+                self.stdscr,
+                "No lyrics found.",
+                self.lyrics_width - config.LYRIC_PADDING,
+                0,
+                curses.color_pair(4),
+            )
 
         if self.show_help:
             l = 15

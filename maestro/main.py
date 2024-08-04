@@ -124,9 +124,10 @@ def _play(
         player.lyrics = (
             player.song.parsed_override_lyrics or player.song.parsed_lyrics
         )
+        player.lyric_pos = None
         if player.lyrics is not None:
             player.lyrics_scroller = helpers.Scroller(
-                len(player.lyrics), player.screen_height
+                len(player.lyrics), player.screen_height - 1
             )
         player.translated_lyrics = player.song.parsed_translated_lyrics
 
@@ -247,11 +248,11 @@ def _play(
                         player.scroll_forward()
                         player.update_screen()
                     elif c == curses.KEY_SLEFT:
-                        if player.can_show_lyrics:
+                        if player.wants_lyrics:
                             player.lyrics_width += 1
                             player.update_screen()
                     elif c == curses.KEY_SRIGHT:
-                        if player.can_show_lyrics:
+                        if player.wants_lyrics:
                             player.lyrics_width -= 1
                             player.update_screen()
                     else:
@@ -267,10 +268,22 @@ def _play(
                                 )
                                 player.update_screen()
                             elif c == curses.KEY_ENTER:
-                                # -2 because pos can be 0
-                                next_song = -player.scroller.pos - 2
-                                player.playback.stop()
-                                break
+                                if player.focus == 0:
+                                    # pylint: disable=invalid-unary-operand-type
+                                    # -2 because pos can be 0
+                                    next_song = -(player.scroller.pos) - 2
+                                    player.playback.stop()
+                                    break
+                                elif player.focus == 1:
+                                    if (
+                                        helpers.is_timed_lyrics(player.lyrics)
+                                        and player.lyric_pos is not None
+                                    ):
+                                        player.seek(
+                                            player.lyrics[player.lyric_pos].time
+                                        )
+                                        player.snap_back()
+                                        player.update_screen()
                             elif c == curses.KEY_DC:
                                 selected_song = player.scroller.pos
                                 deleted_song = player.playlist[selected_song]
@@ -344,8 +357,7 @@ def _play(
                                         )
                                     player.update_screen()
                                 elif ch in "pP":
-                                    player.scroller.pos = player.i
-                                    player.scroller.refresh()
+                                    player.snap_back()
                                     player.update_screen()
                                 elif ch in "gG":
                                     if loop:
@@ -369,6 +381,7 @@ def _play(
                                         def f():
                                             player.initialize_discord()
                                             player.update_discord_metadata()
+                                            player.update_stream_metadata()
 
                                         threading.Thread(
                                             target=f,
@@ -493,7 +506,7 @@ def _play(
                                         player.lyrics_scroller = (
                                             helpers.Scroller(
                                                 len(player.lyrics),
-                                                player.screen_height,
+                                                player.screen_height - 1,
                                             )
                                         )
                                     player.translated_lyrics = (
@@ -518,6 +531,10 @@ def _play(
                                     screen_size = stdscr.getmaxyx()
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
+                                elif ch == "{":
+                                    player.focus = 0
+                                elif ch == "}":
+                                    player.focus = 1
                         else:
                             if c == curses.KEY_LEFT:
                                 # pylint: disable=unsubscriptable-object
@@ -1447,8 +1464,9 @@ def play(
     \x1b[1mm\x1b[0m\t\t[m]ute/unmute
     \x1b[1me\x1b[0m\t\t[e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)
     \x1b[1mq\x1b[0m\t\t[q]uit the song player immediately
-    \x1b[1mUP/DOWN\x1b[0m\tto scroll through the queue (mouse scrolling should also work)
-    \x1b[1mp\x1b[0m\t\tsna[p] back to the currently [p]laying song
+    \x1b[1mUP/DOWN\x1b[0m\tto scroll through the queue/lyrics (mouse scrolling should also work)
+    \x1b[1mENTER\x1b[0m\tplay the selected song/seek to selected lyric
+    \x1b[1mp\x1b[0m\t\tsna[p] back to the currently [p]laying song/lyric
     \x1b[1mg\x1b[0m\t\tgo to the next pa[g]e/loop of the queue (ignored if not repeating queue)
     \x1b[1mBACKSPACE/DELETE\x1b[0m\tdelete the selected (not necessarily currently playing!) song from the queue
     \x1b[1md\x1b[0m\t\ttoggle [D]iscord rich presence
@@ -1457,10 +1475,12 @@ def play(
     \x1b[1m,\x1b[0m\t\tadd ([comma]-separated) tag(s) to all songs in the queue. (opens a prompt like 'a')
     \x1b[1ms\x1b[0m\t\ttoggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login
     \x1b[1my\x1b[0m\t\ttoggle l[y]rics
+    \x1b[1mt\x1b[0m\t\ttoggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)
+    \x1b[1m{\x1b[0m\t\tfocus playlist
+    \x1b[1m}\x1b[0m\t\tfocus lyrics
     \x1b[1mSHIFT+LEFT/RIGHT[0m\tincrease/decrease width of lyrics window
     \x1b[1mo\x1b[0m\t\trel[o]ad song data (useful if you've changed e.g lyrics, tags, or metadata while playing)
     \x1b[1m?\x1b[0m\t\ttoggle this help message
-    \x1b[1mt\x1b[0m\t\ttoggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)
     \x1b[1mf\x1b[0m\t\t[f]ind a song in the queue (opens a prompt like 'a')
 
     \b
@@ -1589,7 +1609,7 @@ def play(
     help="If passed, rename tag instead of song (treat the arguments as tags).",
 )
 # NOTE: original is not forced to be a int so that tags can be renamed
-@click.argument("original")
+@click.argument("original", type=helpers.CLICK_SONG)
 @click.argument("new_name")
 def rename(original, new_name, renaming_tag):
     """
@@ -1603,13 +1623,12 @@ def rename(original, new_name, renaming_tag):
     exists, so be careful!
     """
     if not renaming_tag:
-        for song in helpers.SONGS:
-            if song.song_title == original:
-                song.song_title = new_name
-                click.secho(
-                    f"Renamed song '{original}' to '{new_name}'.", fg="green"
-                )
-                break
+        original_song_title = original.song_title
+        original.song_title = new_name
+        click.secho(
+            f'Renamed song "{original_song_title}" (ID: {original.song_id}) to "{new_name}".',
+            fg="green",
+        )
     else:
         for song in helpers.SONGS:
             if original in song.tags:
@@ -2785,10 +2804,10 @@ def lyrics_(
 )
 def transliterate(songs, lang, override, replace_, force):
     """
-    Transliterate foreign-script song lyrics to ASCII. This is NOT translation,
-    but rather converting the script to a more readable form using the
-    'unidecode' package. For example, "తెలుగు" would be transliterated
-    to "telugu". EXPERIMENTAL.
+    Transliterate foreign-script song lyrics to the Latin alphabet. This is NOT
+    translation, but rather converting the script to a more readable form using
+    the 'unidecode' package. For example, "తెలుగు" would be transliterated to
+    "telugu". EXPERIMENTAL.
 
     If '-O/--add-override' is passed, adds the transliterated lyrics as an
     override for each song to maestro's internal data (prompts for confirmation
@@ -2883,6 +2902,7 @@ def transliterate(songs, lang, override, replace_, force):
                     .replace("è", "e")
                     .replace("ò", "o")
                     .replace("ṣ", "sh")
+                    .replace("ś", "sh")
                     .replace("ḍ", "d")
                     .replace("ṇ", "n")
                 )

@@ -20,6 +20,7 @@ unidecode  # transliteration
 pykakasi  # Japanese transliteration
 indic_transliteration  # Indic transliteration
 translatepy  # Translation
+grapheme  # Unicode grapheme clusters
 
 # PyObjC dependencies for macOS
 pyobjc-core; sys_platform == 'darwin'

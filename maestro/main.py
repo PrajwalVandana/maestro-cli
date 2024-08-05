@@ -537,8 +537,10 @@ def _play(
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
                                 elif ch == "{":
+                                    player.snap_back()
                                     player.focus = 0
                                 elif ch == "}":
+                                    player.snap_back()
                                     player.focus = 1
                         else:
                             if c == curses.KEY_LEFT:
@@ -951,7 +953,7 @@ def add(
     """
 
     paths = None
-    if not (youtube or spotify) and not os.path.exists(path_):
+    if not (youtube or spotify or os.path.exists(path_)):
         click.secho(
             f"The path '{path_}' does not exist. To download from a YouTube or YouTube Music URl, pass the '-Y/--youtube' flag. To download from a Spotify URl, pass the '-S/--spotify' flag.",
             fg="red",
@@ -2889,7 +2891,7 @@ def transliterate(songs, lang, override, force):
     the 'unidecode' package. For example, "తెలుగు" would be transliterated to
     "telugu". EXPERIMENTAL.
 
-    If '-O/--add-override' is passed, adds the transliterated lyrics as an
+    If '-S/--save-override' is passed, adds the transliterated lyrics as an
     override for each song to maestro's internal data (prompts for confirmation
     if override already exists unless '-F/--force' is passed). This retains the
     original lyric metadata while allowing maestro to display the transliterated

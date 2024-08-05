@@ -2869,8 +2869,8 @@ def lyrics_(
     help="Language-specific transliteration support.",
 )
 @click.option(
-    "-O/-nO",
-    "--add-override/--no-add-override",
+    "-S/-nS",
+    "--save-override/--no-save-override",
     "override",
     default=False,
     help="Add override lyrics.",

@@ -131,10 +131,9 @@ def _play(
             )
         player.translated_lyrics = player.song.parsed_translated_lyrics
 
-        player.update_metadata()
         player.playback.play()
         player.set_volume(volume)
-        # print_to_logfile("Changed song", player.playback.curr_pos)  # DEBUG
+        player.update_metadata()
 
         # latter is clip-agnostic, former is clip-aware
         player.duration = player.playback.duration
@@ -958,6 +957,13 @@ def add(
             from spotdl.utils.ffmpeg import get_ffmpeg_path
             from yt_dlp import YoutubeDL
 
+            if get_ffmpeg_path() is None:
+                click.secho(
+                    "FFmpeg is not installed: you can install it globally or run 'maestro download-ffmpeg' to download it internally.",
+                    fg="red",
+                )
+                return
+
             with YoutubeDL(
                 {
                     "noplaylist": not playlist_,
@@ -1108,8 +1114,6 @@ def add(
         )
 
     for path in paths:
-        import syncedlyrics
-
         ext = os.path.splitext(path)[1].lower()
         if not os.path.isdir(path) and ext not in config.EXTS:
             click.secho(f"'{ext}' is not supported.", fg="red")
@@ -1152,6 +1156,8 @@ def add(
                     song.set_metadata(key, value)
 
         if lyrics:
+            import syncedlyrics
+
             try:
                 lyrics = syncedlyrics.search(
                     f"{song.artist} - {song_title}", allow_plain_format=True
@@ -2693,7 +2699,7 @@ def lyrics_(
     if all_:
         if not force:
             click.echo(
-                f"Are you sure you want to {'update' if updating else 'remove'} lyrics for all songs? This cannot be undone. [y/n] ",
+                f"Are you sure you want to {'update' if updating else 'remove'} override lyrics for all songs? This cannot be undone. [y/n] ",
                 nl=False,
             )
             if input().lower() != "y":
@@ -2708,13 +2714,13 @@ def lyrics_(
             if override:
                 if not force:
                     click.echo(
-                        f'Are you sure you want to remove lyrics for "{song.song_title}" (ID {song.song_id})? This cannot be undone. [y/n] ',
+                        f'Are you sure you want to remove override lyrics for "{song.song_title}" (ID {song.song_id})? This cannot be undone. [y/n] ',
                         nl=False,
                     )
                 if force or input().lower() == "y":
                     song.raw_override_lyrics = None
                     click.secho(
-                        f'Removed lyrics for "{song.song_title}" (ID {song.song_id}).',
+                        f'Removed override lyrics for "{song.song_title}" (ID {song.song_id}).',
                         fg="green",
                     )
             if translated:
@@ -2789,20 +2795,13 @@ def lyrics_(
     help="Add override lyrics.",
 )
 @click.option(
-    "-R/-nR",
-    "--replace/--no-replace",
-    "replace_",
-    default=False,
-    help="Replace lyrics with transliterated lyrics.",
-)
-@click.option(
     "-F/-nF",
     "--force/--no-force",
     "force",
     default=False,
     help="Skip confirmation prompt.",
 )
-def transliterate(songs, lang, override, replace_, force):
+def transliterate(songs, lang, override, force):
     """
     Transliterate foreign-script song lyrics to the Latin alphabet. This is NOT
     translation, but rather converting the script to a more readable form using
@@ -2813,10 +2812,7 @@ def transliterate(songs, lang, override, replace_, force):
     override for each song to maestro's internal data (prompts for confirmation
     if override already exists unless '-F/--force' is passed). This retains the
     original lyric metadata while allowing maestro to display the transliterated
-    lyrics instead in 'maestro play'. You can replace the original lyrics with
-    the transliterated lyrics by passing the '-R/--replace' flag, which prompts
-    for confirmation unless '-F/--force' is passed. Cannot pass both
-    -O/--add-override' and '-R/--replace'.
+    lyrics instead in 'maestro play'.
 
     Unidecode is not perfect and may not work well with all languages; for
     example, 'ä' becomes 'a' instead of 'ae', and Japanese characters are
@@ -2837,17 +2833,11 @@ def transliterate(songs, lang, override, replace_, force):
         click.secho("No songs passed.", fg="red")
         return
 
-    if override and replace_:
-        click.secho(
-            "Cannot pass both '-O/--add-override' and '-R/--replace'.", fg="red"
-        )
-        return
-
     import re
 
     from unidecode import unidecode
 
-    JA_REGEX = re.compile(
+    ja_regex = re.compile(
         "[\u3000-\u303f\u3040-\u309f\u30a0-\u30ff\uff00-\uff9f\u4e00-\u9faf\u3400-\u4dbf]"
     )
 
@@ -2871,7 +2861,7 @@ def transliterate(songs, lang, override, replace_, force):
                     .replace("ü", "ue"),
                 )
 
-        if lang == "ja" or JA_REGEX.search(song.raw_lyrics):
+        if lang == "ja" or ja_regex.search(song.raw_lyrics):
             from pykakasi import kakasi
 
             kks = kakasi()
@@ -2888,27 +2878,39 @@ def transliterate(songs, lang, override, replace_, force):
                 )
 
         if lang in config.INDIC_SCRIPTS:
+            from itertools import groupby
+
             from indic_transliteration import sanscript
 
             for lyric in lyrics:
-                lyric.text = (
-                    sanscript.transliterate(lyric.text, lang, "iast")
-                    .replace("c", "ch")
-                    .replace("ā", "aa")
-                    .replace("t", "th")
-                    .replace("ṭ", "t")
-                    .replace("ī", "ee")
-                    .replace("ū", "oo")
-                    .replace("è", "e")
-                    .replace("ò", "o")
-                    .replace("ṣ", "sh")
-                    .replace("ś", "sh")
-                    .replace("ḍ", "d")
-                    .replace("ṇ", "n")
-                )
-                # replace ṃ with n if not at end of word, else m
-                lyric.text = re.sub(r"ṃ(?=\w)", "n", lyric.text)
-                lyric.text = lyric.text.replace("ṃ", "m")
+                transliterated = ""
+                for is_indic, word in groupby(
+                    lyric.text.split(),
+                    lambda w: all(
+                        c not in "abcdefghijklmnopqrstuvwxyz" for c in w.lower()
+                    ),
+                ):
+                    word = " ".join(word)
+                    if is_indic:
+                        word = (
+                            sanscript.transliterate(word, lang, "iast")
+                            .replace("c", "ch")
+                            .replace("ā", "aa")
+                            .replace("t", "th")
+                            .replace("ṭ", "t")
+                            .replace("ī", "ee")
+                            .replace("ū", "oo")
+                            .replace("è", "e")
+                            .replace("ò", "o")
+                            .replace("ṣ", "sh")
+                            .replace("ś", "sh")
+                            .replace("ḍ", "d")
+                            .replace("ṇ", "n")
+                        )
+                        word = re.sub(r"ṃ(?=\w)", "n", word)
+                        word = word.replace("ṃ", "m")
+                    transliterated += word
+                lyric.text = transliterated
 
         if lang != "ja" and lang not in config.INDIC_SCRIPTS:
             for lyric in lyrics:
@@ -2927,19 +2929,6 @@ def transliterate(songs, lang, override, replace_, force):
             song.raw_override_lyrics = lyrics_lrc
             click.secho(
                 f'Added override lyrics for "{song.song_title}" (ID {song.song_id}).',
-                fg="green",
-            )
-        elif replace_:
-            if not force:
-                click.echo(
-                    f'Are you sure you want to replace the lyrics for "{song.song_title}" (ID {song.song_id}) with the transliterated lyrics? This action cannot be undone. [y/n] ',
-                    nl=False,
-                )
-                if input().lower() != "y":
-                    continue
-            song.raw_lyrics = lyrics_lrc
-            click.secho(
-                f'Replaced lyrics for "{song.song_title}" (ID {song.song_id}).',
                 fg="green",
             )
         else:
@@ -3083,11 +3072,9 @@ def translate(songs, save_, from_langs, to_lang, force):
                         )
 
                 helpers.set_lyric(lyrics, i, "")
-                for _, phrase in groupby(words, lambda x: x[1].id):
-                    phrase = list(phrase)
-                    lang = phrase[0][1]
-                    phrase = " ".join([w[0] for w in phrase])
-                    if lang.id != to_lang.id:
+                for lang, phrase in groupby(words, lambda x: x[1].id):
+                    phrase = " ".join([w[0] for w in list(phrase)])
+                    if lang != to_lang.id:
                         try:
                             phrase = translator.translate(
                                 phrase, to_lang, lang

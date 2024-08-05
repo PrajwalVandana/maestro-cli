@@ -460,6 +460,16 @@ def bounded_shuffle(lst, radius=-1):
         lst[j], lst[i] = lst[i], lst[j]
 
 
+def set_timeout(func, timeout, *args, **kwargs):
+    def wrapper():
+        sleep(timeout)
+        func()
+
+    threading.Thread(
+        target=wrapper, daemon=True, args=args, kwargs=kwargs
+    ).start()
+
+
 class Scroller:
     def __init__(self, num_lines, win_size):
         self.num_lines = num_lines
@@ -929,12 +939,10 @@ class PlaybackHandler:
     # endregion
 
     def seek(self, pos):
-        pos = max(0, pos)
         if self.playback is not None:
+            pos = max(0, pos)
             self.playback.seek(pos)
             self.break_stream_loop = True
-            # if self.stream:
-            #     self.threaded_update_icecast_metadata()
             if self.can_mac_now_playing and self.mac_now_playing is not None:
                 self.mac_now_playing.pos = round(pos)
                 self.update_now_playing = True
@@ -1095,7 +1103,6 @@ class PlaybackHandler:
     def _update_icecast_metadata(self):
         import requests
 
-        # self.break_stream_loop = True
         return requests.post(
             config.UPDATE_METADATA_URL,
             data={

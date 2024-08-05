@@ -149,13 +149,19 @@ PLAY_CONTROLS = [
         "i",
         "[i]nsert a song in the queue after the selected song (opens a prompt like 'a')",
     ),
-    (",", "add (comma-separated) tag(s) to all songs in the queue (opens a prompt like 'a')"),
+    (
+        ",",
+        "add (comma-separated) tag(s) to all songs in the queue (opens a prompt like 'a')",
+    ),
     (
         "s",
         "toggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login",
     ),
     ("y", "toggle l[y]rics"),
-    ("t", "toggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)"),
+    (
+        "t",
+        "toggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)",
+    ),
     ("{", "focus playlist"),
     ("}", "focus lyrics"),
     (

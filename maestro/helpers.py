@@ -385,7 +385,12 @@ class SongData:
         if tags is None:
             tags = set()
 
-        song_id = max(self) + 1
+        if self.songs is None:
+            self.load()
+        if not self.songs:
+            song_id = 1
+        else:
+            song_id = max(self) + 1
         self.songs[song_id] = {
             "filename": os.path.split(filename)[1],
             "tags": set(tags),

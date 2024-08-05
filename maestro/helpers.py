@@ -2600,3 +2600,52 @@ def display_lyrics(lyrics, song, prefix: str = ""):
             )
     else:
         click.echo("\n".join([f"\t{lyric}" for lyric in lyrics]))
+
+
+def filter_songs(tags, exclude_tags, artists, albums, album_artists, match_all):
+    songs = []
+    for song in SONGS:
+        search_criteria = (
+            (
+                (
+                    any(
+                        artist.lower() in song.artist.lower()
+                        for artist in artists
+                    )
+                ),
+                artists,
+            ),
+            (
+                (any(album.lower() in song.album.lower() for album in albums)),
+                albums,
+            ),
+            (
+                (
+                    any(
+                        album_artist.lower() in song.album_artist.lower()
+                        for album_artist in album_artists
+                    )
+                ),
+                album_artists,
+            ),
+        )
+        search_criteria = tuple(
+            c[0] for c in filter(lambda t: t[1], search_criteria)
+        )
+        if not search_criteria:
+            search_criteria = (True,)
+
+        if match_all:
+            search_criteria = all(search_criteria) and (
+                not tags or (tags <= song.tags)  # subset
+            )
+        else:
+            if any(search_criteria):
+                search_criteria = True
+            else:
+                search_criteria = tags and tags & song.tags
+
+        if search_criteria and not exclude_tags & song.tags:
+            songs.append(song)
+
+    return songs

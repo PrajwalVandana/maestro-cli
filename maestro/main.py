@@ -1353,6 +1353,27 @@ def untag(songs, tags, all_):
     multiple=True,
 )
 @click.option(
+    "-a",
+    "--artist",
+    "artists",
+    help="Filter by artist.",
+    multiple=True,
+)
+@click.option(
+    "-b",
+    "--album",
+    "albums",
+    help="Filter by album.",
+    multiple=True,
+)
+@click.option(
+    "-c",
+    "--album-artist",
+    "album_artists",
+    help="Filter by album artist.",
+    multiple=True,
+)
+@click.option(
     "-s",
     "--shuffle",
     "shuffle_",
@@ -1450,6 +1471,9 @@ def untag(songs, tags, all_):
 def play(
     tags,
     exclude_tags,
+    artists,
+    albums,
+    album_artists,
     shuffle_,
     reshuffle,
     reverse,
@@ -1520,21 +1544,11 @@ def play(
     if only:
         playlist = list(only)
     else:
-        if tags:
-            tags = set(tags)
-            for song in helpers.SONGS:
-                if match_all and tags <= song.tags:
-                    playlist.append(song)
-                elif not match_all and tags & song.tags:
-                    playlist.append(song)
-        else:
-            playlist = sorted(
-                list(helpers.SONGS), key=lambda song: song.song_id
+        playlist.extend(
+            helpers.filter_songs(
+                tags, exclude_tags, artists, albums, album_artists, match_all
             )
-
-        for i in range(len(playlist)):
-            if exclude_tags & playlist[i].tags:
-                playlist[i] = None
+        )
 
     # song files not found
     songs_not_found: list[helpers.Song] = []
@@ -1553,7 +1567,7 @@ def play(
         playlist.reverse()
 
     if not playlist:
-        click.secho("No songs found matching tag criteria.", fg="red")
+        click.secho("No songs found matching criteria.", fg="red")
     else:
         from keyring.errors import NoKeyringError
 
@@ -1721,11 +1735,11 @@ def search(phrase, searching_for_tags):
 @cli.command(name="list")
 @click.argument("search_tags", metavar="TAGS", nargs=-1)
 @click.option(
-    "-e/-nE",
-    "--exclude/--no-exclude",
-    "exclude",
-    default=False,
-    help="Exclude songs matching these criteria.",
+    "-e",
+    "--exclude-tags",
+    "exclude_tags",
+    multiple=True,
+    help="Exclude songs/tags matching these tags.",
 )
 @click.option(
     "-s",
@@ -1799,7 +1813,7 @@ def search(phrase, searching_for_tags):
 )
 def list_(
     search_tags,
-    exclude,
+    exclude_tags,
     listing_tags,
     year,
     sort_,
@@ -1837,6 +1851,10 @@ def list_(
 
     if search_tags:
         search_tags = set(search_tags)
+    if exclude_tags:
+        exclude_tags = set(exclude_tags)
+    else:
+        exclude_tags = set()
 
     num_lines = 0
 
@@ -1872,14 +1890,14 @@ def list_(
                     album_artists,
                 ),
             )
-            search_criteria = (
+            search_criteria = tuple(
                 c[0] for c in filter(lambda t: t[1], search_criteria)
             )
 
             if match_all:
                 search_criteria = not search_criteria or all(search_criteria)
             else:
-                search_criteria = not search_criteria or any(search_criteria)
+                search_criteria = (not search_criteria) or any(search_criteria)
 
             for tag in song.tags:
                 if match_all:
@@ -1892,12 +1910,7 @@ def list_(
                     elif search_tags:
                         matches_search_criteria = tag in search_tags
 
-                if (
-                    exclude
-                    and not matches_search_criteria
-                    or not exclude
-                    and matches_search_criteria
-                ):
+                if matches_search_criteria and tag not in exclude_tags:
                     tags[tag][0] += song.listen_times[year]
                     tags[tag][1] += song.duration
 
@@ -1925,51 +1938,9 @@ def list_(
                 break
         return
 
-    no_results = True
-    songs = []
-    for song in helpers.SONGS:
-        search_criteria = (
-            (
-                (
-                    any(
-                        artist.lower() in song.artist.lower()
-                        for artist in artists
-                    )
-                ),
-                artists,
-            ),
-            (
-                (any(album.lower() in song.album.lower() for album in albums)),
-                albums,
-            ),
-            (
-                (
-                    any(
-                        album_artist.lower() in song.album_artist.lower()
-                        for album_artist in album_artists
-                    )
-                ),
-                album_artists,
-            ),
-        )
-        search_criteria = (
-            c[0] for c in filter(lambda t: t[1], search_criteria)
-        )
-        if not search_criteria:
-            search_criteria = (True,)
-
-        if match_all:
-            search_criteria = all(search_criteria) and (
-                not search_tags or search_tags <= song.tags
-            )  # subset
-        else:
-            if any(search_criteria):
-                search_criteria = True
-            else:
-                search_criteria = search_tags and search_tags <= song.tags
-
-        if exclude and not search_criteria or not exclude and search_criteria:
-            songs.append(song)
+    songs = helpers.filter_songs(
+        search_tags, exclude_tags, artists, albums, album_artists, match_all
+    )
 
     if sort_ == "none":
         sort_key = lambda song: song.song_id
@@ -1983,6 +1954,7 @@ def list_(
         sort_key = lambda song: song.listen_times[year] / song.duration
     songs.sort(key=sort_key, reverse=reverse_)
 
+    no_results = True
     for song in songs:
         helpers.print_entry(song, year=year)
         num_lines += 1
@@ -1990,7 +1962,7 @@ def list_(
         if top is not None and num_lines == top:
             break
 
-    if no_results and not any(search_tags, artists, albums, album_artists):
+    if no_results and not any([search_tags, artists, albums, album_artists]):
         click.secho(
             "No songs found. Use 'maestro add' to add a song.", fg="red"
         )

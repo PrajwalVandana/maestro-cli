@@ -15,6 +15,7 @@ import msgspec
 from getpass import getpass
 from random import randint
 from time import sleep, time
+from typing import Iterable
 from urllib.parse import quote, quote_plus
 
 from maestro import config
@@ -422,7 +423,7 @@ class Songs:
             self.load()
         return value in self._songs
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[Song]:
         if self._songs is None:
             self.load()
         return iter(self._songs)

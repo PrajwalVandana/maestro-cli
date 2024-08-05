@@ -284,32 +284,38 @@ def _play(
                                         player.snap_back()
                                         player.update_screen()
                             elif c == curses.KEY_DC:
-                                selected_song = player.scroller.pos
-                                deleted_song = player.playlist[selected_song]
-                                del player.playlist[selected_song]
+                                if len(player.playlist) > 1:
+                                    player.scroller.num_lines -= 1
+                                    if (
+                                        player.scroller.pos == player.i
+                                    ):  # deleted current song
+                                        next_song = 3
+                                        player.playback.stop()
+                                        break
 
-                                if loop:
-                                    for i in range(len(next_playlist)):
-                                        if next_playlist[i][0] == deleted_song:
-                                            del next_playlist[i]
-                                            break
+                                    deleted_song = player.playlist[
+                                        player.scroller.pos
+                                    ]
+                                    del player.playlist[player.scroller.pos]
 
-                                player.scroller.num_lines -= 1
-                                if (
-                                    selected_song == player.i
-                                ):  # deleted current song
-                                    next_song = 1
-                                    # will be incremented to i
-                                    player.scroller.pos = player.i - 1
-                                    player.i -= 1
-                                    player.playback.stop()
-                                    break
-                                # deleted song before current
-                                if selected_song < player.i:
-                                    player.i -= 1
-                                # deleted last song
-                                if selected_song == player.scroller.num_lines:
-                                    player.scroller.pos -= 1
+                                    if loop:
+                                        for i in range(len(next_playlist)):
+                                            if (
+                                                next_playlist[i][0]
+                                                == deleted_song
+                                            ):
+                                                del next_playlist[i]
+                                                break
+
+                                    # deleted song before current
+                                    if player.scroller.pos < player.i:
+                                        player.i -= 1
+                                    # deleted last song
+                                    if (
+                                        player.scroller.pos
+                                        == player.scroller.num_lines
+                                    ):
+                                        player.scroller.pos -= 1
                             elif c == 27:
                                 if player.show_help:
                                     player.show_help = False
@@ -513,7 +519,7 @@ def _play(
                                     )
 
                                     player.update_screen()
-                                elif ch == "?":
+                                elif ch in "hH":
                                     player.show_help = not player.show_help
                                 elif ch in "tT":
                                     player.wants_translated_lyrics = (
@@ -718,6 +724,13 @@ def _play(
             )
             player.i = 0
             player.scroller.pos = 0
+        elif next_song == 3:
+            del player.playlist[player.i]
+            if loop:
+                for i in range(len(next_playlist)):
+                    if next_playlist[i][0] == deleted_song:
+                        del next_playlist[i]
+                        break
 
 
 # endregion
@@ -1708,11 +1721,11 @@ def search(phrase, searching_for_tags):
 @cli.command(name="list")
 @click.argument("search_tags", metavar="TAGS", nargs=-1)
 @click.option(
-    "-e",
-    "--exclude-tags",
-    "exclude_tags",
-    multiple=True,
-    help="Exclude songs (or tags if '-T/--tags' is passed) matching these tags.",
+    "-e/-nE",
+    "--exclude/--no-exclude",
+    "exclude",
+    default=False,
+    help="Exclude songs matching these criteria.",
 )
 @click.option(
     "-s",
@@ -1740,7 +1753,7 @@ def search(phrase, searching_for_tags):
     "--reverse/--no-reverse",
     "reverse_",
     default=False,
-    help="Reverse the sorting order (decreasing instead of increasing).",
+    help="Reverse the sorting order (decreasing instead of increasing). For example, 'maestro list -s s -R -t 5' will show the top 5 most-listened songs by seconds listened.",
 )
 @click.option(
     "-T/-nT",
@@ -1757,21 +1770,45 @@ def search(phrase, searching_for_tags):
 )
 @click.option("-t", "--top", "top", type=int, help="Show the top n songs/tags.")
 @click.option(
-    "-A/-nA",
+    "-M/-nM",
     "--match-all/--no-match-all",
     "match_all",
     default=False,
-    help="Shows songs that match all tags instead of any tag. Ignored if '-t/--tag' is passed.",
+    help="Shows songs that match all criteria instead of any criteria. Ignored if '-t/--tag' is passed.",
+)
+@click.option(
+    "-a",
+    "--artist",
+    "artists",
+    multiple=True,
+    help="Filter by artist(s) (fuzzy search); can pass multiple.",
+)
+@click.option(
+    "-b",
+    "--album",
+    "albums",
+    multiple=True,
+    help="Filter by album (fuzzy search); can pass multiple.",
+)
+@click.option(
+    "-c",
+    "--album-artist",
+    "album_artists",
+    multiple=True,
+    help="Filter by album artist (fuzzy search); can pass multiple.",
 )
 def list_(
     search_tags,
-    exclude_tags,
+    exclude,
     listing_tags,
     year,
     sort_,
     top,
     reverse_,
     match_all,
+    artists,
+    albums,
+    album_artists,
 ):
     """List songs or tags.
 
@@ -1780,10 +1817,6 @@ def list_(
     If the '-T/--tag' flag is passed, tags will be listed instead of songs.
 
     Output format: tag, duration, listen time, times listened
-
-    If TAGS are passed, all songs matching ANY tag in TAGS will be listed,
-    unless the '-M/--match-all' flag is passed, in which case EVERY tag must
-    be matched (this flag is ignored if listing tags).
     """
     if top is not None:
         if top < 1:
@@ -1804,19 +1837,66 @@ def list_(
 
     if search_tags:
         search_tags = set(search_tags)
-    if exclude_tags:
-        exclude_tags = set(exclude_tags)
 
     num_lines = 0
 
     if listing_tags:
         tags = defaultdict(lambda: [0, 0])
         for song in helpers.SONGS:
+            search_criteria = (
+                (
+                    (
+                        any(
+                            artist.lower() in song.artist.lower()
+                            for artist in artists
+                        )
+                    ),
+                    artists,
+                ),
+                (
+                    (
+                        any(
+                            album.lower() in song.album.lower()
+                            for album in albums
+                        )
+                    ),
+                    albums,
+                ),
+                (
+                    (
+                        any(
+                            album_artist.lower() in song.album_artist.lower()
+                            for album_artist in album_artists
+                        )
+                    ),
+                    album_artists,
+                ),
+            )
+            search_criteria = (
+                c[0] for c in filter(lambda t: t[1], search_criteria)
+            )
+
+            if match_all:
+                search_criteria = not search_criteria or all(search_criteria)
+            else:
+                search_criteria = not search_criteria or any(search_criteria)
+
             for tag in song.tags:
+                if match_all:
+                    matches_search_criteria = search_criteria and (
+                        not search_tags or tag in search_tags
+                    )
+                else:
+                    if search_criteria:
+                        matches_search_criteria = True
+                    elif search_tags:
+                        matches_search_criteria = tag in search_tags
+
                 if (
-                    not search_tags
-                    or tag in search_tags
-                    and tag not in exclude_tags
+                    exclude
+                    and not matches_search_criteria
+                    or not exclude
+                    and matches_search_criteria
                 ):
                     tags[tag][0] += song.listen_times[year]
                     tags[tag][1] += song.duration
@@ -1833,9 +1913,8 @@ def list_(
             elif sort_ in ("times-listened", "t"):
                 sort_key = lambda t: t[1][0] / t[1][1]
             tags.sort(key=sort_key)
-
-        if reverse_:
-            tags.reverse()
+            if reverse_:
+                tags.reverse()
 
         for tag, (listen_time, total_duration) in tags:
             click.echo(
@@ -1849,18 +1928,48 @@ def list_(
     no_results = True
     songs = []
     for song in helpers.SONGS:
-        if search_tags:
-            if match_all:
-                if not search_tags <= song.tags:  # subset
-                    continue
-            else:
-                if not search_tags & song.tags:  # intersection
-                    continue
-        if exclude_tags:
-            if exclude_tags & song.tags:
-                continue
+        search_criteria = (
+            (
+                (
+                    any(
+                        artist.lower() in song.artist.lower()
+                        for artist in artists
+                    )
+                ),
+                artists,
+            ),
+            (
+                (any(album.lower() in song.album.lower() for album in albums)),
+                albums,
+            ),
+            (
+                (
+                    any(
+                        album_artist.lower() in song.album_artist.lower()
+                        for album_artist in album_artists
+                    )
+                ),
+                album_artists,
+            ),
+        )
+        search_criteria = (
+            c[0] for c in filter(lambda t: t[1], search_criteria)
+        )
+        if not search_criteria:
+            search_criteria = (True,)
 
-        songs.append(song)
+        if match_all:
+            search_criteria = all(search_criteria) and (
+                not search_tags or search_tags <= song.tags
+            )  # subset
+        else:
+            if any(search_criteria):
+                search_criteria = True
+            else:
+                search_criteria = search_tags and search_tags <= song.tags
+
+        if exclude and not search_criteria or not exclude and search_criteria:
+            songs.append(song)
 
     if sort_ == "none":
         sort_key = lambda song: song.song_id
@@ -1881,12 +1990,12 @@ def list_(
         if top is not None and num_lines == top:
             break
 
-    if no_results and search_tags:
-        click.secho("No songs found matching tags.", fg="red")
-    elif no_results:
+    if no_results and not any(search_tags, artists, albums, album_artists):
         click.secho(
             "No songs found. Use 'maestro add' to add a song.", fg="red"
         )
+    elif no_results:
+        click.secho("No songs found matching criteria.", fg="red")
 
 
 @cli.command()

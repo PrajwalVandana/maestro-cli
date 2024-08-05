@@ -168,7 +168,7 @@ PLAY_CONTROLS = [
         "o",
         "rel[o]ad song data (useful if you've changed e.g lyrics, tags, metadata, etc. while playing)",
     ),
-    ("?", "toggle this help message"),
+    ("h", "toggle this [h]elp message"),
     ("f", "[f]ind a song in the queue (opens a prompt like 'a')"),
 ]
 for key, desc in PLAY_CONTROLS:

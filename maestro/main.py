@@ -1357,11 +1357,13 @@ def tag_(songs, tags):
     multiple=True,
 )
 @click.option("-A/-nA", "--all/--no-all", "all_", default=False)
-def untag(songs, tags, all_):
+@click.option("-F/-nF", "--force/--no-force", default=False)
+def untag(songs, tags, all_, force):
     """Remove tags from songs. Tags that a song doesn't have will be ignored.
 
     Passing the '-A/--all' flag will remove all tags from each song, unless TAGS
-    is passed (in which case the flag is ignored)."""
+    is passed (in which case the flag is ignored). Prompts for confirmation
+    unless the '-F/--force' flag is passed."""
     if tags:
         tags = set(tags)
         for song in songs:
@@ -1377,13 +1379,16 @@ def untag(songs, tags, all_):
                 fg="red",
             )
         else:
-            for song in songs:
-                song.tags.clear()
+            if force or input(
+                f"Are you sure you want to remove all tags from all {helpers.pluralize(len(songs), 'song')}? [y/n] "
+            ).lower() == "y":
+                for song in songs:
+                    song.tags.clear()
 
-            click.secho(
-                f"Removed all tags from {helpers.pluralize(len(songs), 'song')}.",
-                fg="green",
-            )
+                click.secho(
+                    f"Removed all tags from all {helpers.pluralize(len(songs), 'song')}.",
+                    fg="green",
+                )
 
 
 @cli.command()
@@ -1700,7 +1705,7 @@ def play(
     help="If passed, rename tag instead of song (treat the arguments as tags).",
 )
 # NOTE: original is not forced to be a int so that tags can be renamed
-@click.argument("original", type=helpers.CLICK_SONG)
+@click.argument("original")
 @click.argument("new_name")
 def rename(original, new_name, renaming_tag):
     """
@@ -1714,6 +1719,7 @@ def rename(original, new_name, renaming_tag):
     exists, so be careful!
     """
     if not renaming_tag:
+        original = helpers.CLICK_SONG(original)
         original_song_title = original.song_title
         original.song_title = new_name
         click.secho(

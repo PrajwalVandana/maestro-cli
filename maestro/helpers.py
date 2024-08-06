@@ -1050,9 +1050,6 @@ class PlaybackHandler:
                     ),
                     small_image="maestro-icon-small",
                     large_text=album_name,
-                    # join=self.username if self.username else "",
-                    # party_id="test",
-                    # party_size=[1, 999],
                     buttons=(
                         [
                             {
@@ -1060,7 +1057,7 @@ class PlaybackHandler:
                                 "url": f"{config.MAESTRO_SITE}/listen/{self.username}",
                             }
                         ]
-                        if self.username
+                        if self.username and self.stream
                         else None
                     ),
                 )
@@ -2607,14 +2604,28 @@ def display_lyrics(lyrics, song, prefix: str = ""):
         click.echo("\n".join([f"\t{lyric}" for lyric in lyrics]))
 
 
-def filter_songs(tags, exclude_tags, artists, albums, album_artists, match_all):
+def filter_songs(
+    tags,
+    exclude_tags,
+    artists,
+    albums,
+    album_artists,
+    match_all,
+    combine_artists,
+):
     songs = []
     for song in SONGS:
         search_criteria = (
             (
                 (
                     any(
-                        artist.lower() in song.artist.lower()
+                        artist.lower()
+                        in song.artist.lower()
+                        + (
+                            f", {song.album_artist.lower()}"
+                            if combine_artists
+                            else ""
+                        )
                         for artist in artists
                     )
                 ),
@@ -2627,7 +2638,13 @@ def filter_songs(tags, exclude_tags, artists, albums, album_artists, match_all):
             (
                 (
                     any(
-                        album_artist.lower() in song.album_artist.lower()
+                        album_artist.lower()
+                        in song.album_artist.lower()
+                        + (
+                            f", {song.artist.lower()}"
+                            if combine_artists
+                            else ""
+                        )
                         for album_artist in album_artists
                     )
                 ),

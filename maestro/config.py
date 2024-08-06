@@ -209,6 +209,8 @@ ICECAST_SERVER = (
 )
 
 MAESTRO_SITE = "https://maestro-music.vercel.app"
+# MAESTRO_SITE = "http://localhost:3000"  # DEBUG
+
 IMAGE_URL = f"{MAESTRO_SITE}/api/get_artwork/"
 # endregion
 

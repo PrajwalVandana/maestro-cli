@@ -443,6 +443,7 @@ def _play(
                                             player.ffmpeg_process.start()
                                     else:
                                         player.ffmpeg_process.terminate()
+                                    player.update_discord_metadata()
                                     player.update_screen()
                                 elif ch == " ":
                                     player.paused = not player.paused
@@ -517,6 +518,14 @@ def _play(
                                     player.translated_lyrics = (
                                         player.song.parsed_translated_lyrics
                                     )
+
+                                    from keyring.errors import NoKeyringError
+
+                                    try:
+                                        player.username = helpers.get_username()
+                                        player.password = helpers.get_password()
+                                    except NoKeyringError:
+                                        pass
 
                                     player.update_screen()
                                 elif ch in "hH":
@@ -884,6 +893,21 @@ def cli(ctx: click.Context):
     help="Add metadata to the song. If adding multiple songs, the metadata is added to each song. The format is 'key1:value1|key2:value2|...'.",
 )
 @click.option(
+    "-a",
+    "--artist",
+    help="Specify the artist. If also specified in '-m/--metadata', this takes precedence.",
+)
+@click.option(
+    "-b",
+    "--album",
+    help="Specify the album. If also specified in '-m/--metadata', this takes precedence.",
+)
+@click.option(
+    "-c",
+    "--album-artist",
+    help="Specify the album artist. If also specified in '-m/--metadata', this takes precedence.",
+)
+@click.option(
     "-nD/-D",
     "--skip-dupes/--no-skip-dupes",
     default=False,
@@ -906,6 +930,9 @@ def add(
     format_,
     playlist_,
     metadata_pairs,
+    artist,
+    album,
+    album_artist,
     skip_dupes,
     lyrics,
 ):
@@ -945,11 +972,6 @@ def add(
 
     If the '-L/--lyrics' flag is passed, maestro attempts to download lyrics
     (synced if possible).
-
-    Keys are not case sensitive and can contain arbitrary whitespace, '-', and
-    '_' characters. In other words, 'Album Artist', 'album-artist', and
-    'album_artist' are all synonyms for 'albumartist'. Also, 'disk' is
-    synonymous with 'disc'.
     """
 
     paths = None
@@ -1123,10 +1145,29 @@ def add(
                     f"'{key}' is not a valid editable metadata key.", fg="red"
                 )
                 keys_to_ignore.add(key)
-                continue
+            elif key == "artist" and artist is not None:
+                keys_to_ignore.add(key)
+            elif key == "album" and album is not None:
+                keys_to_ignore.add(key)
+            elif key == "albumartist" and album_artist is not None:
+                keys_to_ignore.add(key)
         metadata_pairs = list(
             filter(lambda t: t[0] not in keys_to_ignore, metadata_pairs)
         )
+
+    abc_opts = list(
+        filter(
+            lambda t: t[1] is not None,
+            [
+                ("artist", artist),
+                ("album", album),
+                ("albumartist", album_artist),
+            ],
+        )
+    )
+    if abc_opts:
+        metadata_pairs = metadata_pairs or []
+        metadata_pairs.extend(abc_opts)
 
     for path in paths:
         ext = os.path.splitext(path)[1].lower()
@@ -1470,6 +1511,14 @@ def untag(songs, tags, all_):
     default=False,
     help="Show translated lyrics (ignored if '-Y/--lyrics' is not passed).",
 )
+@click.option(
+    "-X/-nX",
+    "--combine-artists/--no-combine-artists",
+    "combine_artists",
+    default=True,
+    is_flag=True,
+    help="Count artists as album artists and vice versa.",
+)
 def play(
     tags,
     exclude_tags,
@@ -1489,6 +1538,7 @@ def play(
     stream,
     lyrics,
     translated_lyrics,
+    combine_artists,
 ):
     """Play your songs. If tags are passed, any song matching any tag will be in
     your queue, unless the '-M/--match-all' flag is passed, in which case
@@ -1548,7 +1598,13 @@ def play(
     else:
         playlist.extend(
             helpers.filter_songs(
-                tags, exclude_tags, artists, albums, album_artists, match_all
+                tags,
+                exclude_tags,
+                artists,
+                albums,
+                album_artists,
+                match_all,
+                combine_artists,
             )
         )
 
@@ -1758,6 +1814,12 @@ def search(phrase, searching_for_tags):
             "d",
             "times-listened",
             "t",
+            "artist",
+            "a",
+            "album",
+            "b",
+            "album-artist",
+            "c",
         )
     ),
     help="Sort by song name, seconds listened, duration or times listened (seconds listened divided by song duration). Increasing order, default is by ID for songs and no order for tags.",
@@ -1773,7 +1835,7 @@ def search(phrase, searching_for_tags):
 )
 @click.option(
     "-T/-nT",
-    "--tag/--no-tag",
+    "--list-tags/--no-list-tags",
     "listing_tags",
     default=False,
     help="List tags matching TAGS instead of songs.",
@@ -1813,6 +1875,35 @@ def search(phrase, searching_for_tags):
     multiple=True,
     help="Filter by album artist (fuzzy search); can pass multiple.",
 )
+@click.option(
+    "-A/-nA",
+    "--list-artists/--no-list-artists",
+    "listing_artists",
+    is_flag=True,
+    help="Show artists instead of songs.",
+)
+@click.option(
+    "-B/-nB",
+    "--list-albums/--no-list-albums",
+    "listing_albums",
+    is_flag=True,
+    help="Show albums instead of songs.",
+)
+@click.option(
+    "-C/-nC",
+    "--list-album-artist/--no-list-album-artist",
+    "listing_album_artists",
+    is_flag=True,
+    help="Show album artists instead of songs.",
+)
+@click.option(
+    "-X/-nX",
+    "--combine-artists/--no-combine-artists",
+    "combine_artists",
+    is_flag=True,
+    default=True,
+    help="Count artists as album artists and vice versa. Ignored if neither '-A/--list-artists' nor '-C/--list-album-artists' is passed.",
+)
 def list_(
     search_tags,
     exclude_tags,
@@ -1825,14 +1916,21 @@ def list_(
     artists,
     albums,
     album_artists,
+    listing_artists,
+    listing_albums,
+    listing_album_artists,
+    combine_artists,
 ):
     """List songs or tags.
-
     Output format: ID, name, duration, listen time, times listened, [clip-start, clip-end] if clip exists, comma-separated tags if any
 
-    If the '-T/--tag' flag is passed, tags will be listed instead of songs.
+    If the '-T/--list-tags' flag is passed, tags will be listed instead of songs.
 
-    Output format: tag, duration, listen time, times listened
+    If any of the '-A/--list-artists', '-B/--list-albums', or
+    '-C/--list-album-artists' flags are passed, the respective fields will be
+    listed instead of songs.
+
+    Output format: tag/artist/album/album artist, duration, listen time, times listened
     """
     if top is not None:
         if top < 1:
@@ -1840,6 +1938,23 @@ def list_(
                 "The option '-t/--top' must be a positive number.", fg="red"
             )
             return
+
+    if (
+        sum(
+            [
+                listing_artists,
+                listing_albums,
+                listing_album_artists,
+                listing_tags,
+            ]
+        )
+        > 1
+    ):
+        click.secho(
+            "Only one of '-A/--show-artist', '-B/--show-album', '-C/--show-album-artist', or '-T/--tag' can be passed.",
+            fg="red",
+        )
+        return
 
     if year is None:
         year = "total"
@@ -1862,6 +1977,98 @@ def list_(
 
     if listing_tags:
         tags = defaultdict(lambda: [0, 0])
+        for song in helpers.SONGS:
+            search_criteria = (
+                (
+                    (
+                        any(
+                            artist.lower()
+                            in song.artist.lower()
+                            + (
+                                f", {song.album_artist.lower()}"
+                                if combine_artists
+                                else ""
+                            )
+                            for artist in artists
+                        )
+                    ),
+                    artists,
+                ),
+                (
+                    (
+                        any(
+                            album.lower() in song.album.lower()
+                            for album in albums
+                        )
+                    ),
+                    albums,
+                ),
+                (
+                    (
+                        any(
+                            album_artist.lower()
+                            in song.album_artist.lower()
+                            + (
+                                ", " + song.artist.lower()
+                                if combine_artists
+                                else ""
+                            )
+                            for album_artist in album_artists
+                        )
+                    ),
+                    album_artists,
+                ),
+            )
+            search_criteria = tuple(
+                c[0] for c in filter(lambda t: t[1], search_criteria)
+            )
+
+            if match_all:
+                search_criteria = not search_criteria or all(search_criteria)
+            else:
+                search_criteria = (not search_criteria) or any(search_criteria)
+
+            for tag in song.tags:
+                if match_all:
+                    search_criteria = search_criteria and (
+                        not search_tags or tag in search_tags
+                    )
+                else:
+                    if search_criteria:
+                        search_criteria = True
+                    elif search_tags:
+                        search_criteria = tag in search_tags
+
+                if search_criteria and tag not in exclude_tags:
+                    tags[tag][0] += song.listen_times[year]
+                    tags[tag][1] += song.duration
+
+        tags = list(tags.items())
+
+        if sort_ != "none":
+            if sort_ in ("name", "n"):
+                sort_key = lambda t: t[0].lower()
+            elif sort_ in ("secs-listened", "s"):
+                sort_key = lambda t: t[1][0]
+            elif sort_ in ("duration", "d"):
+                sort_key = lambda t: t[1][1]
+            elif sort_ in ("times-listened", "t"):
+                sort_key = lambda t: t[1][0] / t[1][1]
+            tags.sort(key=sort_key)
+            if reverse_:
+                tags.reverse()
+
+        for tag, (listen_time, total_duration) in tags:
+            click.echo(
+                f"{tag} {click.style(helpers.format_seconds(total_duration, show_decimal=True, digital=False), fg='bright_black')} {click.style(helpers.format_seconds(listen_time, show_decimal=True, digital=False), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
+            )
+            num_lines += 1
+            if top is not None and num_lines == top:
+                break
+        return
+
+    if listing_artists or listing_albums or listing_album_artists:
+        abcs = defaultdict(lambda: [0, 0])
         for song in helpers.SONGS:
             search_criteria = (
                 (
@@ -1901,22 +2108,28 @@ def list_(
             else:
                 search_criteria = (not search_criteria) or any(search_criteria)
 
-            for tag in song.tags:
-                if match_all:
-                    matches_search_criteria = search_criteria and (
-                        not search_tags or tag in search_tags
-                    )
-                else:
-                    if search_criteria:
-                        matches_search_criteria = True
-                    elif search_tags:
-                        matches_search_criteria = tag in search_tags
+            if listing_artists or (combine_artists and listing_album_artists):
+                for artist in song.artist.split(","):
+                    artist = artist.strip()
 
-                if matches_search_criteria and tag not in exclude_tags:
-                    tags[tag][0] += song.listen_times[year]
-                    tags[tag][1] += song.duration
+                    if search_criteria and not exclude_tags & song.tags:
+                        abcs[artist][0] += song.listen_times[year]
+                        abcs[artist][1] += song.duration
+            elif listing_albums:
+                album = song.album
 
-        tags = list(tags.items())
+                if search_criteria and not exclude_tags & song.tags:
+                    abcs[album][0] += song.listen_times[year]
+                    abcs[album][1] += song.duration
+            elif listing_album_artists or (combine_artists and listing_artists):
+                for album_artist in song.album_artist.split(","):
+                    album_artist = album_artist.strip()
+
+                    if search_criteria and not exclude_tags & song.tags:
+                        abcs[album_artist][0] += song.listen_times[year]
+                        abcs[album_artist][1] += song.duration
+
+        abcs = list(abcs.items())
 
         if sort_ != "none":
             if sort_ in ("name", "n"):
@@ -1927,13 +2140,13 @@ def list_(
                 sort_key = lambda t: t[1][1]
             elif sort_ in ("times-listened", "t"):
                 sort_key = lambda t: t[1][0] / t[1][1]
-            tags.sort(key=sort_key)
+            abcs.sort(key=sort_key)
             if reverse_:
-                tags.reverse()
+                abcs.reverse()
 
-        for tag, (listen_time, total_duration) in tags:
+        for abc, (listen_time, total_duration) in abcs:
             click.echo(
-                f"{tag} {click.style(helpers.format_seconds(total_duration, show_decimal=True, digital=False), fg='bright_black')} {click.style(helpers.format_seconds(listen_time, show_decimal=True, digital=False), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
+                f"{abc} {click.style(helpers.format_seconds(total_duration, show_decimal=True, digital=False), fg='bright_black')} {click.style(helpers.format_seconds(listen_time, show_decimal=True, digital=False), fg='yellow')} {click.style('%.2f'%(listen_time/total_duration), fg='green')}"
             )
             num_lines += 1
             if top is not None and num_lines == top:
@@ -1941,7 +2154,13 @@ def list_(
         return
 
     songs = helpers.filter_songs(
-        search_tags, exclude_tags, artists, albums, album_artists, match_all
+        search_tags,
+        exclude_tags,
+        artists,
+        albums,
+        album_artists,
+        match_all,
+        combine_artists,
     )
 
     if sort_ == "none":
@@ -2337,31 +2556,45 @@ def set_clip(songs: tuple[helpers.Song], name, force):
 @cli.command()
 @click.argument("songs", type=helpers.CLICK_SONG, required=True, nargs=-1)
 @click.option("-m", "--metadata", "pairs", type=str, required=False)
-def metadata(songs: tuple[helpers.Song], pairs):
+@click.option(
+    "-a",
+    "--artist",
+    help="Artist of the song. Overrides '-m/--metadata'.",
+)
+@click.option(
+    "-b",
+    "--album",
+    help="Album of the song. Overrides '-m/--metadata'.",
+)
+@click.option(
+    "-c",
+    "--album-artist",
+    help="Album artist of the song. Overrides '-m/--metadata'.",
+)
+def metadata(songs: tuple[helpers.Song], pairs, artist, album, album_artist):
     """
     View or edit the metadata for songs.
 
-    If the -m/--metadata option is not passed, prints the metadata for each song
-    in SONGS.
+    If no options are passed, prints the metadata for each song in SONGS.
 
-    If the option is passed, sets the metadata for the each song in SONGS to the
-    key-value pairs in -m/--metadata. The option should be passed as a
+    If '-m/--metadata' is passed, sets the metadata for the each song in SONGS
+    to the key-value pairs in -m/--metadata. The option should be passed as a
     string of the form 'key1:value1|key2:value2|...'.
 
     Possible editable metadata keys are: album, albumartist, artist, comment,
     compilation, composer, discnumber, genre, lyrics, totaldiscs, totaltracks,
     tracknumber, tracktitle, year, isrc
-
-    Keys are not case sensitive and can contain arbitrary whitespace, '-', and
-    '_' characters. In other words, 'Album Artist', 'album-artist', and
-    'album_artist' are all synonyms for 'albumartist'. Also, 'disk' is
-    synonymous with 'disc'.
     """
+    valid_pairs = None
+    if any([artist, album, album_artist, pairs]):
+        if pairs:
+            pairs = [
+                tuple(pair.strip().split(":", 1)) for pair in pairs.split("|")
+            ]
+        else:
+            pairs = []
 
-    if pairs:
-        pairs = [tuple(pair.strip().split(":", 1)) for pair in pairs.split("|")]
-
-        valid_pairs = pairs[:]
+        valid_pairs = set(pairs[:])
         for key, value in pairs:
             if (
                 key not in config.METADATA_KEYS
@@ -2373,7 +2606,19 @@ def metadata(songs: tuple[helpers.Song], pairs):
                     fg="yellow",
                 )
                 valid_pairs.remove((key, value))
-                continue
+            elif key == "artist" and artist is not None:
+                valid_pairs.remove((key, value))
+            elif key == "album" and album is not None:
+                valid_pairs.remove((key, value))
+            elif key == "albumartist" and album_artist is not None:
+                valid_pairs.remove((key, value))
+
+        if artist is not None:
+            valid_pairs.add(("artist", artist))
+        if album is not None:
+            valid_pairs.add(("album", album))
+        if album_artist is not None:
+            valid_pairs.add(("albumartist", album_artist))
 
         if not valid_pairs:
             click.secho("No valid metadata keys passed.", fg="red")
@@ -2389,7 +2634,7 @@ def metadata(songs: tuple[helpers.Song], pairs):
             )
             continue
 
-        if pairs:
+        if valid_pairs:
             for key, value in valid_pairs:
                 song.set_metadata(key, value)
         else:
@@ -3054,7 +3299,14 @@ def transliterate(songs, lang, override, force):
     default=False,
     help="Skip confirmation prompt.",
 )
-def translate(songs, save_, from_langs, to_lang, force):
+@click.option(
+    "-R/-nR",
+    "--remove/--no-remove",
+    "remove_",
+    default=False,
+    help="Remove translated lyrics.",
+)
+def translate(songs, save_, from_langs, to_lang, force, remove_):
     """
     Translate song lyrics using the 'translatepy' package. EXPERIMENTAL.
 
@@ -3062,6 +3314,9 @@ def translate(songs, save_, from_langs, to_lang, force):
     play' (displayed with original lyrics). If a translated lyric file already
     exists, prompts for confirmation before overwriting unless '-F/--force' is
     passed.
+
+    If '-R/--remove' is passed, removes the translated lyrics for each song
+    (prompts for confirmation unless '-F/--force' is passed).
 
     Default translation is from 'auto' to 'English', but you can specify the
     languages using the '-f/--from' and '-t/--to' options. Multiple '-f/--from'
@@ -3072,6 +3327,13 @@ def translate(songs, save_, from_langs, to_lang, force):
     """
     if not songs:
         click.secho("No songs passed.", fg="red")
+        return
+
+    if remove and save_:
+        click.secho(
+            "Cannot pass both '-R/--remove' and '-S/--save'.",
+            fg="red",
+        )
         return
 
     import translatepy.translators
@@ -3114,6 +3376,14 @@ def translate(songs, save_, from_langs, to_lang, force):
                 return
 
     for song in songs:
+        if remove_:
+            song.parsed_translated_lyrics = None
+            click.secho(
+                f'Removed translated lyrics for "{song.song_title}" (ID {song.song_id}).',
+                fg="green",
+            )
+            continue
+
         lyrics = song.parsed_lyrics
         if lyrics is None:
             click.secho(

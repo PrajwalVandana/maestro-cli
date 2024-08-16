@@ -1,7 +1,7 @@
 # maestro
 [![Downloads](https://static.pepy.tech/badge/maestro-music)](https://pepy.tech/project/maestro-music) [![PyPI version](https://badge.fury.io/py/maestro-music.svg)](https://badge.fury.io/py/maestro-music) [![Support Server](https://img.shields.io/discord/1117677384846544896.svg?color=7289da&label=maestro-cli&logo=discord)](https://discord.gg/AW8fh2QEav)
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
-![[data/player.png]]
+![](data/player.png)
 
 Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 ## Features
@@ -18,7 +18,7 @@ Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 - [audio visualization](#visualization) directly in the terminal!
 - [Discord integration](#discord-status)!
 - Now Playing Center integration on macOS! (allows headphone controls)
-![[data/now_playing.png]]
+![](data/now_playing.png)
 - (EXPERIMENTAL) [music discovery](#experimental-music-discovery)!
 ## Installation
 ### Using `pip`
@@ -70,7 +70,7 @@ By default, `maestro add` copies the file to its internal database (`~/.maestro-
 Also, playlists don't exist—`maestro` uses **tags**. For example, let's say you want to be able to listen to all your rap songs together. Instead of adding them all to a playlist, run `maestro tag <space-separated song IDs for each rap song> -t rap`. Then `maestro play rap` will play all the songs you've added the `rap` tag to. Basically, if song `s` has tag `t`, then you can think of song `s` as belonging to the playlist defined by tag `t`. The advantage of tags over playlists is that you can combine tags; `maestro play A B` will play only songs tagged `A` or `B` (add the `-M/--match-all` flag to play only songs tagged `A` *and* `B`).
 ### Listen Statistics
 `maestro` also tracks your listen time—total and by year. You can see this with `maestro list` and/or `maestro entry`. For example, to see your top 10 listened songs this year (by average number of times listened; note that this is NOT the number of times the song was played, but rather the total listen time for that song divided by the duration), run `maestro list --reverse --sort times-listened --top 10 --year cur`—replace 'cur' with e.g. '2020' to get the listen times for 2020 instead.
-![[data/list.png]]
+![](data/list.png)
 ### Clips
 Ever been listening to music, and you're skipping every song because you keep getting bored of them? You like the songs, you're just not in the mood to listen to all of them entirely.
 
@@ -92,9 +92,9 @@ Press `y` in the player session to toggle lyrics, `t` to toggle translated lyric
 Run `maestro play --visualize` or click `v` in the player session to show the visualizer.
 ### Discord Status
 Run `maestro play --discord` or click `d` in the player session to show the currently playing song in your Discord status (requires the Discord app to be open). Hovering over the image will show the album name. To show album art, requires signing up/logging in with `maestro signup`/`maestro login`.
-![[data/discord.png]]
+![](data/discord.png)
 ### Streaming
 If you're logged in as `user123`, run `maestro play --stream` (or click `s` in the player session) to stream your music to `maestro-music.vercel.app/listen-along/user123`. This will show up as a "Listen Along" button on your Discord status too, if the Discord status is enabled (some versions of the Discord app don't show buttons on your own status, but it should show for everyone else).
-![[data/stream.png]]
+![](data/stream.png)
 ### (EXPERIMENTAL) Music Discovery
 Use `maestro recommend <song ID>` to recommend similar songs (searches up the song name on YouTube Music).s

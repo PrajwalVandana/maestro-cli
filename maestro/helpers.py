@@ -1770,7 +1770,7 @@ class PlaybackHandler:
                     style = curses.A_DIM
                     if i == cur_lyric_i:
                         style |= curses.A_BOLD
-                    elif i == self.lyric_pos:
+                    elif i == self.lyric_pos and is_timed:
                         style |= curses.color_pair(4)
 
                     try:
@@ -2678,7 +2678,7 @@ def filter_songs(
         elif tags:
             search_criteria = tags & song.tags
         else:
-            search_criteria = True
+            search_criteria = not search_criteria
 
         if search_criteria and not exclude_tags & song.tags:
             songs.append(song)

@@ -1,5 +1,5 @@
 # maestro
-[![Downloads](https://static.pepy.tech/badge/maestro-music)](https://pepy.tech/project/maestro-music) [![PyPI version](https://badge.fury.io/py/maestro-music.svg)](https://badge.fury.io/py/maestro-music) [![Support Server](https://img.shields.io/discord/1117677384846544896.svg?color=7289da&label=maestro-cli&logo=discord)](https://discord.gg/AW8fh2QEav)
+[![PyPI downloads](https://static.pepy.tech/badge/maestro-music)](https://pepy.tech/project/maestro-music) [![PyPI version](https://badge.fury.io/py/maestro-music.svg)](https://badge.fury.io/py/maestro-music) [![Support server](https://img.shields.io/discord/1117677384846544896.svg?color=7289da&label=maestro-cli&logo=discord)](https://discord.gg/AW8fh2QEav)
 `maestro` is a command-line tool to play songs (or any audio, really) in the terminal.
 ![](data/player.png)
 
@@ -19,7 +19,7 @@ Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 - [Discord integration](#discord-status)!
 - Now Playing Center integration on macOS! (allows headphone controls)
 ![](data/now_playing.png)
-- (EXPERIMENTAL) [music discovery](#experimental-music-discovery)!
+- [music discovery](#music-discovery)!
 ## Installation
 ### Using `pip`
 Make sure you have Python 3 and `pip` installed.
@@ -98,5 +98,5 @@ Run `maestro play --discord` or click `d` in the player session to show the curr
 ### Streaming
 If you're logged in as `user123`, run `maestro play --stream` (or click `s` in the player session) to stream your music to `maestro-music.vercel.app/listen-along/user123`. This will show up as a "Listen Along" button on your Discord status too, if the Discord status is enabled (some versions of the Discord app don't show buttons on your own status, but it should show for everyone else).
 ![](data/stream.png)
-### (EXPERIMENTAL) Music Discovery
-Use `maestro recommend <song ID>` to recommend similar songs (searches up the song name on YouTube Music).s
+### Music Discovery
+Use `maestro recommend <song ID>` to recommend similar songs (searches up the song name on YouTube Music).

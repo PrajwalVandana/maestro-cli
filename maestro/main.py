@@ -479,9 +479,7 @@ def _play(
                                     player.update_screen()
                                     prev_volume = player.volume
                                 elif ch in "yY":
-                                    player.want_lyrics = (
-                                        not player.want_lyrics
-                                    )
+                                    player.want_lyrics = not player.want_lyrics
                                 elif ch in "oO":
                                     helpers.SONG_DATA.load()
                                     helpers.SONGS.load()
@@ -2070,31 +2068,47 @@ def list_(
 
     if listing_artists or listing_albums or listing_album_artists:
         abcs = defaultdict(lambda: [0, 0])
-        for song in helpers.SONGS:
-            if (
-                exclude_tags & song.tags
-                or (match_all and search_tags and not search_tags <= song.tags)
-                or (
-                    not match_all
-                    and search_tags
-                    and not search_tags & song.tags
-                )
-            ):
-                continue
-
+        if combine_artists:
+            artists += album_artists
+            album_artists = artists
+        for song in helpers.filter_songs(
+            search_tags,
+            exclude_tags,
+            artists,
+            albums,
+            album_artists,
+            match_all,
+            combine_artists,
+        ):
             if listing_artists or (combine_artists and listing_album_artists):
-                for artist in artists:
-                    if artist.lower() in song.artist.lower():
+                for artist in song.artist.split(", "):
+                    if artists:
+                        for search_artist in artists:
+                            if search_artist.lower() in artist.lower():
+                                abcs[artist][0] += song.listen_times[year]
+                                abcs[artist][1] += song.duration
+                                break
+                    else:
                         abcs[artist][0] += song.listen_times[year]
                         abcs[artist][1] += song.duration
-            elif listing_albums:
-                for album in albums:
-                    if album.lower() in song.album.lower():
-                        abcs[album][0] += song.listen_times[year]
-                        abcs[album][1] += song.duration
-            elif listing_album_artists or (combine_artists and listing_artists):
-                for album_artist in album_artists:
-                    if album_artist.lower() in song.album_artist.lower():
+            if listing_albums:
+                if albums:
+                    for album in albums:
+                        if album.lower() in song.album.lower():
+                            abcs[album][0] += song.listen_times[year]
+                            abcs[album][1] += song.duration
+                else:
+                    abcs[song.album][0] += song.listen_times[year]
+                    abcs[song.album][1] += song.duration
+            if listing_album_artists or (combine_artists and listing_artists):
+                for album_artist in song.album_artist.split(", "):
+                    if album_artists:
+                        for search_album_artist in album_artists:
+                            if search_album_artist.lower() in album_artist.lower():
+                                abcs[album_artist][0] += song.listen_times[year]
+                                abcs[album_artist][1] += song.duration
+                                break
+                    else:
                         abcs[album_artist][0] += song.listen_times[year]
                         abcs[album_artist][1] += song.duration
 
@@ -2202,7 +2216,7 @@ def entry(songs, year):
 )
 def recommend(song, title):
     """
-    Get recommendations from YT Music based on song titles (experimental).
+    Get recommendations from YT Music based on song titles.
 
     Recommends songs (possibly explicit) using the YouTube Music API that are
     similar to SONG to listen to.
@@ -2258,6 +2272,8 @@ def clips_(songs: tuple[helpers.Song]):
     List the clips for song(s).
 
     Output format: clip name: start time, end time
+
+    The set clip for the song is bolded and highlighted in magenta.
     """
     for song in songs:
         if not song.clips:
@@ -2269,14 +2285,20 @@ def clips_(songs: tuple[helpers.Song]):
         click.secho(song.song_title, fg="blue", bold=True, nl=False)
         click.echo(f" (ID {song.song_id}):")
 
+        def style_clip_name(clip_name, song):
+            if clip_name == song.set_clip:
+                return click.style(clip_name, bold=True, fg="magenta")
+            else:
+                return click.style(clip_name)
+
         if "default" in song.clips:
             click.echo(
-                f"\tdefault: {song.clips['default'][0]}, {song.clips['default'][1]}"
+                f"\t{style_clip_name("default", song)}: {song.clips['default'][0]}, {song.clips['default'][1]}"
             )
         for clip_name, (start, end) in song.clips.items():
             if clip_name == "default":
                 continue
-            click.echo(f"{clip_name}: {start}, {end}")
+            click.echo(f"\t{style_clip_name(clip_name, song)}: {start}, {end}")
 
 
 @cli.command(name="clip")
@@ -2507,7 +2529,7 @@ def set_clip(songs: tuple[helpers.Song], name, force):
         songs = helpers.SONGS
         if not force:
             click.echo(
-                f"Are you sure you want to set the clip for all {helpers.pluralize(songs, 'song')} to '{name}'? This cannot be undone. [y/n] ",
+                f"Are you sure you want to set the clip for all {helpers.pluralize(len(songs), 'song')} to '{name}'? This cannot be undone. [y/n] ",
                 nl=False,
             )
             if input().lower() != "y":
@@ -2896,7 +2918,7 @@ def lyrics_(
     Display or update the lyrics for song(s). Shows the overridden lyrics if
     they exist instead of the embedded metadata lyrics. To view the embedded
     lyrics, you can use 'maestro metadata'. Any translated lyrics are also
-    shown by default; turn them off with '-nT/--no-translated'.
+    shown by default if available; turn them off with '-nT/--no-translated'.
 
     Updates (embedded metadata, not any overridden) lyrics if '-U/--update' is
     passed, downloading synced lyrics if available. If the song has lyrics,
@@ -3092,10 +3114,9 @@ def lyrics_(
 )
 def transliterate(songs, lang, override, force):
     """
-    Transliterate foreign-script song lyrics to the Latin alphabet. This is NOT
-    translation, but rather converting the script to a more readable form using
-    the 'unidecode' package. For example, "తెలుగు" would be transliterated to
-    "telugu". EXPERIMENTAL.
+    Romanize foreign-script song lyrics. This is NOT translation, but rather
+    converting the script to a more readable form using the 'unidecode' package.
+    For example, "తెలుగు" would be transliterated to "telugu".
 
     If '-S/--save-override' is passed, adds the transliterated lyrics as an
     override for each song to maestro's internal data (prompts for confirmation
@@ -3216,9 +3237,10 @@ def transliterate(songs, lang, override, force):
                     )
                     if input().lower() != "y":
                         continue
-            song.raw_override_lyrics = "\n".join(
-                [helpers.get_lyric(lyric) for lyric in lyrics]
-            )
+            if helpers.is_timed_lyrics(lyrics):
+                song.raw_override_lyrics = lyrics.toLRC()
+            else:
+                song.raw_override_lyrics = "\n".join(lyrics)
             click.secho(
                 f'Added override lyrics for "{song.song_title}" (ID {song.song_id}).',
                 fg="green",
@@ -3267,7 +3289,7 @@ def transliterate(songs, lang, override, force):
 )
 def translate(songs, save_, from_langs, to_lang, force, remove_):
     """
-    Translate song lyrics using the 'translatepy' package. EXPERIMENTAL.
+    Translate song lyrics using the 'translatepy' package.
 
     If '-S/--save' is passed, saves the translated lyrics to be used by 'maestro
     play' (displayed with original lyrics). If a translated lyric file already
@@ -3410,9 +3432,12 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
                     )
                     if input().lower() != "y":
                         continue
-            song.raw_translated_lyrics = "\n".join(
-                [helpers.get_lyric(lyric) for lyric in lyrics]
-            )
+            if helpers.is_timed_lyrics(lyrics):
+                song.raw_translated_lyrics = lyrics.toLRC()
+            else:
+                song.raw_translated_lyrics = "\n".join(
+                    [helpers.get_lyric(lyric) for lyric in lyrics]
+                )
             click.secho(
                 f'Added translated lyrics for "{song.song_title}" (ID {song.song_id}).',
                 fg="green",

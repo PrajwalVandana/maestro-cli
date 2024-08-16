@@ -94,6 +94,7 @@ Run `maestro play --visualize` or click `v` in the player session to show the vi
 Run `maestro play --discord` or click `d` in the player session to show the currently playing song in your Discord status (requires the Discord app to be open). Hovering over the image will show the album name. To show album art, requires signing up/logging in with `maestro signup`/`maestro login`.
 
 <img src="data/discord.png" width="300"/>
+
 ### Streaming
 If you're logged in as `user123`, run `maestro play --stream` (or click `s` in the player session) to stream your music to `maestro-music.vercel.app/listen-along/user123`. This will show up as a "Listen Along" button on your Discord status too, if the Discord status is enabled (some versions of the Discord app don't show buttons on your own status, but it should show for everyone else).
 ![](data/stream.png)

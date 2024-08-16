@@ -25,4 +25,4 @@ rm -rf $MAESTRO_SYMLINK_LOC || echo Failed to remove any existing maestro symlin
 
 # Create a symlink to the maestro executable
 echo Creating symlink to maestro executable
-ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC | echo Failed to create symlink to maestro executable, try running with sudo
+ln -s $MAESTRO_BUNDLE_LOC/maestro $MAESTRO_SYMLINK_LOC || echo Failed to create symlink to maestro executable, try running with sudo

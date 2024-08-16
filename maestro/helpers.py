@@ -332,7 +332,10 @@ class SongData:
             for k, v in d.items():
                 self.songs[int(k)] = v
 
-                v["tags"] = set(v["tags"])
+                if "tags" not in v:
+                    v["tags"] = set()
+                else:
+                    v["tags"] = set(v["tags"])
 
                 v["stats_"] = {}
                 for year in v["stats"]:
@@ -588,8 +591,8 @@ class PlaybackHandler:
         visualize,
         stream,
         creds,
-        wants_lyrics,
-        wants_translated_lyrics,
+        want_lyrics,
+        want_translated_lyrics,
     ):
         from just_playback import Playback
 
@@ -601,12 +604,12 @@ class PlaybackHandler:
         self.i = 0
         self._volume = 0
         self.clip_mode = clip_mode
-        self.update_discord = False
-        self.visualize = visualize  # want to visualize
-        self._stream = stream
+        self.want_discord = False
+        self.want_vis = visualize  # want to visualize
+        self._want_stream = stream  # want to stream
         self.username, self.password = creds
-        self.wants_lyrics = wants_lyrics
-        self.wants_translated_lyrics = wants_translated_lyrics and wants_lyrics
+        self.want_lyrics = want_lyrics
+        self.want_translated_lyrics = want_translated_lyrics and want_lyrics
 
         self.playback = Playback()
         self._paused = False
@@ -633,7 +636,7 @@ class PlaybackHandler:
         self._librosa = None
         self.can_visualize = True
         self.can_show_visualization = (
-            self.visualize
+            self.want_vis
             # space to show visualization
             and self.screen_height > config.VISUALIZER_HEIGHT + 5
         )
@@ -647,9 +650,8 @@ class PlaybackHandler:
         self.audio_processing_thread.start()
         self.compiled = None
 
-        # (self.stream, self.username, self.password)
         self.ffmpeg_process = FFmpegProcessHandler(self.username, self.password)
-        if self.stream:
+        if self.want_stream:
             self.ffmpeg_process.start()
         self.break_stream_loop = False
         self.streaming_thread = threading.Thread(
@@ -667,7 +669,7 @@ class PlaybackHandler:
         self.show_help = False
         self.help_pos = 0
 
-        self._focus = 0  # 0: playlist, 1: lyrics
+        self._focus = 0  # 0: queue, 1: lyrics
 
     def _load_audio(self, path, sr):
         import numpy as np
@@ -720,15 +722,15 @@ class PlaybackHandler:
                 if self.song != song and (
                     self.song not in self.audio_data
                     or (
-                        self.visualize and self.audio_data[self.song][0] is None
+                        self.want_vis and self.audio_data[self.song][0] is None
                     )
-                    or (self.stream and self.audio_data[self.song][1] is None)
+                    or (self.want_stream and self.audio_data[self.song][1] is None)
                 ):
                     break
                 if song in self.audio_data and (
-                    (self.audio_data[song][0] is not None or not self.visualize)
+                    (self.audio_data[song][0] is not None or not self.want_vis)
                     and (
-                        self.audio_data[song][1] is not None or not self.stream
+                        self.audio_data[song][1] is not None or not self.want_stream
                     )
                     or self._librosa is None
                 ):
@@ -754,7 +756,7 @@ class PlaybackHandler:
                                 ref=np.max,
                             )
                             + 80
-                            if self.visualize and self.can_visualize
+                            if self.want_vis and self.can_visualize
                             else None
                         ),
                         (
@@ -765,14 +767,14 @@ class PlaybackHandler:
                                 * (2**15 - 1)
                                 * 0.5  # reduce volume (avoid clipping)
                             )  # convert to 16-bit PCM
-                            if self.stream
+                            if self.want_stream
                             else None
                         ),
                     ]
                 else:
                     if (
                         self.audio_data[song][0] is None
-                        and self.visualize
+                        and self.want_vis
                         and self.can_visualize
                     ):
                         self.audio_data[song][0] = (
@@ -789,7 +791,7 @@ class PlaybackHandler:
                             )
                             + 80
                         )
-                    if self.audio_data[song][1] is None and self.stream:
+                    if self.audio_data[song][1] is None and self.want_stream:
                         self.audio_data[song][1] = np.int16(
                             self._load_audio(
                                 song_path, sr=config.STREAM_SAMPLE_RATE
@@ -803,7 +805,7 @@ class PlaybackHandler:
     def _streaming_loop(self):
         while True:
             if (
-                self.stream
+                self.want_stream
                 and self.username is not None
                 and self.audio_data is not None
                 and self.song in self.audio_data
@@ -853,7 +855,7 @@ class PlaybackHandler:
     @paused.setter
     def paused(self, value):
         self._paused = value
-        if self.stream:
+        if self.want_stream:
             self.threaded_update_icecast_metadata()
 
     @property
@@ -867,14 +869,14 @@ class PlaybackHandler:
             self.playback.set_volume(v / 100)
 
     @property
-    def stream(self):
-        return self._stream
+    def want_stream(self):
+        return self._want_stream
 
-    @stream.setter
-    def stream(self, value):
+    @want_stream.setter
+    def want_stream(self, value):
         if self._librosa is None:
             value = False
-        self._stream = value
+        self._want_stream = value
 
     @property
     def song(self):
@@ -926,12 +928,12 @@ class PlaybackHandler:
 
     @property
     def can_show_lyrics(self):
-        return self.wants_lyrics and self.lyrics is not None
+        return self.want_lyrics and self.lyrics is not None
 
     @property
     def can_show_translated_lyrics(self):
         return (
-            self.wants_translated_lyrics and self.translated_lyrics is not None
+            self.want_translated_lyrics and self.translated_lyrics is not None
         )
 
     @property
@@ -1018,7 +1020,7 @@ class PlaybackHandler:
     def update_discord_metadata(self):
         if self.discord_updating:
             return
-        if self.can_update_discord and self.update_discord:
+        if self.can_update_discord and self.want_discord:
             self.discord_updating = True
 
             t = time()
@@ -1054,10 +1056,10 @@ class PlaybackHandler:
                         [
                             {
                                 "label": "Listen Along",
-                                "url": f"{config.MAESTRO_SITE}/listen/{self.username}",
+                                "url": f"{config.MAESTRO_SITE}/listen-along/{self.username}",
                             }
                         ]
-                        if self.username and self.stream
+                        if self.username and self.want_stream
                         else None
                     ),
                 )
@@ -1103,7 +1105,7 @@ class PlaybackHandler:
 
             self.update_now_playing = True
 
-    def _update_icecast_metadata(self):
+    def update_icecast_metadata(self):
         import requests
 
         return requests.post(
@@ -1114,21 +1116,20 @@ class PlaybackHandler:
                 "artist": quote_plus(self.song_artist),
                 "album": quote_plus(self.song_album),
                 "albumartist": quote_plus(self.album_artist),
-                "duration": self.duration,
                 "paused": int(self.paused),
             },
             auth=(self.username, self.password),
             timeout=5,
         )
 
-    def update_icecast_metadata(self):
+    def icecast_metadata_update_loop(self):
         success = False
         last_metadata_update_attempt = 0
         while not success:
             t = time()
             if t - last_metadata_update_attempt > 5:
                 try:
-                    response = self._update_icecast_metadata()
+                    response = self.update_icecast_metadata()
                     if response.ok:
                         last_metadata_update_attempt = 0
                         success = True
@@ -1143,14 +1144,14 @@ class PlaybackHandler:
 
     def threaded_update_icecast_metadata(self):
         threading.Thread(
-            target=self.update_icecast_metadata, daemon=True
+            target=self.icecast_metadata_update_loop, daemon=True
         ).start()
 
-    def update_stream_metadata(self):
+    def update_stream_metadata(self):  # artwork + icecast metadata
         import requests
 
         self.break_stream_loop = True
-        if self.discord_connected or self.stream:
+        if self.discord_connected or self.want_stream:
             if not requests.post(
                 config.UPDATE_ARTWORK_URL,
                 params={"mount": self.username},
@@ -1160,7 +1161,7 @@ class PlaybackHandler:
             ).ok:
                 print_to_logfile("Failed to update artwork.")
 
-        if self.stream:
+        if self.want_stream:
             self.threaded_update_icecast_metadata()
 
     def update_metadata(self):
@@ -1172,7 +1173,7 @@ class PlaybackHandler:
         threading.Thread(target=f, daemon=True).start()
 
     def initialize_discord(self):
-        self.update_discord = True
+        self.want_discord = True
         try:
             self.discord_rpc = self.connect_to_discord()
             self.discord_connected = 1
@@ -1187,13 +1188,13 @@ class PlaybackHandler:
         from maestro.jit_funcs import render
 
         screen_height = self.screen_height
-        if self.wants_lyrics:
+        if self.want_lyrics:
             screen_width = self.screen_width - self.lyrics_width
         else:
             screen_width = self.screen_width
 
         self.can_show_visualization = (
-            self.visualize
+            self.want_vis
             and self.can_visualize
             and screen_height > config.VISUALIZER_HEIGHT + 5
         )
@@ -1212,7 +1213,7 @@ class PlaybackHandler:
         self.stdscr.erase()
 
         length_so_far = 0
-        if self.update_discord:
+        if self.want_discord:
             if self.discord_connected == 2:
                 length_so_far = addstr_fit_to_width(
                     self.stdscr,
@@ -1240,7 +1241,7 @@ class PlaybackHandler:
 
         visualize_message = ""
         visualize_color = 12
-        if self.visualize:
+        if self.want_vis:
             if self.audio_data is None and self.can_visualize:
                 self.audio_processing_thread = threading.Thread(
                     target=self._audio_processing_loop,
@@ -1262,12 +1263,12 @@ class PlaybackHandler:
                 visualize_message = "Compiling renderer..."
                 visualize_color = 12
 
-        if self.stream:
-            prefix = "  " if self.update_discord else ""
+        if self.want_stream:
+            prefix = "  " if self.want_discord else ""
             if self.username:
                 long_stream_message = (
                     prefix
-                    + f"Streaming at {config.MAESTRO_SITE}/listen/{self.username}"
+                    + f"Streaming at {config.MAESTRO_SITE}/listen-along/{self.username}"
                 )
                 short_stream_message = prefix + f"Streaming as {self.username}!"
                 if (
@@ -1668,7 +1669,7 @@ class PlaybackHandler:
         if self.can_show_lyrics:
             from grapheme import graphemes
 
-            self.stdscr.redrawwin()  # workaround for foreign characters
+            # self.stdscr.redrawwin()  # workaround for foreign characters
 
             num_lines = min(
                 len(self.lyrics),
@@ -1680,7 +1681,8 @@ class PlaybackHandler:
             )
 
             cur_lyric_i = None
-            if is_timed_lyrics(self.lyrics):
+            is_timed = is_timed_lyrics(self.lyrics)
+            if is_timed:
                 for i, lyric in enumerate(self.lyrics):
                     if lyric.time > pos:
                         cur_lyric_i = i - 1
@@ -1691,10 +1693,19 @@ class PlaybackHandler:
                 self.lyric_pos or cur_lyric_i or self.lyrics_scroller.pos
             )
             self.lyrics_scroller.resize(num_lines)
+            if not is_timed:
+                self.lyrics_scroller.pos = min(
+                    max(
+                        self.lyrics_scroller.win_size // 2,
+                        self.lyrics_scroller.pos,
+                    ),
+                    self.lyrics_scroller.num_lines
+                    - self.lyrics_scroller.win_size // 2,
+                )
 
             self.stdscr.move(0, screen_width)
             lyric_focus_msg = (
-                f"Focus: {'lyrics' if self.focus == 1 else 'playlist'}"
+                f"Focus: {'lyrics' if self.focus == 1 else 'queue'}"
             )
             addstr_fit_to_width(
                 self.stdscr,
@@ -1785,7 +1796,7 @@ class PlaybackHandler:
                                 break
                     except curses.error:  # bottom right corner errors
                         break
-        elif self.wants_lyrics:
+        elif self.want_lyrics:
             self.stdscr.move(0, screen_width + config.LYRIC_PADDING)
             addstr_fit_to_width(
                 self.stdscr,
@@ -2605,7 +2616,7 @@ def display_lyrics(lyrics, song, prefix: str = ""):
 
 
 def filter_songs(
-    tags,
+    tags: set[str],
     exclude_tags,
     artists,
     albums,
@@ -2654,18 +2665,20 @@ def filter_songs(
         search_criteria = tuple(
             c[0] for c in filter(lambda t: t[1], search_criteria)
         )
-        if not search_criteria:
-            search_criteria = (True,)
 
         if match_all:
+            if not search_criteria:
+                search_criteria = (True,)
+
             search_criteria = all(search_criteria) and (
                 not tags or (tags <= song.tags)  # subset
             )
+        elif any(search_criteria):
+            search_criteria = True
+        elif tags:
+            search_criteria = tags & song.tags
         else:
-            if any(search_criteria):
-                search_criteria = True
-            else:
-                search_criteria = tags and tags & song.tags
+            search_criteria = True
 
         if search_criteria and not exclude_tags & song.tags:
             songs.append(song)

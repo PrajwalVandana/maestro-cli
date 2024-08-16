@@ -247,11 +247,11 @@ def _play(
                         player.scroll_forward()
                         player.update_screen()
                     elif c == curses.KEY_SLEFT:
-                        if player.wants_lyrics:
+                        if player.want_lyrics:
                             player.lyrics_width += 1
                             player.update_screen()
                     elif c == curses.KEY_SRIGHT:
-                        if player.wants_lyrics:
+                        if player.want_lyrics:
                             player.lyrics_width -= 1
                             player.update_screen()
                     else:
@@ -376,8 +376,8 @@ def _play(
                                     player.ending = True
                                     break
                                 elif ch in "dD":
-                                    if player.update_discord:
-                                        player.update_discord = False
+                                    if player.want_discord:
+                                        player.want_discord = False
                                         if player.discord_rpc is not None:
                                             player.discord_rpc.close()
                                         player.discord_connected = 0
@@ -430,11 +430,11 @@ def _play(
 
                                     player.update_screen()
                                 elif ch in "vV":
-                                    player.visualize = not player.visualize
+                                    player.want_vis = not player.want_vis
                                     player.update_screen()
                                 elif ch in "sS":
-                                    player.stream = not player.stream
-                                    if player.stream:
+                                    player.want_stream = not player.want_stream
+                                    if player.want_stream:
                                         if player.username is not None:
                                             threading.Thread(
                                                 target=player.update_stream_metadata,
@@ -479,8 +479,8 @@ def _play(
                                     player.update_screen()
                                     prev_volume = player.volume
                                 elif ch in "yY":
-                                    player.wants_lyrics = (
-                                        not player.wants_lyrics
+                                    player.want_lyrics = (
+                                        not player.want_lyrics
                                     )
                                 elif ch in "oO":
                                     helpers.SONG_DATA.load()
@@ -531,9 +531,9 @@ def _play(
                                 elif ch in "hH":
                                     player.show_help = not player.show_help
                                 elif ch in "tT":
-                                    player.wants_translated_lyrics = (
-                                        not player.wants_translated_lyrics
-                                        and player.wants_lyrics
+                                    player.want_translated_lyrics = (
+                                        not player.want_translated_lyrics
+                                        and player.want_lyrics
                                     )
                                 elif ch in "fF":
                                     player.prompting = (
@@ -672,7 +672,7 @@ def _play(
                     if progress_bar_width < config.MIN_PROGRESS_BAR_WIDTH
                     else player.duration / (progress_bar_width * 8)
                 ),
-                1 / config.FPS if player.visualize else 1,
+                1 / config.FPS if player.want_vis else 1,
             )
             if (
                 abs(player.playback.curr_pos - player.last_timestamp)
@@ -688,8 +688,14 @@ def _play(
         else:
             time_listened = time() - start_time
 
-        player.song.listen_times[config.CUR_YEAR] += time_listened
-        player.song.listen_times["total"] += time_listened
+        # region update stats
+        def stats_update(s: helpers.Song, t: float):
+            s.listen_times[config.CUR_YEAR] += t
+            s.listen_times["total"] += t
+
+        threading.Thread(
+            target=stats_update, args=(player.song, time_listened), daemon=True
+        ).start()
         # endregion
 
         if player.ending and not player.restarting:
@@ -723,9 +729,9 @@ def _play(
         elif next_song == 0:
             if player.looping_current_song == config.LOOP_MODES["one"]:
                 player.looping_current_song = config.LOOP_MODES["none"]
-        elif next_song < -1:  # user pos -> -(pos + 2)
+        elif next_song <= -2:  # user pos -> -(pos + 2)
             player.i = -next_song - 2
-        elif next_song == 2:
+        elif next_song == 2:  # next pa[g]e
             next_next_playlist = next_playlist[:]
             if reshuffle:
                 helpers.bounded_shuffle(next_next_playlist, reshuffle)
@@ -735,7 +741,7 @@ def _play(
             )
             player.i = 0
             player.scroller.pos = 0
-        elif next_song == 3:
+        elif next_song == 3:  # deleted current song
             del player.playlist[player.i]
             if loop:
                 for i in range(len(next_playlist)):
@@ -969,9 +975,6 @@ def add(
     If the '-nD/--skip-dupes' flag is passed, song names that are already in
     the database are skipped. If not passed, 'copy' is appended to any duplicate
     names.
-
-    If the '-L/--lyrics' flag is passed, maestro attempts to download lyrics
-    (synced if possible).
     """
 
     paths = None
@@ -1379,9 +1382,13 @@ def untag(songs, tags, all_, force):
                 fg="red",
             )
         else:
-            if force or input(
-                f"Are you sure you want to remove all tags from all {helpers.pluralize(len(songs), 'song')}? [y/n] "
-            ).lower() == "y":
+            if (
+                force
+                or input(
+                    f"Are you sure you want to remove all tags from all {helpers.pluralize(len(songs), 'song')}? [y/n] "
+                ).lower()
+                == "y"
+            ):
                 for song in songs:
                     song.tags.clear()
 
@@ -1500,7 +1507,7 @@ def untag(songs, tags, all_, force):
     "--stream/--no-stream",
     "stream",
     default=False,
-    help="Stream to maestro-music.vercel.app/listen/[USERNAME].",
+    help="Stream to maestro-music.vercel.app/listen-along/[USERNAME].",
 )
 @click.option(
     "-Y/-nY",
@@ -1573,7 +1580,7 @@ def play(
     \x1b[1ma\x1b[0m\t\t[a]dd a song to the end of the queue (opens a prompt to enter the song name or ID: ENTER to confirm, ESC to cancel)
     \x1b[1mi\x1b[0m\t\t[i]nsert a song in the queue after the selected song (opens a prompt like 'a')
     \x1b[1m,\x1b[0m\t\tadd ([comma]-separated) tag(s) to all songs in the queue. (opens a prompt like 'a')
-    \x1b[1ms\x1b[0m\t\ttoggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login
+    \x1b[1ms\x1b[0m\t\ttoggle [s]tream (streams to maestro-music.vercel.app/listen-along/[USERNAME]), requires login
     \x1b[1my\x1b[0m\t\ttoggle l[y]rics
     \x1b[1mt\x1b[0m\t\ttoggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)
     \x1b[1m{\x1b[0m\t\tfocus playlist
@@ -1603,7 +1610,7 @@ def play(
     else:
         playlist.extend(
             helpers.filter_songs(
-                tags,
+                set(tags),
                 exclude_tags,
                 artists,
                 albums,
@@ -1972,16 +1979,14 @@ def list_(
             return
         year = int(year)
 
-    if search_tags:
-        search_tags = set(search_tags)
-    if exclude_tags:
-        exclude_tags = set(exclude_tags)
-    else:
-        exclude_tags = set()
+    search_tags = set(search_tags)
+    exclude_tags = set(exclude_tags)
 
     num_lines = 0
 
     if listing_tags:
+        search_tags -= exclude_tags
+
         tags = defaultdict(lambda: [0, 0])
         for song in helpers.SONGS:
             search_criteria = (
@@ -2032,20 +2037,10 @@ def list_(
             if match_all:
                 search_criteria = not search_criteria or all(search_criteria)
             else:
-                search_criteria = (not search_criteria) or any(search_criteria)
+                search_criteria = not search_criteria or any(search_criteria)
 
             for tag in song.tags:
-                if match_all:
-                    search_criteria = search_criteria and (
-                        not search_tags or tag in search_tags
-                    )
-                else:
-                    if search_criteria:
-                        search_criteria = True
-                    elif search_tags:
-                        search_criteria = tag in search_tags
-
-                if search_criteria and tag not in exclude_tags:
+                if (not search_tags or tag in search_tags) and search_criteria:
                     tags[tag][0] += song.listen_times[year]
                     tags[tag][1] += song.duration
 
@@ -2076,62 +2071,30 @@ def list_(
     if listing_artists or listing_albums or listing_album_artists:
         abcs = defaultdict(lambda: [0, 0])
         for song in helpers.SONGS:
-            search_criteria = (
-                (
-                    (
-                        any(
-                            artist.lower() in song.artist.lower()
-                            for artist in artists
-                        )
-                    ),
-                    artists,
-                ),
-                (
-                    (
-                        any(
-                            album.lower() in song.album.lower()
-                            for album in albums
-                        )
-                    ),
-                    albums,
-                ),
-                (
-                    (
-                        any(
-                            album_artist.lower() in song.album_artist.lower()
-                            for album_artist in album_artists
-                        )
-                    ),
-                    album_artists,
-                ),
-            )
-            search_criteria = tuple(
-                c[0] for c in filter(lambda t: t[1], search_criteria)
-            )
-
-            if match_all:
-                search_criteria = not search_criteria or all(search_criteria)
-            else:
-                search_criteria = (not search_criteria) or any(search_criteria)
+            if (
+                exclude_tags & song.tags
+                or (match_all and search_tags and not search_tags <= song.tags)
+                or (
+                    not match_all
+                    and search_tags
+                    and not search_tags & song.tags
+                )
+            ):
+                continue
 
             if listing_artists or (combine_artists and listing_album_artists):
-                for artist in song.artist.split(","):
-                    artist = artist.strip()
-
-                    if search_criteria and not exclude_tags & song.tags:
+                for artist in artists:
+                    if artist.lower() in song.artist.lower():
                         abcs[artist][0] += song.listen_times[year]
                         abcs[artist][1] += song.duration
             elif listing_albums:
-                album = song.album
-
-                if search_criteria and not exclude_tags & song.tags:
-                    abcs[album][0] += song.listen_times[year]
-                    abcs[album][1] += song.duration
+                for album in albums:
+                    if album.lower() in song.album.lower():
+                        abcs[album][0] += song.listen_times[year]
+                        abcs[album][1] += song.duration
             elif listing_album_artists or (combine_artists and listing_artists):
-                for album_artist in song.album_artist.split(","):
-                    album_artist = album_artist.strip()
-
-                    if search_criteria and not exclude_tags & song.tags:
+                for album_artist in album_artists:
+                    if album_artist.lower() in song.album_artist.lower():
                         abcs[album_artist][0] += song.listen_times[year]
                         abcs[album_artist][1] += song.duration
 
@@ -2894,7 +2857,7 @@ def format_data(indent: int):
     "-T/-nT",
     "--translated/--no-translated",
     "translated",
-    default=False,
+    default=True,
 )
 @click.option(
     "-O/-nO",
@@ -2932,7 +2895,8 @@ def lyrics_(
     """
     Display or update the lyrics for song(s). Shows the overridden lyrics if
     they exist instead of the embedded metadata lyrics. To view the embedded
-    lyrics, you can use 'maestro metadata'.
+    lyrics, you can use 'maestro metadata'. Any translated lyrics are also
+    shown by default; turn them off with '-nT/--no-translated'.
 
     Updates (embedded metadata, not any overridden) lyrics if '-U/--update' is
     passed, downloading synced lyrics if available. If the song has lyrics,
@@ -2942,10 +2906,6 @@ def lyrics_(
     (prompts for confirmation). '-R/--remove' can only remove the overridden
     lyrics, not the embedded lyrics. Use 'maestro metadata -m "lyrics:"' to
     remove embedded lyrics.
-
-    The '-T' flag can be used to view/remove translated lyrics as well; ignored
-    if updating. Can also pass '-nO/--no-override' to not remove the override
-    lyrics.
 
     If '-A/--all' is passed, updates/removes lyrics for all songs. Errors if
     SONGS are passed with '-A/--all'. Prompts for confirmation unless
@@ -2964,12 +2924,7 @@ def lyrics_(
                     fg="yellow",
                 )
                 override = False
-            if translated and not translated_lyrics:
-                click.secho(
-                    f'No translated lyrics found for "{song.song_title}" (ID: {song.song_id}).',
-                    fg="yellow",
-                )
-                translated = False
+            translated &= translated_lyrics is not None
 
             if override and translated:
                 click.echo("Lyrics for ", nl=False)
@@ -3216,10 +3171,10 @@ def transliterate(songs, lang, override, force):
 
             from indic_transliteration import sanscript
 
-            for lyric in lyrics:
+            for i in range(len(lyrics)):
                 transliterated = ""
                 for is_indic, word in groupby(
-                    lyric.text.split(),
+                    helpers.get_lyric(lyrics[i]).split(),
                     lambda w: all(
                         c not in "abcdefghijklmnopqrstuvwxyz" for c in w.lower()
                     ),
@@ -3244,13 +3199,14 @@ def transliterate(songs, lang, override, force):
                         word = re.sub(r"ṃ(?=\w)", "n", word)
                         word = word.replace("ṃ", "m")
                     transliterated += word
-                lyric.text = transliterated
+                helpers.set_lyric(lyrics, i, transliterated)
 
         if lang != "ja" and lang not in config.INDIC_SCRIPTS:
-            for lyric in lyrics:
-                lyric.text = unidecode(lyric.text)
+            for i in range(len(lyrics)):
+                helpers.set_lyric(
+                    lyrics, i, unidecode(helpers.get_lyric(lyrics[i]))
+                )
 
-        lyrics_lrc = lyrics.toLRC()
         if override:
             if song.raw_override_lyrics is not None:
                 if not force:
@@ -3260,18 +3216,15 @@ def transliterate(songs, lang, override, force):
                     )
                     if input().lower() != "y":
                         continue
-            song.raw_override_lyrics = lyrics_lrc
+            song.raw_override_lyrics = "\n".join(
+                [helpers.get_lyric(lyric) for lyric in lyrics]
+            )
             click.secho(
                 f'Added override lyrics for "{song.song_title}" (ID {song.song_id}).',
                 fg="green",
             )
         else:
-            click.echo("Transliterated lyrics for ", nl=False)
-            click.secho(song.song_title, fg="blue", bold=True, nl=False)
-            click.echo(f" (ID {song.song_id}):")
-            click.echo(
-                "\n".join([f"\t{lyric}" for lyric in lyrics_lrc.splitlines()])
-            )
+            helpers.display_lyrics(lyrics, song, "transliterated")
 
 
 @cli.command()
@@ -3335,7 +3288,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
         click.secho("No songs passed.", fg="red")
         return
 
-    if remove and save_:
+    if remove_ and save_:
         click.secho(
             "Cannot pass both '-R/--remove' and '-S/--save'.",
             fg="red",

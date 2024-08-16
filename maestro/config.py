@@ -155,14 +155,14 @@ PLAY_CONTROLS = [
     ),
     (
         "s",
-        "toggle [s]tream (streams to maestro-music.vercel.app/listen/[USERNAME]), requires login",
+        "toggle [s]tream (streams to maestro-music.vercel.app/listen-along/[USERNAME]), requires login",
     ),
     ("y", "toggle l[y]rics"),
     (
         "t",
         "toggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)",
     ),
-    ("{", "focus playlist"),
+    ("{", "focus queue"),
     ("}", "focus lyrics"),
     (
         "o",

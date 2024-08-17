@@ -2104,7 +2104,10 @@ def list_(
                 for album_artist in song.album_artist.split(", "):
                     if album_artists:
                         for search_album_artist in album_artists:
-                            if search_album_artist.lower() in album_artist.lower():
+                            if (
+                                search_album_artist.lower()
+                                in album_artist.lower()
+                            ):
                                 abcs[album_artist][0] += song.listen_times[year]
                                 abcs[album_artist][1] += song.duration
                                 break
@@ -2293,7 +2296,7 @@ def clips_(songs: tuple[helpers.Song]):
 
         if "default" in song.clips:
             click.echo(
-                f"\t{style_clip_name("default", song)}: {song.clips['default'][0]}, {song.clips['default'][1]}"
+                f"\t{style_clip_name('default', song)}: {song.clips['default'][0]}, {song.clips['default'][1]}"
             )
         for clip_name, (start, end) in song.clips.items():
             if clip_name == "default":

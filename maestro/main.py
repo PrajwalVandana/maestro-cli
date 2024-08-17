@@ -2293,7 +2293,7 @@ def clips_(songs: tuple[helpers.Song]):
 
         if "default" in song.clips:
             click.echo(
-                f"\t{style_clip_name("default", song)}: {song.clips['default'][0]}, {song.clips['default'][1]}"
+                f"\t{style_clip_name('default', song)}: {song.clips['default'][0]}, {song.clips['default'][1]}"
             )
         for clip_name, (start, end) in song.clips.items():
             if clip_name == "default":

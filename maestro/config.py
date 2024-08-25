@@ -130,6 +130,10 @@ PLAY_CONTROLS = [
         "UP/DOWN",
         "to scroll through the queue/lyrics (mouse scrolling should also work)",
     ),
+    (
+        "SHIFT+UP/DOWN",
+        "move the selected song up/down in the queue",
+    ),
     ("ENTER", "play the selected song/seek to selected lyric"),
     ("p", "sna[p] back to the currently playing song/lyric"),
     (

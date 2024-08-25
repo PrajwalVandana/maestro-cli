@@ -254,6 +254,26 @@ def _play(
                         if player.want_lyrics:
                             player.lyrics_width -= 1
                             player.update_screen()
+                    elif c == 337:  # SHIFT + UP
+                        player.playlist[player.scroller.pos - 1 : player.scroller.pos + 1] = (
+                            player.playlist[player.scroller.pos: max(player.scroller.pos - 2, 0) or None: -1]
+                        )
+                        original_scroller_pos = player.scroller.pos
+                        player.scroller.scroll_backward()
+                        if original_scroller_pos == player.i:
+                            player.i = player.scroller.pos
+                        elif original_scroller_pos == player.i + 1:
+                            player.i += 1
+                    elif c == 336:  # SHIFT + DOWN
+                        player.playlist[player.scroller.pos : player.scroller.pos + 2] = (
+                            player.playlist[player.scroller.pos + 1 : max(player.scroller.pos - 1, 0) or None: -1]
+                        )
+                        original_scroller_pos = player.scroller.pos
+                        player.scroller.scroll_forward()
+                        if original_scroller_pos == player.i:
+                            player.i = player.scroller.pos
+                        elif original_scroller_pos == player.i - 1:
+                            player.i -= 1
                     else:
                         if player.prompting is None:
                             if c == curses.KEY_LEFT:
@@ -300,10 +320,7 @@ def _play(
 
                                     if loop:
                                         for i in range(len(next_playlist)):
-                                            if (
-                                                next_playlist[i][0]
-                                                == deleted_song
-                                            ):
+                                            if next_playlist[i] == deleted_song:
                                                 del next_playlist[i]
                                                 break
 
@@ -316,7 +333,9 @@ def _play(
                                         == player.scroller.num_lines
                                     ):
                                         player.scroller.pos -= 1
-                            elif c == 27:
+
+                                    player.scroller.refresh()
+                            elif c == 27:  # ESC key
                                 if player.show_help:
                                     player.show_help = False
                                     player.update_screen()
@@ -729,7 +748,7 @@ def _play(
                 player.looping_current_song = config.LOOP_MODES["none"]
         elif next_song <= -2:  # user pos -> -(pos + 2)
             player.i = -next_song - 2
-        elif next_song == 2:  # next pa[g]e
+        elif next_song == 2:  # next page
             next_next_playlist = next_playlist[:]
             if reshuffle:
                 helpers.bounded_shuffle(next_next_playlist, reshuffle)
@@ -740,10 +759,11 @@ def _play(
             player.i = 0
             player.scroller.pos = 0
         elif next_song == 3:  # deleted current song
+            deleted_song = player.playlist[player.i]
             del player.playlist[player.i]
             if loop:
                 for i in range(len(next_playlist)):
-                    if next_playlist[i][0] == deleted_song:
+                    if next_playlist[i] == deleted_song:
                         del next_playlist[i]
                         break
 
@@ -1570,6 +1590,7 @@ def play(
     \x1b[1me\x1b[0m\t\t[e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)
     \x1b[1mq\x1b[0m\t\t[q]uit the song player immediately
     \x1b[1mUP/DOWN\x1b[0m\tto scroll through the queue/lyrics (mouse scrolling should also work)
+    \x1b[1mSHIFT+UP/DOWN\x1b[0m\tmove the selected song up/down in the queue
     \x1b[1mENTER\x1b[0m\tplay the selected song/seek to selected lyric
     \x1b[1mp\x1b[0m\t\tsna[p] back to the currently [p]laying song/lyric
     \x1b[1mg\x1b[0m\t\tgo to the next pa[g]e/loop of the queue (ignored if not repeating queue)
@@ -2663,7 +2684,7 @@ def dir_(directory):
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-    with open(config.SETTINGS_FILE, "rb+", encoding="utf-8") as settings_file:
+    with open(config.SETTINGS_FILE, "rb+") as settings_file:
         settings = msgspec.json.decode(settings_file.read())
         settings["song_directory"] = directory
 
@@ -2787,6 +2808,8 @@ def migrate():
     d = {}
     with open(config.OLD_SONGS_INFO_PATH, "r", encoding="utf-8") as f:
         for line in f.readlines():
+            if not line.strip():
+                continue
             details = line.split("|")
 
             song_id = details[0]
@@ -2818,6 +2841,8 @@ def migrate():
                 year = int(year)
 
             for line in f.readlines():
+                if not line.strip():
+                    continue
                 details = line.split("|")
 
                 song_id = details[0]
@@ -2879,19 +2904,27 @@ def format_data(indent: int):
     help="Remove lyrics for song(s).",
 )
 @click.option(
-    "-T/-nT",
-    "--translated/--no-translated",
-    "translated",
-    default=True,
-)
-@click.option(
     "-O/-nO",
     "--override/--no-override",
     "override",
     default=True,
 )
 @click.option(
+    "-T/-nT",
+    "--translated/--no-translated",
+    "translated",
+    default=True,
+)
+@click.option(
     "-n", "--name", "name", help="Name to use instead of the song title."
+)
+@click.option(
+    "-o",
+    "--offset",
+    "offset",
+    type=float,
+    default=0,
+    help="Offset lyrics (secs); positive means later, negative means earlier.",
 )
 @click.option(
     "-F/-nF",
@@ -2914,6 +2947,7 @@ def lyrics_(
     override,
     translated,
     name,
+    offset,
     force,
     all_,
 ):
@@ -2932,58 +2966,17 @@ def lyrics_(
     lyrics, not the embedded lyrics. Use 'maestro metadata -m "lyrics:"' to
     remove embedded lyrics.
 
-    If '-A/--all' is passed, updates/removes lyrics for all songs. Errors if
+    If '-A/--all' is passed, update/remove/view lyrics for all songs. Errors if
     SONGS are passed with '-A/--all'. Prompts for confirmation unless
     '-F/--force' is passed. Ignored if not updating.
 
     If the '-n/--name' flag is passed, uses NAME as the song title to search for
     lyrics instead of the actual song title. Ignored if not updating.
+
+    If the '-o/--offset' flag is passed, offsets the lyrics by OFFSET seconds.
+    Updates override lyrics if they exist by default; pass '-O/--no-override' to
+    update only the embedded lyrics instead. Ignored if not updating.
     """
-    if not (updating or removing):  # viewing
-        for song in songs:
-            lyrics = song.parsed_override_lyrics or song.parsed_lyrics
-            translated_lyrics = song.parsed_translated_lyrics
-            if lyrics is None and translated_lyrics is None:
-                click.secho(
-                    f'No lyrics found for "{song.song_title}" (ID: {song.song_id}).',
-                    fg="yellow",
-                )
-                override = False
-            translated &= translated_lyrics is not None
-
-            if override and translated:
-                click.echo("Lyrics for ", nl=False)
-                click.secho(song.song_title, fg="blue", bold=True, nl=False)
-                click.echo(f" (ID {song.song_id}):")
-
-                is_timed = helpers.is_timed_lyrics(lyrics)
-                for i in range(len(lyrics)):
-                    time_str = ""
-                    if is_timed:
-                        time_str = f"\t[{helpers.format_seconds(lyrics[i].time, show_decimal=True)}] "
-                        click.secho(
-                            f"{time_str}{lyrics[i].text}",
-                            fg="magenta",
-                        )
-                    else:
-                        click.secho(
-                            "\n".join([f"\t{lyric}" for lyric in lyrics]),
-                            fg="magenta",
-                        )
-                    if i < len(translated_lyrics):
-                        click.echo(
-                            "\t" + " " * len(time_str) + translated_lyrics[i]
-                        )
-            elif override:
-                helpers.display_lyrics(lyrics, song)
-            elif translated:
-                helpers.display_lyrics(
-                    translated_lyrics,
-                    song,
-                    "translated",
-                )
-        return
-
     if updating and removing:
         click.secho(
             "Cannot pass both '-U/--update' and '-R/--remove'.",
@@ -3013,13 +3006,90 @@ def lyrics_(
     if all_:
         if not force:
             click.echo(
-                f"Are you sure you want to {'update' if updating else 'remove'} override lyrics for all songs? This cannot be undone. [y/n] ",
+                f"Are you sure you want to {'update override' if updating else ('remove override' if removing else ('show' if not offset else 'offset the'))} lyrics for all songs? [y/n] ",
                 nl=False,
             )
             if input().lower() != "y":
                 return
         songs = helpers.SONGS
         force = True
+
+    if not (updating or removing):  # viewing
+        if offset:
+            songs_valid = set(songs)
+            for song in songs:
+                parsed_lyrics = song.parsed_lyrics
+                parsed_override_lyrics = song.parsed_override_lyrics
+                embedded_is_timed = helpers.is_timed_lyrics(parsed_lyrics)
+                override_is_timed = helpers.is_timed_lyrics(
+                    parsed_override_lyrics
+                )
+                if not (embedded_is_timed or override_is_timed):
+                    click.secho(
+                        f'No timed lyrics found for "{song.song_title}" (ID: {song.song_id}).',
+                        fg="yellow",
+                    )
+                    songs_valid.remove(song)
+                    continue
+
+                if embedded_is_timed:
+                    parsed_lyrics.offset += int(offset * 1000)
+                    song.raw_lyrics = parsed_lyrics.toLRC()
+                if override_is_timed:
+                    parsed_override_lyrics.offset += int(offset * 1000)
+                    song.raw_override_lyrics = parsed_override_lyrics.toLRC()
+            click.secho(
+                f"Offset the lyrics for {helpers.pluralize(len(songs_valid), 'song')} by {offset} seconds.",
+                fg="green",
+            )
+            return
+
+        for song in songs:
+            show_lyrics = True
+            lyrics = song.parsed_override_lyrics or song.parsed_lyrics
+            translated_lyrics = song.parsed_translated_lyrics
+            if lyrics is None and translated_lyrics is None:
+                click.secho(
+                    f'No lyrics found for "{song.song_title}" (ID: {song.song_id}).',
+                    fg="yellow",
+                )
+                show_lyrics = False
+            show_translated = translated and translated_lyrics is not None
+
+            if show_lyrics and show_translated:
+                click.echo("Lyrics for ", nl=False)
+                click.secho(song.song_title, fg="blue", bold=True, nl=False)
+                click.echo(f" (ID {song.song_id}):")
+
+                is_timed = helpers.is_timed_lyrics(lyrics)
+                for i in range(len(lyrics)):
+                    time_str = ""
+                    if is_timed:
+                        time_str = f"\t[{helpers.format_seconds(lyrics[i].time, show_decimal=True)}] "
+                        click.secho(
+                            f"{time_str}{lyrics[i].text}",
+                            fg="cyan",
+                        )
+                    else:
+                        click.secho(
+                            "\t" + lyrics[i],
+                            fg="cyan",
+                        )
+                    if i < len(translated_lyrics):
+                        click.echo(
+                            "\t"
+                            + " " * len(time_str)
+                            + helpers.get_lyric(translated_lyrics[i]),
+                        )
+            elif show_lyrics:
+                helpers.display_lyrics(lyrics, song)
+            elif show_translated:
+                helpers.display_lyrics(
+                    translated_lyrics,
+                    song,
+                    "translated",
+                )
+        return
 
     import syncedlyrics
 
@@ -3376,6 +3446,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
             )
             return
 
+        translated_lyrics = [helpers.get_lyric(lyric) for lyric in lyrics]
         for i in range(len(lyrics)):
             lyric = helpers.get_lyric(lyrics[i])
             if not lyric:
@@ -3383,13 +3454,9 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
 
             if len(from_langs) == 1 and from_langs[0].id != AUTO_LANG.id:
                 try:
-                    helpers.set_lyric(
-                        lyrics,
-                        i,
-                        translator.translate(
-                            lyric, to_lang, from_langs[0]
-                        ).result,
-                    )
+                    translated_lyrics[i] = translator.translate(
+                        lyric, to_lang, from_langs[0]
+                    ).result
                 except TranslatepyException as e:
                     print_to_logfile(f"TranslatepyException on {lyric}: {e}")
             else:
@@ -3408,7 +3475,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
                             f"TranslatepyException on {word[0]}: {e}"
                         )
 
-                helpers.set_lyric(lyrics, i, "")
+                translated_lyrics[i] = ""
                 for lang, phrase in groupby(words, lambda x: x[1].id):
                     phrase = " ".join([w[0] for w in list(phrase)])
                     if lang != to_lang.id:
@@ -3422,9 +3489,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
                             )
                         for service in translator.services:
                             service.clean_cache()
-                    helpers.set_lyric(
-                        lyrics, i, helpers.get_lyric(lyrics[i]) + phrase + " "
-                    )
+                    translated_lyrics[i] += phrase + " "
 
         if save_:
             if song.raw_translated_lyrics is not None:
@@ -3435,18 +3500,30 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
                     )
                     if input().lower() != "y":
                         continue
-            if helpers.is_timed_lyrics(lyrics):
-                song.raw_translated_lyrics = lyrics.toLRC()
-            else:
-                song.raw_translated_lyrics = "\n".join(
-                    [helpers.get_lyric(lyric) for lyric in lyrics]
-                )
+            song.raw_translated_lyrics = "\n".join(translated_lyrics).strip()
             click.secho(
                 f'Added translated lyrics for "{song.song_title}" (ID {song.song_id}).',
                 fg="green",
             )
         else:
             helpers.display_lyrics(lyrics, song, "translated")
+
+
+@cli.command()
+def user():
+    """
+    Display the currently logged-in user.
+    """
+    import keyring
+
+    try:
+        click.echo(keyring.get_password("maestro-music", "username"))
+        try:
+            keyring.get_password("maestro-music", "password")
+        except keyring.errors.KeyringError:
+            click.secho("No password saved.", fg="red")
+    except keyring.errors.KeyringError:
+        click.secho("No user logged in.", fg="yellow")
 
 
 if __name__ == "__main__":

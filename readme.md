@@ -33,7 +33,7 @@ pip install maestro-music
 
 Now, if you want to be able to directly download songs from YouTube or Spotify, you'll need to install [FFmpeg](https://ffmpeg.org/download.html). You can download FFmpeg yourself globally, or locally with `maestro download-ffmpeg`.
 ### Download executable
-Using Python and `pip` is the preferred way; executables may be slower, have bugs, etc.
+Using Python and `pip` is the preferred way; executables may be slower/have bugs, and `pip` makes updating way easier. However, the releases page does have executables/installers for macOS, Windows, and Linux.
 #### macOS
 Download the `.pkg` file corresponding to your Mac's architecture; Apple Silicon (M1, M2, M3, etc.) or Intel. Right click on the file in Finder and click "Open" (double clicking won't work). The installation may be a bit slow, and the first run of `maestro` will probably be slow as well.
 #### Windows
@@ -46,15 +46,17 @@ sudo ./install-maestro
 ```
 You can then safely delete `dist`.
 ## Known Issues
-If you get a segmentation fault when running `maestro play` on macOS, it may be caused by an issue with the Python installation that comes bundled with macOS, as Apple uses an old version of `ncurses` for the `curses` module. To fix this, you can install Python directly from the Python website at python.org/downloads, which should fix the issue.
+If you get a segmentation fault when running `maestro play` on macOS, it may be caused by an issue with the Python installation that comes bundled with macOS, as Apple uses an old version of `ncurses` for the `curses` module. To fix this, you can install Python directly from the [Python website](python.org/downloads), which should fix the issue.
+
+If you have issues on Linux, try `sudo apt-get install python3-dev python3-dbus`.
 ## Platforms
 Tested heavily on macOS, lightly on Windows and (Ubuntu) Linux. `maestro` was coded to be cross-platform, but if there are any problems, please open an issue (or PR if you know how to fix it!). You can also join the [Discord server](https://discord.gg/AW8fh2QEav) and ask for help there.
 
-`maestro` *should* work on any 3.x version of Python, but I coded it on 3.12 and haven't tested it on earlier versions.
+`maestro` *should* work on any 3.x version of Python, but I coded it on 3.12 and don't test on earlier versions.
 
 Supports `.mp3`, `.wav`, `.flac`, and `.ogg` (Ogg Vorbis).
 ## Usage
-Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to get comprehensive help for that command—the below is just an overview.
+Run `maestro -h` to get a list of commands. Run `maestro <some command> -h` to get comprehensive help for that command—the below is just an overview. Click `h` in the player session to get a list of commands (scrollable).
 
 `maestro` uses the concept of a positive integer **song ID** to uniquely refer to each song; any place where `maestro` expects a song ID should also allow a search phrase—if only one song matches, `maestro` will infer the song ID.
 ### Adding Songs
@@ -84,11 +86,11 @@ maestro set-clip <song ID> clip1
 ```
 The `maestro set-clip` command will set 'clip1' as the clip to be played in clip mode instead of 'default'.
 ### Lyrics
-`maestro add` will automatically attempt to download lyrics (synced if possible) for the song. You can romanize foreign-language lyrics with `maestro translit <song ID> --save`, which will save the romanization as an override `.lrc` file (the original lyrics will still be preserved in the metadata of the song's file, but the override will be shown). You can add a translation for a song with `maestro translate <song ID> --save`, which can then be shown with the lyrics using `maestro play --lyrics --translated-lyrics`. Not passing `--save` to either command will print the output instead of saving it.
+`maestro add` will automatically attempt to download lyrics (synced if possible) for the song. You can romanize foreign-language lyrics with `maestro translit <song ID> --save`, which will save the romanization as an override `.lrc` file (the original lyrics will still be preserved in the metadata of the song's file, but the override will be used). You can add a translation for a song with `maestro translate <song ID> --save`, which can then be shown with the lyrics using `maestro play --lyrics --translated-lyrics`. Not passing `--save` to either command will print the lyrics instead of saving them.
 
 Press `y` in the player session to toggle lyrics, `t` to toggle translated lyrics. To scroll through lyrics, change focus to the lyrics window with `}` (you can change focus back to the queue with `{`).
 ### Shuffling
-`maestro play` accepts two shuffle options, `-s`/`--shuffle` and `-r`/`--reshuffle`. The first is for shuffling the song before the player session starts, and the second is for reshuffling the queue when it loops (the `-r` option is ignored if you don't also pass the `-L`/`--loop` flag to loop the queue). The default for both is `0`, i.e. no shuffling. To shuffle completely randomly, pass `-1` to either option; otherwise, passing any positive integer `n` will ensure that each song is no more than `n` positions away in the queue from its previous position.
+`maestro play` accepts two shuffle options, `-s`/`--shuffle` and `-r`/`--reshuffle`. The first is for shuffling the song before the player session starts, and the second is for reshuffling the queue when it loops (the `-r` option is ignored if you don't also pass the `-L`/`--loop` flag to loop the queue). The default for both is `0`, i.e. no shuffling. To shuffle completely randomly, pass `-1`; otherwise, passing any positive integer `n` will ensure that each song is no more than `n` positions away in the queue from its previous position.
 ### Visualization
 Run `maestro play --visualize` or click `v` in the player session to show the visualizer.
 ### Discord Status

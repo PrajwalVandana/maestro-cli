@@ -255,25 +255,31 @@ def _play(
                             player.lyrics_width -= 1
                             player.update_screen()
                     elif c == 337:  # SHIFT + UP
-                        player.playlist[player.scroller.pos - 1 : player.scroller.pos + 1] = (
-                            player.playlist[player.scroller.pos: max(player.scroller.pos - 2, 0) or None: -1]
-                        )
-                        original_scroller_pos = player.scroller.pos
-                        player.scroller.scroll_backward()
-                        if original_scroller_pos == player.i:
-                            player.i = player.scroller.pos
-                        elif original_scroller_pos == player.i + 1:
-                            player.i += 1
+                        if player.scroller.pos > 0:
+                            if player.scroller.pos == player.i:
+                                player.i -= 1
+                            elif player.scroller.pos == player.i + 1:
+                                player.i += 1
+                            player.playlist[player.scroller.pos], player.playlist[
+                                player.scroller.pos - 1
+                            ] = (
+                                player.playlist[player.scroller.pos - 1],
+                                player.playlist[player.scroller.pos],
+                            )
+                            player.scroller.scroll_backward()
                     elif c == 336:  # SHIFT + DOWN
-                        player.playlist[player.scroller.pos : player.scroller.pos + 2] = (
-                            player.playlist[player.scroller.pos + 1 : max(player.scroller.pos - 1, 0) or None: -1]
-                        )
-                        original_scroller_pos = player.scroller.pos
-                        player.scroller.scroll_forward()
-                        if original_scroller_pos == player.i:
-                            player.i = player.scroller.pos
-                        elif original_scroller_pos == player.i - 1:
-                            player.i -= 1
+                        if player.scroller.pos < player.scroller.num_lines - 1:
+                            if player.scroller.pos == player.i:
+                                player.i += 1
+                            elif player.scroller.pos == player.i - 1:
+                                player.i -= 1
+                            player.playlist[player.scroller.pos], player.playlist[
+                                player.scroller.pos + 1
+                            ] = (
+                                player.playlist[player.scroller.pos + 1],
+                                player.playlist[player.scroller.pos],
+                            )
+                            player.scroller.scroll_forward()
                     else:
                         if player.prompting is None:
                             if c == curses.KEY_LEFT:

@@ -988,6 +988,7 @@ class PlaybackHandler:
         self.playback.set_volume(v / 100)
 
     def quit(self):
+        self.playback.stop()
         if self.ffmpeg_process is not None:
             self.ffmpeg_process.terminate()
         if self.discord_rpc is not None:

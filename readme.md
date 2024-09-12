@@ -19,8 +19,11 @@ Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 - [audio visualization](#visualization) directly in the terminal!
 - [Discord integration](#discord-status)!
 - Now Playing Center integration on macOS! (allows headphone controls)
-![](https://github.com/PrajwalVandana/maestro-cli/raw/master/data/now_playing.png)
+![](https://github.com/PrajwalVandana/maestro-cli/raw/master/data/now_playing.png)****
 - [music discovery](#music-discovery)!
+## Technical Details
+[Visualization Breakdown](https://github.com/PrajwalVandana/maestro-cli/blob/master/data/maestro_vis.pdf)
+[Listen-along Streaming Breakdown](https://github.com/PrajwalVandana/maestro-cli/blob/master/data/maestro_listen_along.pdf)
 ## Installation
 ### Using `pip`
 Make sure you have Python 3 and `pip` installed.

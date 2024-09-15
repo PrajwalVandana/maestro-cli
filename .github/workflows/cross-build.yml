@@ -21,16 +21,6 @@ jobs:
         run: |
           makensis install-scripts/windows.nsi
           Compress-Archive -Path "${{ steps.pyinstaller.outputs.executable_path }}/maestro/*" -Destination "${{ steps.pyinstaller.outputs.executable_path }}/maestro-windows.zip"
-      # - name: Upload installer as artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: maestro-windows
-      #     path: install-scripts/maestro-installer.exe
-      # - name: Upload executable as artifact
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: maestro-windows-dist
-      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
@@ -51,7 +41,7 @@ jobs:
         id: pyinstaller
         with:
           python_ver: '3.12'
-          spec: specs/maestro-mac-x86.spec
+          spec: specs/maestro-mac.spec
           requirements: requirements.txt
       - name: Read version from __version__.py
         id: version
@@ -77,24 +67,14 @@ jobs:
           install-location: /usr/local/bin/maestro-bundle/
       - name: Rename .pkg, compress dist
         run: |
-          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
-          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
-      # - name: Upload .pkg
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: ${{ matrix.os == 'macos-12' && 'maestro-mac-apple-silicon' || 'maestro-mac-intel' }}
-      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro-cli.pkg"
-      # - name: Upload executable
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: ${{ matrix.os == 'macos-12' && 'maestro-mac-apple-silicon-dist' || 'maestro-mac-intel-dist' }}
-      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
+          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg
-            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-12' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true
@@ -112,11 +92,6 @@ jobs:
         run: |
           mv install-scripts/ubuntu "${{ steps.pyinstaller.outputs.executable_path }}/maestro/install-maestro"
           tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/maestro-ubuntu.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
-      # - name: Upload executable
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: maestro-ubuntu
-      #     path: "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:

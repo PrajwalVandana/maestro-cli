@@ -225,10 +225,10 @@ def _play(
 
                     player.update_screen()
             else:
-                c = stdscr.getch()  # int
-                next_c = stdscr.getch()
+                c = player.stdscr.getch()  # int
+                next_c = player.stdscr.getch()
                 while next_c != -1:
-                    c, next_c = next_c, stdscr.getch()
+                    c, next_c = next_c, player.stdscr.getch()
 
                 if c != -1:
                     try:
@@ -424,7 +424,7 @@ def _play(
                                         config.PROMPT_MODES["insert"],
                                     )
                                     curses.curs_set(True)
-                                    screen_size = stdscr.getmaxyx()
+                                    screen_size = player.stdscr.getmaxyx()
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
                                 elif ch in "aA":
@@ -434,7 +434,7 @@ def _play(
                                         config.PROMPT_MODES["append"],
                                     )
                                     curses.curs_set(True)
-                                    screen_size = stdscr.getmaxyx()
+                                    screen_size = player.stdscr.getmaxyx()
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
                                 elif ch == ",":
@@ -444,7 +444,7 @@ def _play(
                                         config.PROMPT_MODES["tag"],
                                     )
                                     curses.curs_set(True)
-                                    screen_size = stdscr.getmaxyx()
+                                    screen_size = player.stdscr.getmaxyx()
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
                                 elif ch in "mM":
@@ -565,7 +565,7 @@ def _play(
                                         config.PROMPT_MODES["find"],
                                     )
                                     curses.curs_set(True)
-                                    screen_size = stdscr.getmaxyx()
+                                    screen_size = player.stdscr.getmaxyx()
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
                                 elif ch == "{":
@@ -688,7 +688,7 @@ def _play(
                 else:
                     player.mac_now_playing.pos = round(player.playback.curr_pos)
 
-            progress_bar_width = stdscr.getmaxyx()[1] - 18
+            progress_bar_width = player.stdscr.getmaxyx()[1] - 18
             frame_duration = min(
                 (
                     1
@@ -2707,7 +2707,7 @@ def version():
     Currently installed maestro version (PyPI version of the `maestro-music`
     package).
     """
-    click.echo(f"maestro version: {VERSION}")
+    click.echo(f"{VERSION}")
 
 
 @cli.command(name="login")

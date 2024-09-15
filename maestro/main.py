@@ -491,13 +491,13 @@ def _play(
                                         player.update_now_playing = True
 
                                     player.update_screen()
-                                elif ch == "[":
+                                elif ch in "[-":
                                     player.volume = max(
                                         0, player.volume - config.VOLUME_STEP
                                     )
                                     player.update_screen()
                                     prev_volume = player.volume
-                                elif ch == "]":
+                                elif ch in "]=":
                                     player.volume = min(
                                         100, player.volume + config.VOLUME_STEP
                                     )
@@ -568,10 +568,10 @@ def _play(
                                     screen_size = player.stdscr.getmaxyx()
                                     player.scroller.resize(screen_size[0] - 3)
                                     player.update_screen()
-                                elif ch == "{":
+                                elif ch in "{_":
                                     player.snap_back()
                                     player.focus = 0
-                                elif ch == "}":
+                                elif ch in "}+":
                                     player.snap_back()
                                     player.focus = 1
                         else:
@@ -1590,8 +1590,8 @@ def play(
     \x1b[1mv\x1b[0m\t\ttoggle [v]isualization
     \x1b[1mLEFT\x1b[0m\trewind 5s
     \x1b[1mRIGHT\x1b[0m\tfast forward 5s
-    \x1b[1m[\x1b[0m\t\tdecrease volume
-    \x1b[1m]\x1b[0m\t\tincrease volume
+    \x1b[1m[/-\x1b[0m\t\tdecrease volume
+    \x1b[1m]/=\x1b[0m\t\tincrease volume (] has issues on Windows)
     \x1b[1mm\x1b[0m\t\t[m]ute/unmute
     \x1b[1me\x1b[0m\t\t[e]nd the song player after the current song finishes (indicator in status bar, 'e' to cancel)
     \x1b[1mq\x1b[0m\t\t[q]uit the song player immediately
@@ -1608,8 +1608,8 @@ def play(
     \x1b[1ms\x1b[0m\t\ttoggle [s]tream (streams to maestro-music.vercel.app/listen-along/[USERNAME]), requires login
     \x1b[1my\x1b[0m\t\ttoggle l[y]rics
     \x1b[1mt\x1b[0m\t\ttoggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)
-    \x1b[1m{\x1b[0m\t\tfocus playlist
-    \x1b[1m}\x1b[0m\t\tfocus lyrics
+    \x1b[1m{/_\x1b[0m\t\tfocus playlist
+    \x1b[1m}/+\x1b[0m\t\tfocus lyrics (} has issues on Windows)
     \x1b[1mSHIFT+LEFT/RIGHT[0m\tincrease/decrease width of lyrics window
     \x1b[1mo\x1b[0m\t\trel[o]ad song data (useful if you've changed e.g lyrics, tags, or metadata while playing)
     \x1b[1m?\x1b[0m\t\ttoggle this help message

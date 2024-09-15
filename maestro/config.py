@@ -118,8 +118,8 @@ PLAY_CONTROLS = [
     ("v", "toggle [v]isualization"),
     ("LEFT", "rewind 5s"),
     ("RIGHT", "fast forward 5s"),
-    ("[", "decrease volume"),
-    ("]", "increase volume"),
+    ("[/-", "decrease volume"),
+    ("]/=", "increase volume (] has issues on Windows)"),
     ("m", "[m]ute/unmute"),
     (
         "e",
@@ -166,8 +166,8 @@ PLAY_CONTROLS = [
         "t",
         "toggle [t]ranslated lyrics (if available, ignored if lyrics mode is off)",
     ),
-    ("{", "focus queue"),
-    ("}", "focus lyrics"),
+    ("{/_", "focus queue"),
+    ("}/+", "focus lyrics (} has issues on Windows)"),
     (
         "o",
         "rel[o]ad song data (useful if you've changed e.g lyrics, tags, metadata, etc. while playing)",

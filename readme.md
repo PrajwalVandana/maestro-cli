@@ -32,7 +32,7 @@ First, run
 ```
 pip install maestro-music
 ```
-**NOTE**: `pip install maestro` and `pip install maestro` will NOT work, they are totally unrelated PyPI packages.
+**NOTE**: `pip install maestro` and `pip install maestro-cli` will NOT work, they are totally unrelated PyPI packages.
 
 Now, if you want to be able to directly download songs from YouTube or Spotify, you'll need to install [FFmpeg](https://ffmpeg.org/download.html). You can download FFmpeg yourself globally, or locally with `maestro download-ffmpeg`.
 ### Download executable

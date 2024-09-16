@@ -260,9 +260,10 @@ def _play(
                                 player.i -= 1
                             elif player.scroller.pos == player.i + 1:
                                 player.i += 1
-                            player.playlist[player.scroller.pos], player.playlist[
-                                player.scroller.pos - 1
-                            ] = (
+                            (
+                                player.playlist[player.scroller.pos],
+                                player.playlist[player.scroller.pos - 1],
+                            ) = (
                                 player.playlist[player.scroller.pos - 1],
                                 player.playlist[player.scroller.pos],
                             )
@@ -273,9 +274,10 @@ def _play(
                                 player.i += 1
                             elif player.scroller.pos == player.i - 1:
                                 player.i -= 1
-                            player.playlist[player.scroller.pos], player.playlist[
-                                player.scroller.pos + 1
-                            ] = (
+                            (
+                                player.playlist[player.scroller.pos],
+                                player.playlist[player.scroller.pos + 1],
+                            ) = (
                                 player.playlist[player.scroller.pos + 1],
                                 player.playlist[player.scroller.pos],
                             )
@@ -949,6 +951,45 @@ def cli(ctx: click.Context):
     default=True,
     help="Search for and download lyrics for the song.",
 )
+@click.option(
+    "-q",
+    "--audio-quality",
+    type=click.Choice(
+        (
+            "auto",
+            # "disable",
+            "8k",
+            "16k",
+            "24k",
+            "32k",
+            "40k",
+            "48k",
+            "64k",
+            "80k",
+            "96k",
+            "112k",
+            "128k",
+            "160k",
+            "192k",
+            "224k",
+            "256k",
+            "320k",
+            "0",
+            "1",
+            "2",
+            "3",
+            "4",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+        ),
+        case_sensitive=False,
+    ),
+    default="auto",
+    help="Specify the audio quality to download. 0 is the best quality, 9 is the worst. 'auto' is the default (5). You can also specify a bitrate (e.g. '128k').",
+)
 def add(
     path_,
     tags,
@@ -965,6 +1006,7 @@ def add(
     album_artist,
     skip_dupes,
     lyrics,
+    audio_quality,
 ):
     """
     Add a new song.
@@ -1039,6 +1081,11 @@ def add(
                         {
                             "key": "FFmpegExtractAudio",
                             "preferredcodec": format_,
+                            "preferredquality": (
+                                audio_quality
+                                if not audio_quality.lower().endswith("k")
+                                else audio_quality[:-1]
+                            ),
                         },
                     ],
                     "outtmpl": {
@@ -1088,6 +1135,8 @@ def add(
                         "--format",
                         format_,
                         "--headless",
+                        "--bitrate",
+                        audio_quality,
                     ],
                 )
             except FFmpegError:
@@ -3174,7 +3223,9 @@ def lyrics_(
 @click.option(
     "-l",
     "--lang",
-    type=click.Choice(("japanese", "german") + config.INDIC_SCRIPTS),
+    type=click.Choice(
+        ("japanese", "german") + config.INDIC_SCRIPTS, case_sensitive=False
+    ),
     help="Language-specific transliteration support.",
 )
 @click.option(

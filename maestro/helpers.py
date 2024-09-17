@@ -1152,7 +1152,7 @@ class PlaybackHandler:
         import requests
 
         self.break_stream_loop = True
-        if self.discord_connected or self.want_stream:
+        if self.discord_connected or self.want_stream and self.username is not None:
             if not requests.post(
                 config.UPDATE_ARTWORK_URL,
                 params={"mount": self.username},

@@ -1,6 +1,9 @@
 name: Cross-Platform Build
 
-on: push
+on:
+  push:
+    branches:
+      - dev
 
 jobs:
   pyinstaller-build-windows:

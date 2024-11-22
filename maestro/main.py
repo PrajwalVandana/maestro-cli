@@ -3540,9 +3540,11 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
                     phrase = " ".join([w[0] for w in list(phrase)])
                     if lang != to_lang.id:
                         try:
+                            click.secho(phrase, fg="blue", nl=False)
                             phrase = translator.translate(
                                 phrase, to_lang, lang
                             ).result
+                            print(" ->", phrase)
                         except TranslatepyException as e:
                             print_to_logfile(
                                 f"TranslatepyException on {phrase}: {e}"
@@ -3566,7 +3568,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
                 fg="green",
             )
         else:
-            helpers.display_lyrics(lyrics, song, "translated")
+            helpers.display_lyrics(translated_lyrics, song, "translated")
 
 
 @cli.command()

@@ -1,3 +1,5 @@
+# pylint: disable=possibly-used-before-assignment
+
 # region imports
 import curses
 import multiprocessing
@@ -2129,7 +2131,8 @@ def list_(
                 sort_key = lambda t: t[1][1]
             elif sort_ in ("times-listened", "t"):
                 sort_key = lambda t: t[1][0] / t[1][1]
-            tags.sort(key=sort_key)
+
+            tags.sort(key=sort_key)  # pylint: disable=used-before-assignment
             if reverse_:
                 tags.reverse()
 
@@ -3488,7 +3491,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
 
     for song in songs:
         if remove_:
-            song.parsed_translated_lyrics = None
+            song.raw_translated_lyrics = None
             click.secho(
                 f'Removed translated lyrics for "{song.song_title}" (ID {song.song_id}).',
                 fg="green",

@@ -709,96 +709,99 @@ class PlaybackHandler:
             )
 
         while True:
-            keys_to_delete = []
-            for k in self.audio_data:
-                if k not in self.playlist[self.i : self.i + 5]:
-                    keys_to_delete.append(k)
-            for k in keys_to_delete:
-                del self.audio_data[k]
+            try:
+                keys_to_delete = []
+                for k in self.audio_data:
+                    if k not in self.playlist[self.i : self.i + 5]:
+                        keys_to_delete.append(k)
+                for k in keys_to_delete:
+                    del self.audio_data[k]
 
-            for i in range(self.i, min(self.i + 5, len(self.playlist))):
-                song = self.playlist[i]
+                for i in range(self.i, min(self.i + 5, len(self.playlist))):
+                    song = self.playlist[i]
 
-                if self.song != song and (
-                    self.song not in self.audio_data
-                    or (
-                        self.want_vis and self.audio_data[self.song][0] is None
+                    if self.song != song and (
+                        self.song not in self.audio_data
+                        or (
+                            self.want_vis and self.audio_data[self.song][0] is None
+                        )
+                        or (self.want_stream and self.audio_data[self.song][1] is None)
+                    ):
+                        break
+                    if song in self.audio_data and (
+                        (self.audio_data[song][0] is not None or not self.want_vis)
+                        and (
+                            self.audio_data[song][1] is not None or not self.want_stream
+                        )
+                        or self._librosa is None
+                    ):
+                        continue
+
+                    song_path = os.path.join(  # NOTE: NOT SAME AS self.song_path
+                        config.settings["song_directory"],
+                        self.playlist[i].song_file,
                     )
-                    or (self.want_stream and self.audio_data[self.song][1] is None)
-                ):
-                    break
-                if song in self.audio_data and (
-                    (self.audio_data[song][0] is not None or not self.want_vis)
-                    and (
-                        self.audio_data[song][1] is not None or not self.want_stream
-                    )
-                    or self._librosa is None
-                ):
-                    continue
 
-                song_path = os.path.join(  # NOTE: NOT SAME AS self.song_path
-                    config.settings["song_directory"],
-                    self.playlist[i].song_file,
-                )
-
-                if song not in self.audio_data:
-                    self.audio_data[song] = [
-                        (
-                            self._librosa.amplitude_to_db(
-                                np.abs(
-                                    self._librosa.stft(
-                                        self._load_audio(
-                                            song_path,
-                                            sr=config.VIS_SAMPLE_RATE,
+                    if song not in self.audio_data:
+                        self.audio_data[song] = [
+                            (
+                                self._librosa.amplitude_to_db(
+                                    np.abs(
+                                        self._librosa.stft(
+                                            self._load_audio(
+                                                song_path,
+                                                sr=config.VIS_SAMPLE_RATE,
+                                            )
                                         )
+                                    ),
+                                    ref=np.max,
+                                )
+                                + 80
+                                if self.want_vis and self.can_visualize
+                                else None
+                            ),
+                            (
+                                np.int16(
+                                    self._load_audio(
+                                        song_path, sr=config.STREAM_SAMPLE_RATE
                                     )
-                                ),
-                                ref=np.max,
+                                    * (2**15 - 1)
+                                    * 0.5  # reduce volume (avoid clipping)
+                                )  # convert to 16-bit PCM
+                                if self.want_stream
+                                else None
+                            ),
+                        ]
+                    else:
+                        if (
+                            self.audio_data[song][0] is None
+                            and self.want_vis
+                            and self.can_visualize
+                        ):
+                            self.audio_data[song][0] = (
+                                self._librosa.amplitude_to_db(
+                                    np.abs(
+                                        self._librosa.stft(
+                                            self._load_audio(
+                                                song_path,
+                                                sr=config.VIS_SAMPLE_RATE,
+                                            )
+                                        )
+                                    ),
+                                    ref=np.max,
+                                )
+                                + 80
                             )
-                            + 80
-                            if self.want_vis and self.can_visualize
-                            else None
-                        ),
-                        (
-                            np.int16(
+                        if self.audio_data[song][1] is None and self.want_stream:
+                            self.audio_data[song][1] = np.int16(
                                 self._load_audio(
                                     song_path, sr=config.STREAM_SAMPLE_RATE
                                 )
                                 * (2**15 - 1)
                                 * 0.5  # reduce volume (avoid clipping)
                             )  # convert to 16-bit PCM
-                            if self.want_stream
-                            else None
-                        ),
-                    ]
-                else:
-                    if (
-                        self.audio_data[song][0] is None
-                        and self.want_vis
-                        and self.can_visualize
-                    ):
-                        self.audio_data[song][0] = (
-                            self._librosa.amplitude_to_db(
-                                np.abs(
-                                    self._librosa.stft(
-                                        self._load_audio(
-                                            song_path,
-                                            sr=config.VIS_SAMPLE_RATE,
-                                        )
-                                    )
-                                ),
-                                ref=np.max,
-                            )
-                            + 80
-                        )
-                    if self.audio_data[song][1] is None and self.want_stream:
-                        self.audio_data[song][1] = np.int16(
-                            self._load_audio(
-                                song_path, sr=config.STREAM_SAMPLE_RATE
-                            )
-                            * (2**15 - 1)
-                            * 0.5  # reduce volume (avoid clipping)
-                        )  # convert to 16-bit PCM
+            except:  # hacky fix  # pylint: disable=bare-except
+                pass
 
             sleep(1)
 
@@ -1031,7 +1034,7 @@ class PlaybackHandler:
 
             # minimum 2 characters (Discord requirement)
             new_song_name = self.song_title.ljust(2)
-            new_artist_name = "by " + self.song_artist.ljust(2)
+            new_artist_name = "by " + self.song_artist
             new_album_name = self.song_album.ljust(2)
 
             if (

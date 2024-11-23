@@ -3352,7 +3352,7 @@ def transliterate(songs, lang, override, force):
                         )
                         word = re.sub(r"ṃ(?=\w)", "n", word)
                         word = word.replace("ṃ", "m")
-                    transliterated += word
+                    transliterated += word + " "
                 helpers.set_lyric(lyrics, i, transliterated)
 
         if lang != "ja" and lang not in config.INDIC_SCRIPTS:
@@ -3537,7 +3537,7 @@ def translate(songs, save_, from_langs, to_lang, force, remove_):
 
                 translated_lyrics[i] = ""
                 for lang, phrase in groupby(words, lambda x: x[1].id):
-                    phrase = " ".join([w[0] for w in list(phrase)])
+                    phrase = " ".join([w[0] for w in phrase])
                     if lang != to_lang.id:
                         try:
                             click.secho(phrase, fg="blue", nl=False)

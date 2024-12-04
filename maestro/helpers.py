@@ -1981,7 +1981,7 @@ def yt_embed_artwork(yt_dlp_info):
         best_thumbnail["height"] = -1
 
     for thumbnail in yt_dlp_info["thumbnails"][:-1]:
-        print(thumbnail)
+        # print(thumbnail)
         if "height" in thumbnail and (
             (
                 thumbnail["height"] == thumbnail["width"]

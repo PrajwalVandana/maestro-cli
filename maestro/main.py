@@ -992,6 +992,11 @@ def cli(ctx: click.Context):
     default="auto",
     help="Specify the audio quality to download. 0 is the best quality, 9 is the worst. 'auto' is the default (5). You can also specify a bitrate (e.g. '128k').",
 )
+@click.option(
+    "--crop/--no-crop",
+    default=False,
+    help="Crop the album art to a square if no square art is found (YouTube/YT Music only).",
+)
 def add(
     path_,
     tags,
@@ -1009,6 +1014,7 @@ def add(
     skip_dupes,
     lyrics,
     audio_quality,
+    crop,
 ):
     """
     Add a new song.
@@ -1101,9 +1107,9 @@ def add(
                 info = ydl.extract_info(path_, download=True)
                 if "entries" in info:
                     for e in info["entries"]:
-                        helpers.yt_embed_artwork(e)
+                        helpers.yt_embed_artwork(e, crop)
                 else:
-                    helpers.yt_embed_artwork(info)
+                    helpers.yt_embed_artwork(info, crop)
         else:
             from spotdl import (
                 console_entry_point as original_spotdl_entry_point,

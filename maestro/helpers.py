@@ -1968,7 +1968,7 @@ class SongParamType(click.ParamType):
 CLICK_SONG = SongParamType()
 
 
-def yt_embed_artwork(yt_dlp_info):
+def yt_embed_artwork(yt_dlp_info, crop):
     import music_tag
     import requests
 
@@ -2004,6 +2004,34 @@ def yt_embed_artwork(yt_dlp_info):
     image_url = best_thumbnail["url"]
     response = requests.get(image_url, timeout=5)
     image_data = response.content
+    if best_thumbnail["width"] != best_thumbnail["height"] and crop:
+        from io import BytesIO
+        from PIL import Image
+
+        image = Image.open(BytesIO(image_data))
+        width, height = image.size
+        if width > height:
+            image = image.crop(
+                (
+                    (width - height) // 2,
+                    0,
+                    (width + height) // 2,
+                    height,
+                )
+            )
+        elif height > width:
+            image = image.crop(
+                (
+                    0,
+                    (height - width) // 2,
+                    width,
+                    (height + width) // 2,
+                )
+            )
+
+        image_data = BytesIO()
+        image.save(image_data, format="JPEG")
+        image_data = image_data.getvalue()
 
     m = music_tag.load_file(yt_dlp_info["requested_downloads"][0]["filepath"])
     m["artwork"] = image_data

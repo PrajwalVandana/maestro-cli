@@ -969,7 +969,7 @@ class PlaybackHandler:
 
     def seek(self, pos):
         if self.playback is not None:
-            pos = max(0, pos)
+            pos = max(self.clip[0] if self.clip_mode else 0, pos)
             self.playback.seek(pos)
             self.break_stream_loop = True
             if self.can_mac_now_playing and self.mac_now_playing is not None:
@@ -2001,8 +2001,7 @@ def yt_embed_artwork(yt_dlp_info, crop):
         ):
             best_thumbnail = thumbnail
 
-    image_url = best_thumbnail["url"]
-    response = requests.get(image_url, timeout=5)
+    response = requests.get(best_thumbnail["url"], timeout=5)
     image_data = response.content
     if best_thumbnail["width"] != best_thumbnail["height"] and crop:
         from io import BytesIO

@@ -159,7 +159,7 @@ def _play(
             # fade in first 2 seconds of clip
             if (
                 player.clip_mode
-                and clip_start != 0  # if clip doesn't start at beginning
+                and clip_start > 0.01  # if clip doesn't start at beginning
                 and clip_end - clip_start > 5  # if clip is longer than 5 secs
                 and player.playback.curr_pos < clip_start + 2
             ):
@@ -994,7 +994,7 @@ def cli(ctx: click.Context):
 )
 @click.option(
     "--crop/--no-crop",
-    default=False,
+    default=True,
     help="Crop the album art to a square if no square art is found (YouTube/YT Music only).",
 )
 def add(

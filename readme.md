@@ -6,21 +6,21 @@
 
 Check out the [Discord server](https://discord.gg/AW8fh2QEav)!
 ## Features
-- [cross-platform](#platforms)!
-- [add songs](#adding-songs) from YouTube, YouTube Music, or Spotify!
-- [stream your music](#streaming)!
-- [lyrics](#lyrics)!
+- [cross-platform](#platforms)
+- [add songs](#adding-songs) from YouTube, YouTube Music, or Spotify
+- [stream your music](#streaming)
+- [lyrics](#lyrics)
     - romanize foreign-language lyrics
     - translate lyrics
-- [clips](#clips)!
-- filter by [tags](#tags)!
-- [listen statistics](#listen-statistics)!
-- [shuffle](#shuffling)! (along with precise control over the behavior of shuffling when repeating)
-- [audio visualization](#visualization) directly in the terminal!
-- [Discord integration](#discord-status)!
-- Now Playing Center integration on macOS! (allows headphone controls)
+- [clips](#clips)
+- filter by [tags](#tags)
+- [listen statistics](#listen-statistics)
+- [shuffle](#shuffling) (along with precise control over the behavior of shuffling when repeating)
+- [audio visualization](#visualization) directly in the terminal
+- [Discord integration](#discord-status)
+- Now Playing Center integration on macOS (allows headphone controls)
 ![](https://github.com/PrajwalVandana/maestro-cli/raw/master/data/now_playing.png)
-- [music discovery](#music-discovery)!
+- [music discovery](#music-discovery)
 ## Technical Details
 [Visualization Breakdown](https://github.com/PrajwalVandana/maestro-cli/blob/master/data/maestro_vis.pdf)
 [Listen-along Streaming Breakdown](https://github.com/PrajwalVandana/maestro-cli/blob/master/data/maestro_listen_along.pdf)

@@ -791,10 +791,10 @@ def cli(ctx: click.Context):
         os.makedirs(config.MAESTRO_DIR)
 
     # ensure config.SETTINGS has all settings
-    update_settings = False
+    update_settings_file = False
     if not os.path.exists(config.SETTINGS_FILE):
         config.settings = config.DEFAULT_SETTINGS
-        update_settings = True
+        update_settings_file = True
     else:
         with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
             s = f.read()
@@ -803,10 +803,10 @@ def cli(ctx: click.Context):
                 for key in config.DEFAULT_SETTINGS:
                     if key not in config.settings:
                         config.settings[key] = config.DEFAULT_SETTINGS[key]
-                        update_settings = True
+                        update_settings_file = True
             else:
                 config.settings = config.DEFAULT_SETTINGS
-                update_settings = True
+                update_settings_file = True
 
     # ~/.maestro-files/songs.json
     if not os.path.exists(config.SONGS_INFO_PATH):
@@ -827,7 +827,7 @@ def cli(ctx: click.Context):
     t = time()
     if t - config.settings["last_version_sync"] > 24 * 60 * 60:  # 1 day
         config.settings["last_version_sync"] = t
-        update_settings = True
+        update_settings_file = True
         try:
             import requests
 
@@ -846,7 +846,7 @@ def cli(ctx: click.Context):
             print_to_logfile("Failed to check for updates:", e)
 
     # ensure config.SETTINGS_FILE is up to date
-    if update_settings:
+    if update_settings_file:
         import safer
 
         with safer.open(config.SETTINGS_FILE, "wb") as g:
@@ -997,6 +997,10 @@ def cli(ctx: click.Context):
     default=True,
     help="Crop the album art to a square if no square art is found (YouTube/YT Music only).",
 )
+@click.option(
+    "--cookies-browser",
+    help="Browser to extract cookies from for downloading from YouTube/YouTube Music. ",
+)
 def add(
     path_,
     tags,
@@ -1015,6 +1019,7 @@ def add(
     lyrics,
     audio_quality,
     crop,
+    cookies_browser,
 ):
     """
     Add a new song.
@@ -1078,32 +1083,34 @@ def add(
                 )
                 return
 
-            with YoutubeDL(
-                {
-                    "noplaylist": not playlist_,
-                    "postprocessors": [
-                        {
-                            "key": "FFmpegMetadata",
-                            "add_metadata": True,
-                        },
-                        {
-                            "key": "FFmpegExtractAudio",
-                            "preferredcodec": format_,
-                            "preferredquality": (
-                                audio_quality
-                                if not audio_quality.lower().endswith("k")
-                                else audio_quality[:-1]
-                            ),
-                        },
-                    ],
-                    "outtmpl": {
-                        "default": os.path.join(
-                            config.MAESTRO_DIR, "%(title)s.%(ext)s"
-                        )
+            ytdl_settings = {
+                "noplaylist": not playlist_,
+                "postprocessors": [
+                    {
+                        "key": "FFmpegMetadata",
+                        "add_metadata": True,
                     },
-                    "ffmpeg_location": str(get_ffmpeg_path()),
-                }
-            ) as ydl:
+                    {
+                        "key": "FFmpegExtractAudio",
+                        "preferredcodec": format_,
+                        "preferredquality": (
+                            audio_quality
+                            if not audio_quality.lower().endswith("k")
+                            else audio_quality[:-1]
+                        ),
+                    },
+                ],
+                "outtmpl": {
+                    "default": os.path.join(
+                        config.MAESTRO_DIR, "%(title)s.%(ext)s"
+                    )
+                },
+                "ffmpeg_location": str(get_ffmpeg_path()),
+            }
+            if cookies_browser:
+                ytdl_settings["cookiefile"] = os.path.join(config.MAESTRO_DIR, "cookies.txt")
+                ytdl_settings["cookiesfrombrowser"] = (cookies_browser,)
+            with YoutubeDL(ytdl_settings) as ydl:
                 info = ydl.extract_info(path_, download=True)
                 if "entries" in info:
                     for e in info["entries"]:
@@ -1299,13 +1306,17 @@ def add(
             import syncedlyrics
 
             try:
+                # pylint: disable=unexpected-keyword-arg
                 lyrics = syncedlyrics.search(
                     f"{song.artist} - {song_title}", allow_plain_format=True
                 )
-            except TypeError:
+            except TypeError as e:
+                print_to_logfile(
+                    f"TypeError with allow_plain_format=True in syncedlyrics.search: {e}"
+                )
                 try:
                     lyrics = syncedlyrics.search(song_title)
-                except Exception as e:
+                except Exception as e:  # pylint: disable=redefined-outer-name
                     click.secho(
                         f'Failed to download lyrics for "{song_title}": {e}',
                         fg="red",
@@ -2123,7 +2134,7 @@ def list_(
 
             for tag in song.tags:
                 if (not search_tags or tag in search_tags) and search_criteria:
-                    tags[tag][0] += song.listen_times[year]
+                    tags[tag][0] += song.listen_times.get(year, 0)
                     tags[tag][1] += song.duration
 
         tags = list(tags.items())
@@ -2170,20 +2181,22 @@ def list_(
                     if artists:
                         for search_artist in artists:
                             if search_artist.lower() in artist.lower():
-                                abcs[artist][0] += song.listen_times[year]
+                                abcs[artist][0] += song.listen_times.get(
+                                    year, 0
+                                )
                                 abcs[artist][1] += song.duration
                                 break
                     else:
-                        abcs[artist][0] += song.listen_times[year]
+                        abcs[artist][0] += song.listen_times.get(year, 0)
                         abcs[artist][1] += song.duration
             if listing_albums:
                 if albums:
                     for album in albums:
                         if album.lower() in song.album.lower():
-                            abcs[album][0] += song.listen_times[year]
+                            abcs[album][0] += song.listen_times.get(year, 0)
                             abcs[album][1] += song.duration
                 else:
-                    abcs[song.album][0] += song.listen_times[year]
+                    abcs[song.album][0] += song.listen_times.get(year, 0)
                     abcs[song.album][1] += song.duration
             if listing_album_artists or (combine_artists and listing_artists):
                 for album_artist in song.album_artist.split(", "):
@@ -2193,11 +2206,13 @@ def list_(
                                 search_album_artist.lower()
                                 in album_artist.lower()
                             ):
-                                abcs[album_artist][0] += song.listen_times[year]
+                                abcs[album_artist][0] += song.listen_times.get(
+                                    year, 0
+                                )
                                 abcs[album_artist][1] += song.duration
                                 break
                     else:
-                        abcs[album_artist][0] += song.listen_times[year]
+                        abcs[album_artist][0] += song.listen_times.get(year, 0)
                         abcs[album_artist][1] += song.duration
 
         abcs = list(abcs.items())
@@ -2239,11 +2254,11 @@ def list_(
     if sort_ in ("name", "n"):
         sort_key = lambda song: song.song_title.lower()
     elif sort_ in ("secs-listened", "s"):
-        sort_key = lambda song: song.listen_times[year]
+        sort_key = lambda song: song.listen_times.get(year, 0)
     elif sort_ in ("duration", "d"):
         sort_key = lambda song: song.duration
     elif sort_ in ("times-listened", "t"):
-        sort_key = lambda song: song.listen_times[year] / song.duration
+        sort_key = lambda song: song.listen_times.get(year, 0) / song.duration
     songs.sort(key=sort_key, reverse=reverse_)
 
     no_results = True
@@ -2740,7 +2755,6 @@ def dir_(directory):
 
     If no argument is passed, prints the current directory.
     """
-
     if directory is None:
         click.echo(config.settings["song_directory"])
         return
@@ -2939,10 +2953,10 @@ def format_data(indent: int):
     """
     import safer
 
-    with safer.open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as f:
+    with open(config.SONGS_INFO_PATH, "r", encoding="utf-8") as f:
         data = msgspec.json.decode(f.read())
 
-    with open(config.SONGS_INFO_PATH, "wb") as f:
+    with safer.open(config.SONGS_INFO_PATH, "wb") as f:
         f.write(msgspec.json.format(msgspec.json.encode(data), indent=indent))
 
     click.secho(
@@ -3197,6 +3211,7 @@ def lyrics_(
                     continue
 
         try:
+            # pylint: disable=unexpected-keyword-arg
             lyrics = syncedlyrics.search(song_title, allow_plain_format=True)
         except TypeError as e:
             print_to_logfile(

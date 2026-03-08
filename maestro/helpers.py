@@ -2568,7 +2568,7 @@ def print_entry(
     if year is not None:
         click.secho(
             format_seconds(
-                song.listen_times[year],
+                song.listen_times.get(year, 0),
                 show_decimal=True,
                 digital=False,
             )
@@ -2577,7 +2577,7 @@ def print_entry(
             nl=False,
         )
         click.secho(
-            f"{song.listen_times[year] / song.duration:0.2f} ",
+            f"{song.listen_times.get(year, 0) / song.duration:0.2f} ",
             fg="green",
             nl=False,
         )

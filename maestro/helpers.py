@@ -285,7 +285,7 @@ class Song:
         if key not in self._metadata:
             return None
         if resolve:
-            return self._metadata[key].value
+            return self._metadata[key].first
         return self._metadata[key]
 
     def set_metadata(self, key, value):
@@ -544,6 +544,9 @@ class FFmpegProcessHandler:
         self.password = password
 
     def start(self):
+        threading.Thread(target=self._start, daemon=True).start()
+
+    def _start(self):
         from spotdl.utils.ffmpeg import get_ffmpeg_path
 
         self.process = subprocess.Popen(
@@ -718,38 +721,48 @@ class PlaybackHandler:
                     del self.audio_data[k]
 
                 for i in range(self.i, min(self.i + 5, len(self.playlist))):
-                    song = self.playlist[i]
+                    processing_song = self.playlist[i]
 
-                    if self.song != song and (
+                    if self.song != processing_song and (
                         self.song not in self.audio_data
                         or (
-                            self.want_vis and self.audio_data[self.song][0] is None
+                            self.want_vis
+                            and self.audio_data[self.song][0] is None
                         )
-                        or (self.want_stream and self.audio_data[self.song][1] is None)
+                        or (
+                            self.want_stream
+                            and self.audio_data[self.song][1] is None
+                        )
                     ):
                         break
-                    if song in self.audio_data and (
-                        (self.audio_data[song][0] is not None or not self.want_vis)
+                    if processing_song in self.audio_data and (
+                        (
+                            self.audio_data[processing_song][0] is not None
+                            or not self.want_vis
+                        )
                         and (
-                            self.audio_data[song][1] is not None or not self.want_stream
+                            self.audio_data[processing_song][1] is not None
+                            or not self.want_stream
                         )
                         or self._librosa is None
                     ):
                         continue
 
-                    song_path = os.path.join(  # NOTE: NOT SAME AS self.song_path
-                        config.settings["song_directory"],
-                        self.playlist[i].song_file,
+                    processing_song_path = (
+                        os.path.join(  # NOTE: NOT SAME AS self.song_path
+                            config.settings["song_directory"],
+                            self.playlist[i].song_file,
+                        )
                     )
 
-                    if song not in self.audio_data:
-                        self.audio_data[song] = [
+                    if processing_song not in self.audio_data:
+                        self.audio_data[processing_song] = [
                             (
                                 self._librosa.amplitude_to_db(
                                     np.abs(
                                         self._librosa.stft(
                                             self._load_audio(
-                                                song_path,
+                                                processing_song_path,
                                                 sr=config.VIS_SAMPLE_RATE,
                                             )
                                         )
@@ -763,7 +776,8 @@ class PlaybackHandler:
                             (
                                 np.int16(
                                     self._load_audio(
-                                        song_path, sr=config.STREAM_SAMPLE_RATE
+                                        processing_song_path,
+                                        sr=config.STREAM_SAMPLE_RATE,
                                     )
                                     * (2**15 - 1)
                                     * 0.5  # reduce volume (avoid clipping)
@@ -774,16 +788,16 @@ class PlaybackHandler:
                         ]
                     else:
                         if (
-                            self.audio_data[song][0] is None
+                            self.audio_data[processing_song][0] is None
                             and self.want_vis
                             and self.can_visualize
                         ):
-                            self.audio_data[song][0] = (
+                            self.audio_data[processing_song][0] = (
                                 self._librosa.amplitude_to_db(
                                     np.abs(
                                         self._librosa.stft(
                                             self._load_audio(
-                                                song_path,
+                                                processing_song_path,
                                                 sr=config.VIS_SAMPLE_RATE,
                                             )
                                         )
@@ -792,10 +806,14 @@ class PlaybackHandler:
                                 )
                                 + 80
                             )
-                        if self.audio_data[song][1] is None and self.want_stream:
-                            self.audio_data[song][1] = np.int16(
+                        if (
+                            self.audio_data[processing_song][1] is None
+                            and self.want_stream
+                        ):
+                            self.audio_data[processing_song][1] = np.int16(
                                 self._load_audio(
-                                    song_path, sr=config.STREAM_SAMPLE_RATE
+                                    processing_song_path,
+                                    sr=config.STREAM_SAMPLE_RATE,
                                 )
                                 * (2**15 - 1)
                                 * 0.5  # reduce volume (avoid clipping)
@@ -951,7 +969,7 @@ class PlaybackHandler:
 
     def seek(self, pos):
         if self.playback is not None:
-            pos = max(0, pos)
+            pos = max(self.clip[0] if self.clip_mode else 0, pos)
             self.playback.seek(pos)
             self.break_stream_loop = True
             if self.can_mac_now_playing and self.mac_now_playing is not None:
@@ -1155,7 +1173,11 @@ class PlaybackHandler:
         import requests
 
         self.break_stream_loop = True
-        if self.discord_connected or self.want_stream and self.username is not None:
+        if (
+            self.discord_connected
+            or self.want_stream
+            and self.username is not None
+        ):
             if not requests.post(
                 config.UPDATE_ARTWORK_URL,
                 params={"mount": self.username},
@@ -1946,7 +1968,7 @@ class SongParamType(click.ParamType):
 CLICK_SONG = SongParamType()
 
 
-def yt_embed_artwork(yt_dlp_info):
+def yt_embed_artwork(yt_dlp_info, crop):
     import music_tag
     import requests
 
@@ -1954,28 +1976,61 @@ def yt_embed_artwork(yt_dlp_info):
     best_thumbnail = yt_dlp_info["thumbnails"][-1]  # default thumbnail
 
     if "width" not in best_thumbnail:
-        # diff so that any square thumbnail is chosen
+        # different so that any square thumbnail is chosen
         best_thumbnail["width"] = 0
         best_thumbnail["height"] = -1
 
     for thumbnail in yt_dlp_info["thumbnails"][:-1]:
+        # print(thumbnail)
         if "height" in thumbnail and (
-            thumbnail["height"] == thumbnail["width"]
-            and (best_thumbnail["width"] != best_thumbnail["height"])
+            (
+                thumbnail["height"] == thumbnail["width"]
+                and (
+                    (best_thumbnail["width"] != best_thumbnail["height"])
+                    or (
+                        thumbnail["height"] >= best_thumbnail["height"]
+                        and thumbnail["width"] >= best_thumbnail["width"]
+                    )
+                )
+            )
             or (
                 thumbnail["height"] >= best_thumbnail["height"]
                 and (thumbnail["width"] >= best_thumbnail["width"])
-                and (
-                    (best_thumbnail["width"] != best_thumbnail["height"])
-                    or thumbnail["width"] == thumbnail["height"]
-                )
+                and (best_thumbnail["width"] != best_thumbnail["height"])
             )
         ):
             best_thumbnail = thumbnail
 
-    image_url = best_thumbnail["url"]
-    response = requests.get(image_url, timeout=5)
+    response = requests.get(best_thumbnail["url"], timeout=5)
     image_data = response.content
+    if best_thumbnail["width"] != best_thumbnail["height"] and crop:
+        from io import BytesIO
+        from PIL import Image
+
+        image = Image.open(BytesIO(image_data))
+        width, height = image.size
+        if width > height:
+            image = image.crop(
+                (
+                    (width - height) // 2,
+                    0,
+                    (width + height) // 2,
+                    height,
+                )
+            )
+        elif height > width:
+            image = image.crop(
+                (
+                    0,
+                    (height - width) // 2,
+                    width,
+                    (height + width) // 2,
+                )
+            )
+
+        image_data = BytesIO()
+        image.save(image_data, format="JPEG")
+        image_data = image_data.getvalue()
 
     m = music_tag.load_file(yt_dlp_info["requested_downloads"][0]["filepath"])
     m["artwork"] = image_data
@@ -2513,7 +2568,7 @@ def print_entry(
     if year is not None:
         click.secho(
             format_seconds(
-                song.listen_times[year],
+                song.listen_times.get(year, 0),
                 show_decimal=True,
                 digital=False,
             )
@@ -2522,7 +2577,7 @@ def print_entry(
             nl=False,
         )
         click.secho(
-            f"{song.listen_times[year] / song.duration:0.2f} ",
+            f"{song.listen_times.get(year, 0) / song.duration:0.2f} ",
             fg="green",
             nl=False,
         )

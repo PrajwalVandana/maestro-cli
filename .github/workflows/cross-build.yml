@@ -19,7 +19,7 @@ jobs:
       - name: Install NSIS
         uses: repolevedavaj/install-nsis@v1.0.2
         with:
-          nsis-version: 3.08
+          nsis-version: '3.10'
       - name: Run NSIS and zip dist
         run: |
           makensis install-scripts/windows.nsi
@@ -70,14 +70,14 @@ jobs:
           install-location: /usr/local/bin/maestro-bundle/
       - name: Rename .pkg, compress dist
         run: |
-          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg"
-          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
+          mv "${{ steps.pkgbuild.outputs.output-path }}" "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-apple-silicon' || 'maestro-mac-intel' }}.pkg"
+          tar -czf "${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-apple-silicon' || 'maestro-mac-intel' }}.tar.gz" "${{ steps.pyinstaller.outputs.executable_path }}/maestro"
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.pkg
-            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-cli-apple-silicon' || 'maestro-cli-mac-intel' }}.tar.gz
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-apple-silicon' || 'maestro-mac-intel' }}.pkg
+            ${{ steps.pyinstaller.outputs.executable_path }}/${{ matrix.os == 'macos-latest' && 'maestro-apple-silicon' || 'maestro-mac-intel' }}.tar.gz
           token: ${{ secrets.GITHUB_TOKEN }}
           draft: true
           prerelease: true

@@ -717,7 +717,9 @@ def _play(
 
         # region update stats
         def stats_update(s: helpers.Song, t: float):
-            s.listen_times[config.CUR_YEAR] += t
+            s.listen_times[config.CUR_YEAR] = (
+                s.listen_times.get(config.CUR_YEAR, 0) + t
+            )
             s.listen_times["total"] += t
 
         threading.Thread(
@@ -1108,7 +1110,9 @@ def add(
                 "ffmpeg_location": str(get_ffmpeg_path()),
             }
             if cookies_browser:
-                ytdl_settings["cookiefile"] = os.path.join(config.MAESTRO_DIR, "cookies.txt")
+                ytdl_settings["cookiefile"] = os.path.join(
+                    config.MAESTRO_DIR, "cookies.txt"
+                )
                 ytdl_settings["cookiesfrombrowser"] = (cookies_browser,)
             with YoutubeDL(ytdl_settings) as ydl:
                 info = ydl.extract_info(path_, download=True)
